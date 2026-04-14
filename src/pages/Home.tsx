@@ -12,6 +12,7 @@ import {
   Plus, Minus, Clock, Users
 } from 'lucide-react';
 import SalarySplitter from '../components/SalarySplitter';
+import GamingDashboard from '../components/GamingDashboard';
 import { formatCurrency, cn } from '../lib/utils';
 import { useNavigate } from 'react-router-dom';
 import { startOfDay, startOfWeek, startOfMonth, isAfter, parseISO, differenceInDays } from 'date-fns';
@@ -25,7 +26,7 @@ export default function Home({ onAddMoney, onWithdraw }: {
     currentUser, soloGoals, groupGoals, emergencyGoals,
     streakData, weeklyChallenge, transactions 
   } = useStore();
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'splitter'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'gaming' | 'splitter'>('dashboard');
 
   const totalSavings = useMemo(() => {
     const soloTotal = soloGoals.reduce((sum, g) => sum + g.currentAmount, 0);
@@ -84,6 +85,25 @@ export default function Home({ onAddMoney, onWithdraw }: {
       .reduce((sum, t) => sum + t.amount, 0);
   };
 
+  if (activeTab === 'gaming') {
+    return (
+      <div className="min-h-screen bg-background text-foreground p-6 lg:p-12 pb-32">
+        <div className="max-w-7xl mx-auto space-y-8">
+          <div className="flex items-center justify-between">
+            <h2 className="serif-heading text-4xl">Gaming Hub</h2>
+            <button 
+              onClick={() => setActiveTab('dashboard')}
+              className="px-6 py-2 clay text-xs font-bold hover:bg-foreground/5 transition-colors"
+            >
+              Back to Dashboard
+            </button>
+          </div>
+          <GamingDashboard />
+        </div>
+      </div>
+    );
+  }
+
   if (activeTab === 'splitter') {
     return (
       <div className="min-h-screen bg-background text-foreground p-6 lg:p-12 pb-32">
@@ -107,6 +127,38 @@ export default function Home({ onAddMoney, onWithdraw }: {
     <div className="min-h-screen bg-background text-foreground pb-32">
       <div className="max-w-md mx-auto space-y-8">
         
+        {/* Tab Switcher */}
+        <div className="flex p-1 clay-inset mb-10">
+          <button 
+            onClick={() => setActiveTab('dashboard')}
+            className={cn(
+              "flex-1 py-3 text-[10px] font-black rounded-xl transition-all uppercase tracking-widest",
+              activeTab === 'dashboard' ? "bg-surface text-foreground shadow-xl" : "opacity-30"
+            )}
+          >
+            Finance
+          </button>
+          <button 
+            onClick={() => setActiveTab('gaming')}
+            className={cn(
+              "flex-1 py-3 text-[10px] font-black rounded-xl transition-all uppercase tracking-widest flex items-center justify-center gap-2",
+              activeTab === 'gaming' ? "bg-surface text-foreground shadow-xl" : "opacity-30"
+            )}
+          >
+            Gaming
+            <Flame size={12} className={activeTab === 'gaming' ? "text-orange-500" : ""} />
+          </button>
+          <button 
+            onClick={() => setActiveTab('splitter')}
+            className={cn(
+              "flex-1 py-3 text-[10px] font-black rounded-xl transition-all uppercase tracking-widest",
+              activeTab === 'splitter' ? "bg-surface text-foreground shadow-xl" : "opacity-30"
+            )}
+          >
+            Splitter
+          </button>
+        </div>
+
         {/* Total Savings Card */}
         <motion.div 
           initial={{ opacity: 0, scale: 0.9 }}
@@ -266,32 +318,42 @@ export default function Home({ onAddMoney, onWithdraw }: {
 
                       if (remaining > 0) {
                         return (
-                          <button 
-                            onClick={() => onAddMoney(goal.id, type, remaining)}
-                            className="w-full py-4 clay-coral text-[10px] font-black uppercase tracking-widest flex flex-col items-center justify-center gap-1 hover:brightness-110 transition-all rounded-xl shadow-xl"
-                          >
-                            <div className="flex items-center gap-2">
-                              <Plus size={14} /> Add {formatCurrency(remaining, currentUser?.preferences.currency)}
+                          <div className="space-y-3">
+                            <div className="p-4 clay-inset bg-foreground/5 text-center">
+                              <p className="text-[8px] font-black opacity-30 uppercase tracking-[0.2em] mb-1">Estimated money to add</p>
+                              <p className="text-xl font-black text-[#FF6B6B]">
+                                {formatCurrency(remaining, currentUser?.preferences.currency)}
+                              </p>
                             </div>
-                            <span className="text-[8px] opacity-60">To stay on track this {goal.frequency}</span>
-                          </button>
+                            <button 
+                              onClick={() => onAddMoney(goal.id, type, remaining)}
+                              className="w-full py-4 clay-coral text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 hover:brightness-110 transition-all rounded-xl shadow-xl text-white"
+                            >
+                              <Plus size={14} /> Add {formatCurrency(remaining, currentUser?.preferences.currency)}
+                            </button>
+                          </div>
                         );
                       }
 
                       return (
-                        <div className="flex gap-3">
-                          <button 
-                            onClick={() => onAddMoney(goal.id, type)}
-                            className="flex-1 py-4 clay-inset bg-foreground/5 text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-foreground/10 transition-all rounded-xl"
-                          >
-                            <Plus size={14} /> Add Money
-                          </button>
-                          <button 
-                            onClick={() => onWithdraw(goal.id, type)}
-                            className="flex-1 py-4 clay-inset bg-foreground/5 text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-foreground/10 transition-all rounded-xl"
-                          >
-                            <Minus size={14} /> Withdraw
-                          </button>
+                        <div className="space-y-3">
+                          <div className="p-4 clay-inset bg-emerald-500/5 text-center border border-emerald-500/10">
+                            <p className="text-[8px] font-black text-emerald-500 uppercase tracking-[0.2em]">Goal met for this {goal.frequency}! ✨</p>
+                          </div>
+                          <div className="flex gap-3">
+                            <button 
+                              onClick={() => onAddMoney(goal.id, type)}
+                              className="flex-1 py-4 clay-coral text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 hover:brightness-110 transition-all rounded-xl text-white shadow-lg"
+                            >
+                              <Plus size={14} /> Add More
+                            </button>
+                            <button 
+                              onClick={() => onWithdraw(goal.id, type)}
+                              className="flex-1 py-4 clay-inset bg-foreground/5 text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-foreground/10 transition-all rounded-xl"
+                            >
+                              <Minus size={14} /> Withdraw
+                            </button>
+                          </div>
                         </div>
                       );
                     })()}

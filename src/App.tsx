@@ -41,8 +41,16 @@ export default function App() {
     currentUser, addSoloGoal, addGroupGoal, 
     joinGroupGoal, addContribution, checkStreak,
     weeklyChallenge, resetWeeklyChallenge, streakData,
-    checkReminders, triggerMotivation
+    checkReminders, triggerMotivation, theme, checkAuth
   } = useStore();
+
+  useEffect(() => {
+    checkAuth();
+  }, []);
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', theme === 'dark');
+  }, [theme]);
   
   const [isPlusModalOpen, setIsPlusModalOpen] = useState(false);
   const [plusAction, setPlusAction] = useState<'main' | 'solo' | 'group-create' | 'group-join' | 'contribute' | 'withdraw'>('main');

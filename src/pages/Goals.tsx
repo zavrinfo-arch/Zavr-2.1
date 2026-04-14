@@ -430,32 +430,42 @@ export default function Goals({ onAddMoney, onWithdraw }: {
 
                         if (remaining > 0) {
                           return (
-                            <button 
-                              onClick={() => onAddMoney(goal.id, 'solo', remaining)}
-                              className="w-full py-4 clay-coral text-white text-[10px] font-black uppercase tracking-[0.2em] rounded-xl flex flex-col items-center justify-center gap-1 shadow-xl active:scale-95 transition-all"
-                            >
-                              <div className="flex items-center gap-2">
-                                <Plus size={14} /> Add {formatCurrency(remaining, currentUser?.preferences.currency)}
+                            <div className="space-y-4">
+                              <div className="p-4 clay-inset bg-foreground/5 text-center">
+                                <p className="text-[8px] font-black opacity-30 uppercase tracking-[0.2em] mb-1">Estimated money to add</p>
+                                <p className="text-xl font-black text-[#FF6B6B]">
+                                  {formatCurrency(remaining, currentUser?.preferences.currency)}
+                                </p>
                               </div>
-                              <span className="text-[8px] opacity-60">To stay on track this {goal.frequency}</span>
-                            </button>
+                              <button 
+                                onClick={() => onAddMoney(goal.id, 'solo', remaining)}
+                                className="w-full py-4 clay-coral text-white text-[10px] font-black uppercase tracking-[0.2em] rounded-xl flex items-center justify-center gap-2 shadow-xl active:scale-95 transition-all"
+                              >
+                                <Plus size={14} /> Add {formatCurrency(remaining, currentUser?.preferences.currency)}
+                              </button>
+                            </div>
                           );
                         }
 
                         return (
-                          <div className="flex gap-4">
-                            <button 
-                              onClick={() => onAddMoney(goal.id, 'solo')}
-                              className="flex-1 py-4 clay-coral text-white text-[10px] font-black uppercase tracking-[0.2em] rounded-xl flex items-center justify-center gap-2 shadow-xl active:scale-95 transition-all"
-                            >
-                              <Plus size={14} /> Add Money
-                            </button>
-                            <button 
-                              onClick={() => onWithdraw(goal.id, 'solo')}
-                              className="flex-1 py-4 clay-card opacity-40 text-[10px] font-black uppercase tracking-[0.2em] rounded-xl flex items-center justify-center gap-2 active:scale-95 transition-all"
-                            >
-                              <MinusCircle size={14} /> Withdraw
-                            </button>
+                          <div className="space-y-4">
+                            <div className="p-4 clay-inset bg-emerald-500/5 text-center border border-emerald-500/10">
+                              <p className="text-[8px] font-black text-emerald-500 uppercase tracking-[0.2em]">Goal met for this {goal.frequency}! ✨</p>
+                            </div>
+                            <div className="flex gap-4">
+                              <button 
+                                onClick={() => onAddMoney(goal.id, 'solo')}
+                                className="flex-1 py-4 clay-coral text-white text-[10px] font-black uppercase tracking-[0.2em] rounded-xl flex items-center justify-center gap-2 shadow-xl active:scale-95 transition-all"
+                              >
+                                <Plus size={14} /> Add More
+                              </button>
+                              <button 
+                                onClick={() => onWithdraw(goal.id, 'solo')}
+                                className="flex-1 py-4 clay-card opacity-40 text-[10px] font-black uppercase tracking-[0.2em] rounded-xl flex items-center justify-center gap-2 active:scale-95 transition-all"
+                              >
+                                <MinusCircle size={14} /> Withdraw
+                              </button>
+                            </div>
                           </div>
                         );
                       })()}
@@ -621,32 +631,42 @@ export default function Goals({ onAddMoney, onWithdraw }: {
 
                         if (remaining > 0) {
                           return (
-                            <button 
-                              onClick={() => onAddMoney(goal.id, 'group', remaining)}
-                              className="w-full py-4 clay-teal text-black text-[10px] font-black uppercase tracking-[0.2em] rounded-xl flex flex-col items-center justify-center gap-1 shadow-xl active:scale-95 transition-all"
-                            >
-                              <div className="flex items-center gap-2">
-                                <Plus size={14} /> Contribute {formatCurrency(remaining, currentUser?.preferences.currency)}
+                            <div className="space-y-4">
+                              <div className="p-4 clay-inset bg-foreground/5 text-center">
+                                <p className="text-[8px] font-black opacity-30 uppercase tracking-[0.2em] mb-1">Estimated money to contribute</p>
+                                <p className="text-xl font-black text-[#4ECDC4]">
+                                  {formatCurrency(remaining, currentUser?.preferences.currency)}
+                                </p>
                               </div>
-                              <span className="text-[8px] opacity-60">To stay on track this {goal.frequency}</span>
-                            </button>
+                              <button 
+                                onClick={() => onAddMoney(goal.id, 'group', remaining)}
+                                className="w-full py-4 clay-teal text-black text-[10px] font-black uppercase tracking-[0.2em] rounded-xl flex items-center justify-center gap-2 shadow-xl active:scale-95 transition-all"
+                              >
+                                <Plus size={14} /> Contribute {formatCurrency(remaining, currentUser?.preferences.currency)}
+                              </button>
+                            </div>
                           );
                         }
 
                         return (
-                          <div className="flex gap-4">
-                            <button 
-                              onClick={() => onAddMoney(goal.id, 'group')}
-                              className="flex-1 py-4 clay-teal text-black text-[10px] font-black uppercase tracking-[0.2em] rounded-xl flex items-center justify-center gap-2 active:scale-95 transition-all"
-                            >
-                              <Plus size={14} /> Contribute
-                            </button>
-                            <button 
-                              onClick={() => onWithdraw(goal.id, 'group')}
-                              className="flex-1 py-4 clay-card opacity-40 text-[10px] font-black uppercase tracking-[0.2em] rounded-xl flex items-center justify-center gap-2 active:scale-95 transition-all"
-                            >
-                              <MinusCircle size={14} /> Withdraw
-                            </button>
+                          <div className="space-y-4">
+                            <div className="p-4 clay-inset bg-emerald-500/5 text-center border border-emerald-500/10">
+                              <p className="text-[8px] font-black text-emerald-500 uppercase tracking-[0.2em]">Goal met for this {goal.frequency}! ✨</p>
+                            </div>
+                            <div className="flex gap-4">
+                              <button 
+                                onClick={() => onAddMoney(goal.id, 'group')}
+                                className="flex-1 py-4 clay-teal text-black text-[10px] font-black uppercase tracking-[0.2em] rounded-xl flex items-center justify-center gap-2 active:scale-95 transition-all"
+                              >
+                                <Plus size={14} /> Contribute More
+                              </button>
+                              <button 
+                                onClick={() => onWithdraw(goal.id, 'group')}
+                                className="flex-1 py-4 clay-card opacity-40 text-[10px] font-black uppercase tracking-[0.2em] rounded-xl flex items-center justify-center gap-2 active:scale-95 transition-all"
+                              >
+                                <MinusCircle size={14} /> Withdraw
+                              </button>
+                            </div>
                           </div>
                         );
                       })()}
@@ -731,32 +751,42 @@ export default function Goals({ onAddMoney, onWithdraw }: {
 
                       if (remaining > 0) {
                         return (
-                          <button 
-                            onClick={() => onAddMoney(goal.id, 'emergency', remaining)}
-                            className="w-full bg-[#E2B05E] text-black text-[10px] font-black uppercase tracking-[0.2em] rounded-xl flex flex-col items-center justify-center gap-1 shadow-xl active:scale-95 transition-all py-4"
-                          >
-                            <div className="flex items-center gap-2">
-                              <Plus size={14} /> Add {formatCurrency(remaining, currentUser?.preferences.currency)}
+                          <div className="space-y-4">
+                            <div className="p-4 clay-inset bg-foreground/5 text-center">
+                              <p className="text-[8px] font-black opacity-30 uppercase tracking-[0.2em] mb-1">Estimated money to add</p>
+                              <p className="text-xl font-black text-[#E2B05E]">
+                                {formatCurrency(remaining, currentUser?.preferences.currency)}
+                              </p>
                             </div>
-                            <span className="text-[8px] opacity-60">To stay on track this {goal.frequency}</span>
-                          </button>
+                            <button 
+                              onClick={() => onAddMoney(goal.id, 'emergency', remaining)}
+                              className="w-full bg-[#E2B05E] text-black text-[10px] font-black uppercase tracking-[0.2em] rounded-xl flex items-center justify-center gap-2 shadow-xl active:scale-95 transition-all py-4"
+                            >
+                              <Plus size={14} /> Add {formatCurrency(remaining, currentUser?.preferences.currency)}
+                            </button>
+                          </div>
                         );
                       }
 
                       return (
-                        <div className="flex gap-4">
-                          <button 
-                            onClick={() => onAddMoney(goal.id, 'emergency')}
-                            className="flex-1 py-4 bg-[#E2B05E] text-black text-[10px] font-black uppercase tracking-[0.2em] rounded-xl flex items-center justify-center gap-2 shadow-xl active:scale-95 transition-all"
-                          >
-                            <Plus size={14} /> Add Money
-                          </button>
-                          <button 
-                            onClick={() => onWithdraw(goal.id, 'emergency')}
-                            className="flex-1 py-4 clay-card opacity-40 text-[10px] font-black uppercase tracking-[0.2em] rounded-xl flex items-center justify-center gap-2 active:scale-95 transition-all"
-                          >
-                            <MinusCircle size={14} /> Withdraw
-                          </button>
+                        <div className="space-y-4">
+                          <div className="p-4 clay-inset bg-emerald-500/5 text-center border border-emerald-500/10">
+                            <p className="text-[8px] font-black text-emerald-500 uppercase tracking-[0.2em]">Goal met for this {goal.frequency}! ✨</p>
+                          </div>
+                          <div className="flex gap-4">
+                            <button 
+                              onClick={() => onAddMoney(goal.id, 'emergency')}
+                              className="flex-1 py-4 bg-[#E2B05E] text-black text-[10px] font-black uppercase tracking-[0.2em] rounded-xl flex items-center justify-center gap-2 shadow-xl active:scale-95 transition-all"
+                            >
+                              <Plus size={14} /> Add More
+                            </button>
+                            <button 
+                              onClick={() => onWithdraw(goal.id, 'emergency')}
+                              className="flex-1 py-4 clay-card opacity-40 text-[10px] font-black uppercase tracking-[0.2em] rounded-xl flex items-center justify-center gap-2 active:scale-95 transition-all"
+                            >
+                              <MinusCircle size={14} /> Withdraw
+                            </button>
+                          </div>
                         </div>
                       );
                     })()}

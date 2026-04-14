@@ -43,7 +43,7 @@ export default function ZavrChat() {
                   <Bot size={22} className="text-white animate-pulse sm:size-[26px]" />
                 </div>
                 <div>
-                  <h3 className="font-black text-xs sm:text-sm leading-none uppercase tracking-[0.2em]">Zavr AI</h3>
+                  <h3 className="font-black text-xs sm:text-sm leading-none uppercase tracking-[0.2em]">Zavr</h3>
                   <div className="flex items-center gap-2 mt-1.5 sm:mt-2">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
                     <p className="text-[8px] sm:text-[9px] text-white/60 uppercase font-bold tracking-widest">Always Online</p>

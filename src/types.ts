@@ -18,14 +18,19 @@ export interface User {
   fullName: string;
   email: string;
   username: string;
+  passwordHash?: string;
   phone: string;
   dob: string;
   avatar: string;
+  avatarId: number;
+  streak: number;
   onboardingCompleted: boolean;
   interests: string[];
   weeklyTarget: number;
   badges: Badge[];
   createdAt: string;
+  lastLoginDate: string | null;
+  streakFreezeCount: number;
   xp: number;
   level: number;
   preferences: {
@@ -113,9 +118,40 @@ export interface Notification {
   userId: string;
   title: string;
   message: string;
-  type: 'streak' | 'goal' | 'group' | 'reminder';
+  type: 'streak' | 'goal' | 'group' | 'reminder' | 'achievement' | 'motivational';
   read: boolean;
   timestamp: string;
+}
+
+export interface Quest {
+  id: string;
+  title: string;
+  description: string;
+  target: number;
+  progress: number;
+  rewardXP: number;
+  type: 'daily' | 'weekly';
+  completed: boolean;
+}
+
+export interface FocusSession {
+  id: string;
+  userId: string;
+  startTime: string;
+  duration: number; // in minutes
+  type: 'study' | 'break';
+  completed: boolean;
+}
+
+export interface Quest {
+  id: string;
+  title: string;
+  description: string;
+  target: number;
+  progress: number;
+  rewardXP: number;
+  completed: boolean;
+  type: 'daily' | 'weekly';
 }
 
 export interface WeeklyChallenge {

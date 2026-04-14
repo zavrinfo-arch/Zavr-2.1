@@ -33,9 +33,10 @@ export default function SplashScreen() {
           initial={{ scale: 0.8, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           transition={{ duration: 1, ease: "easeOut" }}
-          className="w-24 h-24 mx-auto mb-8 clay-card bg-surface p-4 flex items-center justify-center"
+          className="w-24 h-24 mx-auto mb-8 clay-card bg-surface p-4 flex items-center justify-center relative"
         >
-          <img src="/logo.svg" className="w-full h-full" alt="Zavr Logo" />
+          <div className="absolute inset-0 bg-gradient-to-tr from-[#FF6B6B]/20 to-[#4ECDC4]/20 blur-2xl rounded-full animate-pulse" />
+          <img src="/logo.svg" className="w-full h-full relative z-10" alt="Zavr Logo" />
         </motion.div>
 
         <motion.h1 
@@ -44,7 +45,7 @@ export default function SplashScreen() {
           transition={{ duration: 0.8, ease: "easeOut", delay: 0.3 }}
           className="text-5xl font-black tracking-tighter text-foreground"
         >
-          Zavr AI
+          Zavr
         </motion.h1>
         
         <motion.div

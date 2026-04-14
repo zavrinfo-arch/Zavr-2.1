@@ -6,26 +6,44 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useStore } from '../store/useStore';
+import { AVATARS } from '../constants';
 import { formatCurrency, cn } from '../lib/utils';
 import { 
   User, Settings, Bell, Globe, 
   Download, LogOut, Flame, Trophy, 
   CheckCircle2, Star, Shield, Zap,
-  Camera, Clock, Calendar, X, Check
+  Camera, Clock, Calendar, X, Check, Lock
 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { AVATARS } from '../constants';
 
 export default function Profile() {
   const navigate = useNavigate();
   const { 
     currentUser, streakData, soloGoals, 
-    transactions, setCurrentUser, updateUser 
+    transactions, setCurrentUser, updateUser, signOut
   } = useStore();
 
   const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editData, setEditData] = useState({
+    fullName: currentUser?.fullName || '',
+    username: currentUser?.username || '',
+  });
+
+  const handleSaveProfile = () => {
+    if (!editData.fullName || !editData.username) {
+      toast.error('Please fill all fields');
+      return;
+    }
+    updateUser({
+      fullName: editData.fullName,
+      username: editData.username,
+    });
+    setIsEditing(false);
+    toast.success('Profile updated!');
+  };
 
   const stats = {
     lifetimeSaved: transactions.reduce((sum, tx) => sum + tx.amount, 0),
@@ -33,11 +51,18 @@ export default function Profile() {
     totalBadges: currentUser?.badges.length || 0,
   };
 
-  const handleLogout = () => {
-    if (window.confirm('Are you sure you want to logout?')) {
-      setCurrentUser(null);
-      navigate('/auth');
-      toast.success('Logged out successfully');
+  const handleLogout = async () => {
+    console.log('handleLogout triggered');
+    const id = toast.loading('Logging out...');
+    try {
+      await signOut();
+      console.log('signOut completed, redirecting...');
+      toast.success('Logged out successfully', { id });
+      // Use window.location for a full refresh to clear any remaining state
+      window.location.href = '/auth';
+    } catch (error) {
+      console.error('Logout handler error:', error);
+      toast.error('Failed to logout', { id });
     }
   };
 
@@ -62,11 +87,11 @@ export default function Profile() {
       {/* Profile Header */}
       <div className="flex flex-col items-center text-center pt-6">
         <div className="relative group">
-          <div className="w-36 h-36 rounded-full clay bg-surface p-1.5">
+          <div className="w-36 h-36 rounded-full clay bg-surface flex items-center justify-center overflow-hidden">
             <img 
-              src={currentUser?.avatar} 
-              className="w-full h-full rounded-full bg-background object-cover p-1" 
-              alt="Avatar" 
+              src={AVATARS.find(a => a.id === currentUser?.avatarId)?.url || `https://api.dicebear.com/7.x/lorelei/svg?seed=${currentUser?.username}`} 
+              alt="Avatar"
+              className="w-full h-full object-cover p-2"
             />
           </div>
           <div className="absolute -bottom-1 -right-1 w-12 h-12 clay-coral rounded-2xl flex items-center justify-center text-lg font-black text-white border-4 border-background shadow-2xl">
@@ -103,44 +128,104 @@ export default function Profile() {
                   </button>
                 </div>
                 <div className="grid grid-cols-4 sm:grid-cols-5 gap-4 max-h-[60vh] overflow-y-auto pr-2 hide-scrollbar">
-                  {AVATARS.map((url) => (
-                    <button
-                      key={url}
-                      onClick={() => {
-                        updateUser({ avatar: url });
-                        setIsAvatarModalOpen(false);
-                        toast.success('Avatar updated!');
-                      }}
-                      className={cn(
-                        "relative aspect-square rounded-2xl overflow-hidden clay-card border-2 transition-all",
-                        currentUser?.avatar === url ? "border-[#FF6B6B] scale-105" : "border-transparent"
-                      )}
-                    >
-                      <img src={url} alt="Avatar" className="w-full h-full object-cover p-2" />
-                      {currentUser?.avatar === url && (
-                        <div className="absolute inset-0 bg-[#FF6B6B]/10 flex items-center justify-center">
-                          <Check className="text-[#FF6B6B]" size={20} />
-                        </div>
-                      )}
-                    </button>
-                  ))}
+                  {AVATARS.map((avatar) => {
+                    const isLocked = avatar.minLevel && (currentUser?.level || 1) < avatar.minLevel;
+                    return (
+                      <button
+                        key={avatar.id}
+                        disabled={isLocked}
+                        onClick={() => {
+                          updateUser({ avatarId: avatar.id });
+                          setIsAvatarModalOpen(false);
+                          toast.success('Avatar updated!');
+                        }}
+                        className={cn(
+                          "relative aspect-square rounded-2xl flex items-center justify-center clay-card border-2 transition-all overflow-hidden",
+                          currentUser?.avatarId === avatar.id ? "border-[#FF6B6B] scale-105" : "border-transparent",
+                          isLocked ? "opacity-20 grayscale cursor-not-allowed" : "hover:scale-105"
+                        )}
+                      >
+                        <img src={avatar.url} alt={avatar.name} className="w-full h-full object-cover p-1" />
+                        {isLocked && (
+                          <div className="absolute inset-0 flex items-center justify-center bg-black/20 rounded-2xl">
+                            <Lock size={12} className="text-white" />
+                          </div>
+                        )}
+                        {currentUser?.avatarId === avatar.id && (
+                          <div className="absolute -top-1 -right-1 w-4 h-4 bg-[#FF6B6B] rounded-full flex items-center justify-center">
+                            <Check className="text-white" size={10} strokeWidth={4} />
+                          </div>
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
               </motion.div>
             </div>
           )}
         </AnimatePresence>
-        <h2 className="text-3xl font-bold mt-8 tracking-tight">{currentUser?.fullName}</h2>
-        <div className="flex items-center gap-3 mt-2">
-          <p className="opacity-30 text-xs font-bold uppercase tracking-widest">@{currentUser?.username}</p>
-          <span className="w-1 h-1 rounded-full bg-foreground/10" />
-          <p className="text-[#4ECDC4] text-[10px] font-black uppercase tracking-[0.2em]">{streakData.tier} Tier</p>
+        <div className="mt-8 space-y-4 w-full max-w-xs mx-auto">
+          {isEditing ? (
+            <div className="space-y-4">
+              <div className="clay-inset p-1 rounded-2xl bg-foreground/5">
+                <input 
+                  type="text"
+                  value={editData.fullName}
+                  onChange={e => setEditData({ ...editData, fullName: e.target.value })}
+                  className="w-full bg-transparent px-4 py-3 text-center font-bold outline-none"
+                  placeholder="Full Name"
+                />
+              </div>
+              <div className="clay-inset p-1 rounded-2xl bg-foreground/5">
+                <input 
+                  type="text"
+                  value={editData.username}
+                  onChange={e => setEditData({ ...editData, username: e.target.value })}
+                  className="w-full bg-transparent px-4 py-3 text-center font-bold outline-none opacity-60"
+                  placeholder="Username"
+                />
+              </div>
+              <div className="flex gap-2">
+                <button 
+                  onClick={handleSaveProfile}
+                  className="flex-1 py-3 clay-teal text-black rounded-xl font-bold text-xs uppercase tracking-widest"
+                >
+                  Save
+                </button>
+                <button 
+                  onClick={() => setIsEditing(false)}
+                  className="flex-1 py-3 clay-inset rounded-xl font-bold text-xs uppercase tracking-widest opacity-40"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="flex flex-col items-center">
+                <h2 className="text-3xl font-bold tracking-tight">{currentUser?.fullName}</h2>
+                <div className="flex items-center gap-3 mt-2">
+                  <p className="opacity-30 text-xs font-bold uppercase tracking-widest">@{currentUser?.username}</p>
+                  <span className="w-1 h-1 rounded-full bg-foreground/10" />
+                  <p className="text-[#4ECDC4] text-[10px] font-black uppercase tracking-[0.2em]">{streakData.tier} Tier</p>
+                </div>
+                <button 
+                  onClick={() => setIsEditing(true)}
+                  className="mt-4 px-6 py-2 clay-inset rounded-full text-[10px] font-black uppercase tracking-[0.2em] opacity-40 hover:opacity-100 transition-all"
+                >
+                  Edit Profile
+                </button>
+              </div>
+            </>
+          )}
         </div>
         
-        <div className="mt-6 w-56 h-3 clay-inset bg-foreground/5 rounded-full overflow-hidden">
+        <div className="mt-8 w-64 h-4 clay-inset bg-foreground/5 rounded-full overflow-hidden p-1">
           <motion.div 
             initial={{ width: 0 }}
             animate={{ width: `${(currentUser?.xp || 0) % 1000 / 10}%` }}
-            className="h-full bg-gradient-to-r from-[#4ECDC4] to-[#45B7AF] rounded-full"
+            className="h-full bg-gradient-to-r from-[#4ECDC4] via-[#FF6B6B] to-[#4ECDC4] rounded-full shadow-[0_0_15px_rgba(78,205,196,0.5)]"
+            style={{ backgroundSize: '200% 100%' }}
           />
         </div>
         <p className="text-[9px] opacity-20 font-black uppercase tracking-[0.2em] mt-3">
@@ -404,9 +489,30 @@ export default function Profile() {
           </div>
         </div>
 
+        <div className="text-center space-y-4 pt-4">
+          <div className="flex justify-center gap-6">
+            <a 
+              href="https://zavrinfo-arch.github.io/zavr-privacy-policy/" 
+              target="_blank" 
+              rel="noopener noreferrer" 
+              className="text-[10px] opacity-20 hover:opacity-100 underline font-black uppercase tracking-[0.2em] transition-all"
+            >
+              Terms & Conditions
+            </a>
+            <a 
+              href="https://zavrinfo-arch.github.io/zavr-privacy-policy/" 
+              target="_blank" 
+              rel="noopener noreferrer" 
+              className="text-[10px] opacity-20 hover:opacity-100 underline font-black uppercase tracking-[0.2em] transition-all"
+            >
+              Privacy Policy
+            </a>
+          </div>
+        </div>
+
         <button 
           onClick={handleLogout}
-          className="w-full py-6 clay-inset rounded-3xl text-[#FF6B6B] font-black uppercase tracking-[0.3em] flex items-center justify-center gap-3 hover:bg-[#FF6B6B]/5 transition-all active:scale-[0.98]"
+          className="w-full py-6 clay bg-[#FF6B6B]/10 rounded-3xl text-[#FF6B6B] font-black uppercase tracking-[0.3em] flex items-center justify-center gap-3 hover:bg-[#FF6B6B]/20 transition-all active:scale-[0.98] border-2 border-[#FF6B6B]/20"
         >
           <LogOut size={22} /> Logout
         </button>

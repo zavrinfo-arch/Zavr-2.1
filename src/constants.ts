@@ -1,32 +1,48 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 export const AVATARS = [
-  'https://api.dicebear.com/7.x/lorelei/svg?seed=Felix',
-  'https://api.dicebear.com/7.x/notionists/svg?seed=Aneka',
-  'https://api.dicebear.com/7.x/pixel-art/svg?seed=Max',
-  'https://api.dicebear.com/7.x/big-ears/svg?seed=Luna',
-  'https://api.dicebear.com/7.x/bottts/svg?seed=Leo',
-  'https://api.dicebear.com/7.x/avataaars-neutral/svg?seed=Milo',
-  'https://api.dicebear.com/7.x/micah/svg?seed=Zoe',
-  'https://api.dicebear.com/7.x/personas/svg?seed=Jasper',
-  'https://api.dicebear.com/7.x/adventurer/svg?seed=Oliver',
-  'https://api.dicebear.com/7.x/big-smile/svg?seed=Maya',
-  'https://api.dicebear.com/7.x/croodles/svg?seed=Finn',
-  'https://api.dicebear.com/7.x/miniavs/svg?seed=Sasha',
-  'https://api.dicebear.com/7.x/avataaars/svg?seed=Aiden',
-  'https://api.dicebear.com/7.x/avataaars/svg?seed=Chloe',
-  'https://api.dicebear.com/7.x/avataaars/svg?seed=Jack',
-  'https://api.dicebear.com/7.x/avataaars/svg?seed=Lily',
-  'https://api.dicebear.com/7.x/avataaars/svg?seed=Owen',
-  'https://api.dicebear.com/7.x/avataaars/svg?seed=Ruby',
-  'https://api.dicebear.com/7.x/avataaars/svg?seed=Zane',
-  'https://api.dicebear.com/7.x/avataaars/svg?seed=Maya',
-  'https://api.dicebear.com/7.x/open-peeps/svg?seed=A',
-  'https://api.dicebear.com/7.x/open-peeps/svg?seed=B',
-  'https://api.dicebear.com/7.x/open-peeps/svg?seed=C',
-  'https://api.dicebear.com/7.x/open-peeps/svg?seed=D',
-  'https://api.dicebear.com/7.x/open-peeps/svg?seed=E',
-  'https://api.dicebear.com/7.x/open-peeps/svg?seed=F',
-  'https://api.dicebear.com/7.x/open-peeps/svg?seed=G',
-  'https://api.dicebear.com/7.x/open-peeps/svg?seed=H',
-  'https://api.dicebear.com/7.x/open-peeps/svg?seed=I',
-  'https://api.dicebear.com/7.x/open-peeps/svg?seed=J',
+  // Default pack (1-5)
+  { id: 1, url: 'https://api.dicebear.com/7.x/lorelei/svg?seed=Felix', name: 'Felix', pack: 'Aesthetic' },
+  { id: 2, url: 'https://api.dicebear.com/7.x/lorelei/svg?seed=Aneka', name: 'Aneka', pack: 'Aesthetic' },
+  { id: 3, url: 'https://api.dicebear.com/7.x/lorelei/svg?seed=Milo', name: 'Milo', pack: 'Aesthetic' },
+  { id: 4, url: 'https://api.dicebear.com/7.x/lorelei/svg?seed=Sasha', name: 'Sasha', pack: 'Aesthetic' },
+  { id: 5, url: 'https://api.dicebear.com/7.x/lorelei/svg?seed=Leo', name: 'Leo', pack: 'Aesthetic' },
+  
+  // Gamer pack (6-10)
+  { id: 6, url: 'https://api.dicebear.com/7.x/pixel-art/svg?seed=Gamer1', name: 'Pro Gamer', pack: 'Gamer' },
+  { id: 7, url: 'https://api.dicebear.com/7.x/pixel-art/svg?seed=Gamer2', name: 'Invader', pack: 'Gamer' },
+  { id: 8, url: 'https://api.dicebear.com/7.x/bottts/svg?seed=Bot1', name: 'Bot', pack: 'Gamer' },
+  { id: 9, url: 'https://api.dicebear.com/7.x/pixel-art/svg?seed=Retro', name: 'Retro', pack: 'Gamer' },
+  { id: 10, url: 'https://api.dicebear.com/7.x/pixel-art/svg?seed=Dice', name: 'High Roller', pack: 'Gamer' },
+  
+  // Anime pack (11-15) - Level 10
+  { id: 11, url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Anime1', name: 'Naruto', pack: 'Anime', minLevel: 10 },
+  { id: 12, url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Anime2', name: 'Nine Tails', pack: 'Anime', minLevel: 10 },
+  { id: 13, url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Anime3', name: 'Slayer', pack: 'Anime', minLevel: 10 },
+  { id: 14, url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Anime4', name: 'Fire Fist', pack: 'Anime', minLevel: 10 },
+  { id: 15, url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Anime5', name: 'Sparky', pack: 'Anime', minLevel: 10 },
+  
+  // Meme pack (16-20)
+  { id: 16, url: 'https://api.dicebear.com/7.x/big-smile/svg?seed=Pepe', name: 'Pepe', pack: 'Meme' },
+  { id: 17, url: 'https://api.dicebear.com/7.x/big-smile/svg?seed=Joker', name: 'Joker', pack: 'Meme' },
+  { id: 18, url: 'https://api.dicebear.com/7.x/big-smile/svg?seed=Chad', name: 'Chad', pack: 'Meme' },
+  { id: 19, url: 'https://api.dicebear.com/7.x/big-smile/svg?seed=Pingu', name: 'Pingu', pack: 'Meme' },
+  { id: 20, url: 'https://api.dicebear.com/7.x/big-smile/svg?seed=Harambe', name: 'Harambe', pack: 'Meme' },
+  
+  // Cosmic pack (21-25)
+  { id: 21, url: 'https://api.dicebear.com/7.x/notionists/svg?seed=Moon', name: 'Moon', pack: 'Cosmic' },
+  { id: 22, url: 'https://api.dicebear.com/7.x/notionists/svg?seed=Comet', name: 'Comet', pack: 'Cosmic' },
+  { id: 23, url: 'https://api.dicebear.com/7.x/notionists/svg?seed=Saturn', name: 'Saturn', pack: 'Cosmic' },
+  { id: 24, url: 'https://api.dicebear.com/7.x/notionists/svg?seed=Alien', name: 'Alien', pack: 'Cosmic' },
+  { id: 25, url: 'https://api.dicebear.com/7.x/notionists/svg?seed=UFO', name: 'UFO', pack: 'Cosmic' },
+  
+  // Legendary pack (26-30)
+  { id: 26, url: 'https://api.dicebear.com/7.x/adventurer/svg?seed=King', name: 'King', pack: 'Legendary' },
+  { id: 27, url: 'https://api.dicebear.com/7.x/adventurer/svg?seed=Dragon', name: 'Dragon', pack: 'Legendary' },
+  { id: 28, url: 'https://api.dicebear.com/7.x/adventurer/svg?seed=Star', name: 'Star', pack: 'Legendary' },
+  { id: 29, url: 'https://api.dicebear.com/7.x/adventurer/svg?seed=Champ', name: 'Champ', pack: 'Legendary' },
+  { id: 30, url: 'https://api.dicebear.com/7.x/adventurer/svg?seed=Diamond', name: 'Diamond', pack: 'Legendary' },
 ];

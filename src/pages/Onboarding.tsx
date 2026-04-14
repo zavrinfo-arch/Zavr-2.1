@@ -49,7 +49,8 @@ export default function Onboarding() {
 
   const handleFinish = () => {
     updateUser({
-      avatar: data.avatar,
+      avatar: data.avatar.url,
+      avatarId: data.avatar.id,
       interests: data.interests,
       weeklyTarget: data.weeklyTarget,
       onboardingCompleted: true,
@@ -99,17 +100,17 @@ export default function Onboarding() {
                 <p className="opacity-40">Pick a character that represents you</p>
               </div>
               <div className="grid grid-cols-4 gap-4">
-                {AVATARS.map((url) => (
+                {AVATARS.slice(0, 12).map((avatar) => (
                   <button
-                    key={url}
-                    onClick={() => setData({ ...data, avatar: url })}
+                    key={avatar.id}
+                    onClick={() => setData({ ...data, avatar })}
                     className={cn(
                       "relative aspect-square rounded-2xl overflow-hidden clay-card border-2 transition-all",
-                      data.avatar === url ? "border-[#FF6B6B] scale-105" : "border-transparent"
+                      data.avatar.id === avatar.id ? "border-[#FF6B6B] scale-105" : "border-transparent"
                     )}
                   >
-                    <img src={url} alt="Avatar" className="w-full h-full object-cover p-2" />
-                    {data.avatar === url && (
+                    <img src={avatar.url} alt={avatar.name} className="w-full h-full object-cover p-2" />
+                    {data.avatar.id === avatar.id && (
                       <div className="absolute inset-0 bg-[#FF6B6B]/10 flex items-center justify-center">
                         <Check className="text-[#FF6B6B]" size={20} />
                       </div>

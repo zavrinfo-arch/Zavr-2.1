@@ -7,7 +7,8 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { 
   User, SoloGoal, GroupGoal, Transaction, Notification, 
-  WeeklyChallenge, StreakData, Currency, Badge, EmergencyGoal 
+  WeeklyChallenge, StreakData, Currency, Badge, EmergencyGoal,
+  Quest, FocusSession
 } from '../types';
 import { isSameDay, differenceInHours, parseISO, startOfWeek, isAfter, format } from 'date-fns';
 import { supabaseService } from '../services/supabaseService';
@@ -26,12 +27,17 @@ interface AppState {
   isChatOpen: boolean;
   theme: 'light' | 'dark';
   chatMessages: { id: string; text: string; sender: 'user' | 'ai'; timestamp: string }[];
+  dailyQuests: Quest[];
+  weeklyQuests: Quest[];
+  focusSessions: FocusSession[];
   
   // Auth Actions
   setCurrentUser: (user: User | null) => void;
   addUser: (user: User) => void;
   updateUser: (updates: Partial<User>) => void;
   setTheme: (theme: 'light' | 'dark') => void;
+  checkAuth: () => Promise<void>;
+  signOut: () => Promise<void>;
   
   // Goal Actions
   addSoloGoal: (goal: SoloGoal) => void;
@@ -53,6 +59,7 @@ interface AppState {
   // Notification Actions
   addNotification: (notification: Omit<Notification, 'id' | 'timestamp' | 'read'>) => void;
   markAllNotificationsRead: () => void;
+  clearNotifications: () => void;
   
   // Streak & Badges
   checkStreak: () => void;
@@ -68,6 +75,13 @@ interface AppState {
   triggerMotivation: () => void;
   refreshData: () => Promise<void>;
   nudgeGroup: (goalId: string) => void;
+  
+  // New Gaming Actions
+  addXP: (amount: number) => void;
+  updateQuestProgress: (questId: string, amount: number) => void;
+  buyStreakFreeze: () => { success: boolean; message: string };
+  startFocusSession: (type: 'study' | 'break', duration: number) => void;
+  completeFocusSession: (id: string) => void;
 }
 
 const CHALLENGES = [
@@ -100,16 +114,66 @@ export const useStore = create<AppState>()(
       chatMessages: [
         {
           id: '1',
-          text: "Hi! I'm Zavr AI, your financial assistant. How can I help you with your budget or salary splitting today?",
+          text: "Hi! I'm Zavr, your financial assistant. How can I help you with your budget or salary splitting today?",
           sender: 'ai',
           timestamp: new Date().toISOString(),
         }
       ],
+      dailyQuests: [
+        { id: 'd1', title: 'Daily Login', description: 'Log in today', target: 1, progress: 0, rewardXP: 25, type: 'daily', completed: false },
+        { id: 'd2', title: 'Bell Ringer', description: 'Click notification bell 3 times', target: 3, progress: 0, rewardXP: 15, type: 'daily', completed: false },
+        { id: 'd3', title: 'Streak Check', description: 'Check your streak', target: 1, progress: 0, rewardXP: 10, type: 'daily', completed: false },
+        { id: 'd4', title: 'Share the Love', description: 'Share app with 1 friend', target: 1, progress: 0, rewardXP: 50, type: 'daily', completed: false },
+      ],
+      weeklyQuests: [
+        { id: 'w1', title: 'Streak Master', description: 'Maintain streak all week', target: 7, progress: 0, rewardXP: 200, type: 'weekly', completed: false },
+        { id: 'w2', title: 'Active Listener', description: 'Reach 5 notification clicks', target: 5, progress: 0, rewardXP: 75, type: 'weekly', completed: false },
+        { id: 'w3', title: 'Level Up!', description: 'Level up twice', target: 2, progress: 0, rewardXP: 150, type: 'weekly', completed: false },
+      ],
+      focusSessions: [],
 
       setCurrentUser: (user) => {
         set({ currentUser: user });
         if (user) {
           get().refreshData();
+          get().checkStreak();
+        }
+      },
+      
+      checkAuth: async () => {
+        try {
+          const response = await fetch('/api/auth/me');
+          if (response.ok) {
+            const { profile } = await response.json();
+            if (profile) {
+              set({ currentUser: profile });
+            }
+          }
+        } catch (error) {
+          console.error('Auth check failed:', error);
+        }
+      },
+
+      signOut: async () => {
+        console.log('Starting signOut process...');
+        try {
+          // 1. Call backend to clear cookies
+          await fetch('/api/auth/signout', { method: 'POST' });
+          
+          // 2. Clear client-side Supabase session
+          await supabase.auth.signOut();
+          
+          // 3. Clear store state
+          set({ currentUser: null });
+          
+          // 4. Clear local storage for this store to be extra safe
+          // localStorage.removeItem('zavr-storage'); // Optional, but might be too aggressive
+          
+          console.log('Sign out successful');
+        } catch (error) {
+          console.error('Sign out failed:', error);
+          // Still clear local state even if server call fails
+          set({ currentUser: null });
         }
       },
       
@@ -124,17 +188,19 @@ export const useStore = create<AppState>()(
         
         const updatedUser = { ...state.currentUser, ...updates };
         
-        // Level up logic
+        // Level up logic - every 500 XP
         let newLevel = updatedUser.level;
-        const xpForNextLevel = newLevel * 1000;
+        const xpForNextLevel = newLevel * 500;
         if (updatedUser.xp >= xpForNextLevel) {
           newLevel += 1;
           get().addNotification({
             userId: updatedUser.id,
             title: 'Level Up!',
             message: `Congratulations! You've reached Level ${newLevel}!`,
-            type: 'streak'
+            type: 'achievement'
           });
+          // Update quest progress for weekly level up quest
+          get().updateQuestProgress('w3', 1);
         }
 
         const finalUser = { ...updatedUser, level: newLevel };
@@ -710,22 +776,162 @@ export const useStore = create<AppState>()(
         await supabaseService.markNotificationsRead(state.currentUser.id);
       },
 
+      clearNotifications: async () => {
+        const state = get();
+        if (!state.currentUser) return;
+        set({ notifications: [] });
+        // Optionally clear in Supabase too
+      },
+
       checkStreak: () => {
         const state = get();
-        const { lastContributionDate, currentStreak } = state.streakData;
-        if (!lastContributionDate) return;
-
-        const lastDate = parseISO(lastContributionDate);
-        const hoursDiff = differenceInHours(new Date(), lastDate);
-
-        if (hoursDiff > 48) {
-          set({
-            streakData: {
-              ...state.streakData,
-              currentStreak: 0
-            }
-          });
+        if (!state.currentUser) return;
+        
+        const now = new Date();
+        const lastLogin = state.currentUser.lastLoginDate ? parseISO(state.currentUser.lastLoginDate) : null;
+        
+        if (!lastLogin) {
+          get().updateUser({ lastLoginDate: now.toISOString(), streak: 1 });
+          get().addXP(25); // Daily login XP
+          get().updateQuestProgress('d1', 1);
+          return;
         }
+
+        if (isSameDay(now, lastLogin)) return;
+
+        const hoursDiff = differenceInHours(now, lastLogin);
+        
+        if (hoursDiff <= 48) {
+          const newStreak = (state.currentUser.streak || 0) + 1;
+          get().updateUser({ lastLoginDate: now.toISOString(), streak: newStreak });
+          get().addXP(25);
+          get().updateQuestProgress('d1', 1);
+          get().updateQuestProgress('w1', 1);
+
+          // Streak Bonuses
+          if (newStreak === 3) {
+            get().addXP(50);
+            get().addNotification({ userId: state.currentUser.id, title: 'Streak Bonus!', message: '+50 XP, badge "Rising Star"', type: 'achievement' });
+          } else if (newStreak === 7) {
+            get().addXP(150);
+            get().addNotification({ userId: state.currentUser.id, title: 'Streak Bonus!', message: '+150 XP, badge "On Fire 🔥"', type: 'achievement' });
+          } else if (newStreak === 14) {
+            get().addXP(300);
+            get().addNotification({ userId: state.currentUser.id, title: 'Streak Bonus!', message: '+300 XP, badge "Unstoppable"', type: 'achievement' });
+          } else if (newStreak === 30) {
+            get().addXP(1000);
+            get().addNotification({ userId: state.currentUser.id, title: 'Streak Bonus!', message: '+1000 XP, badge "LEGEND 👑"', type: 'achievement' });
+          }
+        } else {
+          // Check for streak freeze
+          if (state.currentUser.streakFreezeCount > 0) {
+            get().updateUser({ 
+              lastLoginDate: now.toISOString(), 
+              streakFreezeCount: state.currentUser.streakFreezeCount - 1 
+            });
+            get().addNotification({ 
+              userId: state.currentUser.id, 
+              title: 'Streak Saved!', 
+              message: 'A streak freeze was used to save your progress! ❄️', 
+              type: 'streak' 
+            });
+          } else {
+            get().updateUser({ lastLoginDate: now.toISOString(), streak: 1 });
+            get().addNotification({ 
+              userId: state.currentUser.id, 
+              title: 'Streak Lost!', 
+              message: 'Streak Lost! Start again tomorrow 💪', 
+              type: 'streak' 
+            });
+          }
+          get().addXP(25);
+          get().updateQuestProgress('d1', 1);
+        }
+      },
+
+      addXP: (amount) => {
+        const state = get();
+        if (state.currentUser) {
+          get().updateUser({ xp: state.currentUser.xp + amount });
+        }
+      },
+
+      updateQuestProgress: (questId, amount) => {
+        set((state) => {
+          const updateQuests = (quests: Quest[]) => quests.map(q => {
+            if (q.id === questId && !q.completed) {
+              const newProgress = q.progress + amount;
+              const completed = newProgress >= q.target;
+              if (completed) {
+                get().addXP(q.rewardXP);
+                get().addNotification({
+                  userId: state.currentUser!.id,
+                  title: 'Quest Completed!',
+                  message: `You earned ${q.rewardXP} XP for completing: ${q.title}`,
+                  type: 'achievement'
+                });
+              }
+              return { ...q, progress: Math.min(newProgress, q.target), completed };
+            }
+            return q;
+          });
+
+          return {
+            dailyQuests: updateQuests(state.dailyQuests),
+            weeklyQuests: updateQuests(state.weeklyQuests)
+          };
+        });
+      },
+
+      buyStreakFreeze: () => {
+        const state = get();
+        if (!state.currentUser) return { success: false, message: 'Not logged in' };
+        if (state.currentUser.xp < 500) return { success: false, message: 'Not enough XP (Need 500)' };
+
+        get().updateUser({ 
+          xp: state.currentUser.xp - 500, 
+          streakFreezeCount: (state.currentUser.streakFreezeCount || 0) + 1 
+        });
+        return { success: true, message: 'Streak Freeze purchased! ❄️' };
+      },
+
+      startFocusSession: (type, duration) => {
+        const state = get();
+        if (!state.currentUser) return;
+
+        const newSession: FocusSession = {
+          id: Math.random().toString(36).substr(2, 9),
+          userId: state.currentUser.id,
+          startTime: new Date().toISOString(),
+          duration,
+          type,
+          completed: false
+        };
+
+        set((state) => ({
+          focusSessions: [...state.focusSessions, newSession]
+        }));
+      },
+
+      completeFocusSession: (id) => {
+        const state = get();
+        set((state) => ({
+          focusSessions: state.focusSessions.map(s => {
+            if (s.id === id && !s.completed) {
+              if (s.type === 'study') {
+                get().addXP(10);
+                get().addNotification({
+                  userId: state.currentUser!.id,
+                  title: 'Focus Session Complete!',
+                  message: 'You earned +10 XP for your study session! 🎯',
+                  type: 'achievement'
+                });
+              }
+              return { ...s, completed: true };
+            }
+            return s;
+          })
+        }));
       },
 
       setIsChatOpen: (isOpen) => set({ isChatOpen: isOpen }),
