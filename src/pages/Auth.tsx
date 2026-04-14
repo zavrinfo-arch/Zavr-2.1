@@ -80,6 +80,11 @@ export default function Auth() {
         })
       });
 
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        throw new Error('Server returned an invalid response. Please try again later.');
+      }
+
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'Login failed');
 
@@ -108,6 +113,12 @@ export default function Auth() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email: formData.email })
         });
+
+        const contentType = response.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/json')) {
+          throw new Error('Server returned an invalid response. Please try again later.');
+        }
+
         const result = await response.json();
         if (!response.ok) throw new Error(result.error || 'Signup failed');
         
@@ -130,6 +141,12 @@ export default function Auth() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email: formData.email, token: verificationCode })
         });
+
+        const contentType = response.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/json')) {
+          throw new Error('Server returned an invalid response. Please try again later.');
+        }
+
         const result = await response.json();
         if (!response.ok) throw new Error(result.error || 'Verification failed');
         
@@ -177,6 +194,12 @@ export default function Auth() {
             password: formData.password
           })
         });
+
+        const contentType = response.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/json')) {
+          throw new Error('Server returned an invalid response. Please try again later.');
+        }
+
         const result = await response.json();
         if (!response.ok) throw new Error(result.error || 'Profile completion failed');
 

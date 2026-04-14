@@ -16,10 +16,25 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = 3000;
 
+app.use(express.json());
+app.use(cookieParser());
+app.use(cors({
+  origin: true,
+  credentials: true
+}));
+
+// Trust proxy for rate limiting
+app.set('trust proxy', 1);
+
+// --- Supabase Client Validation ---
+if (!process.env.VITE_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+  console.error('CRITICAL: Supabase environment variables are missing!');
+}
+
 // Supabase Admin Client (for server-side operations)
 const supabaseAdmin = createClient(
-  process.env.VITE_SUPABASE_URL || '',
-  process.env.SUPABASE_SERVICE_ROLE_KEY || '',
+  process.env.VITE_SUPABASE_URL || 'https://placeholder.supabase.co',
+  process.env.SUPABASE_SERVICE_ROLE_KEY || 'placeholder',
   {
     auth: {
       autoRefreshToken: false,
@@ -27,13 +42,6 @@ const supabaseAdmin = createClient(
     }
   }
 );
-
-app.use(express.json());
-app.use(cookieParser());
-app.use(cors({
-  origin: true,
-  credentials: true
-}));
 
 // Rate Limiters
 const signinLimiter = rateLimit({
@@ -65,15 +73,23 @@ app.post('/api/auth/signup', otpLimiter, async (req, res) => {
   const { email } = req.body;
   if (!email) return res.status(400).json({ error: 'Email is required' });
 
-  const { error } = await supabaseAdmin.auth.signInWithOtp({
-    email,
-    options: {
-      shouldCreateUser: true,
-    }
-  });
+  if (!process.env.VITE_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    return res.status(500).json({ error: 'Supabase configuration is missing on the server.' });
+  }
 
-  if (error) return res.status(error.status || 500).json({ error: error.message });
-  res.json({ message: 'Verification code sent to your email' });
+  try {
+    const { error } = await supabaseAdmin.auth.signInWithOtp({
+      email,
+      options: {
+        shouldCreateUser: true,
+      }
+    });
+
+    if (error) return res.status(error.status || 500).json({ error: error.message });
+    res.json({ message: 'Verification code sent to your email' });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Internal server error' });
+  }
 });
 
 // 2. Verify OTP
@@ -201,16 +217,36 @@ app.get('/api/auth/me', async (req, res) => {
   const token = req.cookies['sb-access-token'];
   if (!token) return res.status(401).json({ error: 'Not authenticated' });
 
-  const { data: { user }, error } = await supabaseAdmin.auth.getUser(token);
-  if (error || !user) return res.status(401).json({ error: 'Invalid session' });
+  try {
+    const { data: { user }, error } = await supabaseAdmin.auth.getUser(token);
+    if (error || !user) return res.status(401).json({ error: 'Invalid session' });
 
-  const { data: profile } = await supabaseAdmin
-    .from('profiles')
-    .select('*')
-    .eq('id', user.id)
-    .single();
+    const { data: profile } = await supabaseAdmin
+      .from('profiles')
+      .select('*')
+      .eq('id', user.id)
+      .single();
 
-  res.json({ user, profile });
+    res.json({ user, profile });
+  } catch (err) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// --- Error Handlers ---
+
+// 404 for API routes
+app.all('/api/*', (req, res) => {
+  res.status(404).json({ error: `Route ${req.method} ${req.url} not found` });
+});
+
+// Global error handler
+app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  console.error('Unhandled Error:', err);
+  res.status(500).json({ 
+    error: 'Internal Server Error',
+    message: process.env.NODE_ENV === 'development' ? err.message : undefined
+  });
 });
 
 // --- Vite Middleware ---
