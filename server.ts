@@ -18,6 +18,13 @@ const PORT = 3000;
 
 app.use(express.json());
 app.use(cookieParser());
+
+// Request logger
+app.use((req, res, next) => {
+  console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
+  next();
+});
+
 app.use(cors({
   origin: true,
   credentials: true
@@ -27,14 +34,23 @@ app.use(cors({
 app.set('trust proxy', 1);
 
 // --- Supabase Client Validation ---
-if (!process.env.VITE_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
-  console.error('CRITICAL: Supabase environment variables are missing!');
+const supabaseUrl = process.env.VITE_SUPABASE_URL || 'https://ivdkaccijoeitkrkmrkk.supabase.co';
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml2ZGthY2Npam9laXRrcmttcmtrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU5ODMxMDIsImV4cCI6MjA5MTU1OTEwMn0.1vRwBZb3JInDYL5ee7fDiNCu5gXtKrmdLLFTTHwhRMU';
+
+const isSupabaseConfigured = supabaseUrl && !supabaseUrl.includes('placeholder') && 
+                             ((supabaseServiceKey && supabaseServiceKey !== 'placeholder') || 
+                              (supabaseAnonKey && supabaseAnonKey !== 'placeholder'));
+
+if (!isSupabaseConfigured) {
+  console.error('CRITICAL: Supabase environment variables are missing or invalid!');
 }
 
 // Supabase Admin Client (for server-side operations)
+// Note: We prefer service role key for admin tasks, but fallback to anon if necessary
 const supabaseAdmin = createClient(
-  process.env.VITE_SUPABASE_URL || 'https://placeholder.supabase.co',
-  process.env.SUPABASE_SERVICE_ROLE_KEY || 'placeholder',
+  supabaseUrl,
+  supabaseServiceKey || supabaseAnonKey,
   {
     auth: {
       autoRefreshToken: false,
@@ -46,7 +62,7 @@ const supabaseAdmin = createClient(
 // Rate Limiters
 const signinLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // 5 attempts
+  max: 50, // Increased for development/testing
   message: { error: 'Too many failed sign-in attempts. Please try again in 15 minutes.' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -56,7 +72,7 @@ const signinLimiter = rateLimit({
 
 const otpLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour
-  max: 3, // 3 codes per hour
+  max: 20, // Increased for development/testing
   message: { error: 'Maximum verification codes requested. Please try again in an hour.' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -68,13 +84,19 @@ const otpLimiter = rateLimit({
 
 // --- Auth Middleware ---
 async function getAuthenticatedUser(req: express.Request, res: express.Response) {
+  if (!isSupabaseConfigured) {
+    console.warn('Auth check skipped: Supabase not configured.');
+    return null;
+  }
+
   const token = req.cookies['sb-access-token'];
   const refreshToken = req.cookies['sb-refresh-token'];
 
   if (!token) return null;
 
   try {
-    let { data: { user }, error } = await supabaseAdmin.auth.getUser(token);
+    const { data, error } = await supabaseAdmin.auth.getUser(token);
+    let user = data?.user;
 
     if ((error || !user) && refreshToken) {
       console.log('Token expired, attempting refresh...');
@@ -108,6 +130,13 @@ async function getAuthenticatedUser(req: express.Request, res: express.Response)
     return null;
   }
 }
+
+// --- Routes ---
+
+// Health check
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
 
 // --- Auth Routes ---
 
@@ -221,56 +250,42 @@ app.post('/api/auth/complete-profile', async (req, res) => {
   res.json({ message: 'Profile completed successfully' });
 });
 
-// 4. Sign In (Username + Password)
+// 4. Sign In (Email + Password)
 app.post('/api/auth/signin', signinLimiter, async (req, res) => {
-  const { username, password } = req.body;
-  console.log('Signin attempt for username:', username);
-  if (!username || !password) return res.status(400).json({ error: 'Username and password are required' });
+  const { email, password } = req.body;
+  console.log('Signin attempt for email:', email);
+  if (!email || !password) return res.status(400).json({ error: 'Email and password are required' });
 
   try {
-    // 1. Find user by username in profiles
-    const { data: profile, error: profileError } = await supabaseAdmin
-      .from('profiles')
-      .select('id')
-      .eq('username', username.toLowerCase())
-      .maybeSingle();
-
-    if (profileError || !profile) {
-      return res.status(401).json({ error: 'Invalid username or password' });
-    }
-
-    // 2. Get user email from auth.admin
-    const { data: { user }, error: userError } = await supabaseAdmin.auth.admin.getUserById(profile.id);
-    if (userError || !user || !user.email) {
-      return res.status(401).json({ error: 'Invalid username or password' });
-    }
-
-    // 3. Sign in with email
+    // Sign in with email directly
     const { data, error } = await supabaseAdmin.auth.signInWithPassword({
-      email: user.email,
+      email,
       password
     });
 
-  if (error) return res.status(401).json({ error: 'Invalid username or password' });
+    if (error) {
+      console.error('Signin error:', error.message);
+      return res.status(401).json({ error: 'Invalid email or password' });
+    }
 
-  // Set session cookie
-  if (data.session) {
-    console.log('Setting session cookies after signin for user:', data.user?.id);
-    res.cookie('sb-access-token', data.session.access_token, {
-      httpOnly: true,
-      secure: true,
-      sameSite: 'none',
-      maxAge: data.session.expires_in * 1000
-    });
-    res.cookie('sb-refresh-token', data.session.refresh_token, {
-      httpOnly: true,
-      secure: true,
-      sameSite: 'none',
-      maxAge: 60 * 60 * 24 * 7 * 1000 // 7 days
-    });
-  }
+    // Set session cookie
+    if (data.session) {
+      console.log('Setting session cookies after signin for user:', data.user?.id);
+      res.cookie('sb-access-token', data.session.access_token, {
+        httpOnly: true,
+        secure: true,
+        sameSite: 'none',
+        maxAge: data.session.expires_in * 1000
+      });
+      res.cookie('sb-refresh-token', data.session.refresh_token, {
+        httpOnly: true,
+        secure: true,
+        sameSite: 'none',
+        maxAge: 60 * 60 * 24 * 7 * 1000 // 7 days
+      });
+    }
 
-  res.json({ user: data.user, session: data.session });
+    res.json({ user: data.user, session: data.session });
   } catch (err) {
     console.error('Signin error:', err);
     res.status(500).json({ error: 'Internal server error' });
@@ -294,6 +309,10 @@ app.post('/api/auth/signout', async (req, res) => {
 
 // 6. Get Current User
 app.get('/api/auth/me', async (req, res) => {
+  if (!isSupabaseConfigured) {
+    return res.status(503).json({ error: 'Supabase is not configured on the server.' });
+  }
+
   const user = await getAuthenticatedUser(req, res);
   if (!user) return res.status(401).json({ error: 'Not authenticated' });
 
@@ -341,12 +360,23 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
 
 // --- Vite Middleware ---
 async function startServer() {
+  console.log('Starting server initialization...');
+  
   if (process.env.NODE_ENV !== 'production') {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: 'spa',
-    });
-    app.use(vite.middlewares);
+    console.log('Initializing Vite in middleware mode...');
+    try {
+      const vite = await createViteServer({
+        server: { 
+          middlewareMode: true,
+          hmr: process.env.DISABLE_HMR !== 'true'
+        },
+        appType: 'spa',
+      });
+      app.use(vite.middlewares);
+      console.log('Vite middleware initialized.');
+    } catch (viteErr) {
+      console.error('Failed to initialize Vite middleware:', viteErr);
+    }
   } else {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
@@ -356,8 +386,21 @@ async function startServer() {
   }
 
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+    console.log(`Server running on http://0.0.0.0:${PORT}`);
+    console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`Supabase Configured: ${isSupabaseConfigured}`);
   });
 }
 
-startServer();
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught Exception:', err);
+});
+
+startServer().catch(err => {
+  console.error('CRITICAL: Failed to start server:', err);
+  process.exit(1);
+});

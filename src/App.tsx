@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 
 import { useStore } from './store/useStore';
-import { supabase } from './lib/supabase';
+import { supabase, isConfigured } from './lib/supabase';
 import { Layout } from './components/Layout';
 import SplashScreen from './pages/SplashScreen';
 import Auth from './pages/Auth';
@@ -47,6 +47,17 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   if (!currentUser) return <Navigate to="/auth" />;
   if (!currentUser.onboardingCompleted) return <Navigate to="/onboarding" />;
   return <>{children}</>;
+}
+
+function ConfigWarning() {
+  if (isConfigured) return null;
+
+  return (
+    <div className="fixed top-0 left-0 right-0 z-[9999] bg-amber-500 text-white px-4 py-2 text-center text-xs font-bold flex items-center justify-center gap-2 shadow-lg">
+      <ShieldAlert className="w-4 h-4" />
+      <span>Supabase is not configured. Some features may not work. Please set your environment variables.</span>
+    </div>
+  );
 }
 
 export default function App() {
@@ -155,6 +166,7 @@ export default function App() {
 
   return (
     <BrowserRouter>
+      <ConfigWarning />
       <Toaster 
         position="top-center"
         toastOptions={{

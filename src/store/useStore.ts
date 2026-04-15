@@ -12,7 +12,7 @@ import {
 } from '../types';
 import { isSameDay, differenceInHours, parseISO, startOfWeek, isAfter, format } from 'date-fns';
 import { supabaseService } from '../services/supabaseService';
-import { supabase } from '../lib/supabase';
+import { supabase, isConfigured } from '../lib/supabase';
 
 interface AppState {
   users: User[];
@@ -146,24 +146,64 @@ export const useStore = create<AppState>()(
       checkAuth: async () => {
         set({ isAuthLoading: true });
         console.log('Checking authentication status...');
-        try {
-          const response = await fetch('/api/auth/me', { credentials: 'include' });
-          if (response.ok) {
-            const { profile, session, user } = await response.json();
-            console.log('Auth check successful. User ID:', user?.id);
-            if (session) {
-              await supabase.auth.setSession(session);
-              console.log('Supabase session synchronized.');
+        
+        const fetchWithRetry = async (retries = 5, delay = 1500): Promise<Response> => {
+          try {
+            console.log(`Fetching /api/auth/me (attempt ${6 - retries})...`);
+            const response = await fetch('/api/auth/me', { 
+              credentials: 'include'
+            });
+            return response;
+          } catch (error: any) {
+            const isNetworkError = error.message === 'Failed to fetch' || error.name === 'TypeError';
+            if (retries > 0 && isNetworkError) {
+              console.warn(`Auth check failed (${error.message}), retrying in ${delay}ms... (${retries} retries left)`);
+              await new Promise(resolve => setTimeout(resolve, delay));
+              return fetchWithRetry(retries - 1, delay * 1.5);
             }
+            throw error;
+          }
+        };
+
+        try {
+          const response = await fetchWithRetry();
+          console.log(`Auth check response status: ${response.status}`);
+          if (response.ok) {
+            const data = await response.json();
+            const { profile, session, user } = data;
+            console.log('Auth check successful. User ID:', user?.id);
+            
+            if (session && session.access_token && session.refresh_token) {
+              try {
+                // Only set session if we have a valid Supabase URL
+                if (isConfigured) {
+                  await supabase.auth.setSession(session);
+                  console.log('Supabase session synchronized.');
+                } else {
+                  console.warn('Supabase session sync skipped: Placeholder or missing URL.');
+                }
+              } catch (sessErr) {
+                console.error('Error synchronizing Supabase session:', sessErr);
+              }
+            }
+            
             if (profile) {
               set({ currentUser: profile });
             }
+          } else if (response.status === 503) {
+            console.warn('Auth check: Server reports Supabase is not configured.');
+            set({ currentUser: null });
           } else {
-            console.log('Auth check failed: Not authenticated.');
+            const errorData = await response.json().catch(() => ({}));
+            console.log('Auth check failed:', response.status, errorData.error || 'Not authenticated');
             set({ currentUser: null });
           }
-        } catch (error) {
-          console.error('Auth check error:', error);
+        } catch (error: any) {
+          console.error('Auth check FINAL error:', {
+            message: error.message,
+            name: error.name,
+            stack: error.stack
+          });
           set({ currentUser: null });
         } finally {
           set({ isAuthLoading: false });
@@ -709,6 +749,12 @@ export const useStore = create<AppState>()(
       refreshData: async () => {
         const state = get();
         if (!state.currentUser) return;
+
+        // Skip if Supabase is not configured
+        if (!isConfigured) {
+          console.warn('Data refresh skipped: Supabase not configured.');
+          return;
+        }
 
         // Fetch from Supabase
         const [

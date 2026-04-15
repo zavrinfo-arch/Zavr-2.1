@@ -83,9 +83,14 @@ export default function Auth() {
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
-          username: formData.username,
+          email: formData.email,
           password: formData.password
         })
+      }).catch(err => {
+        if (err.message === 'Failed to fetch') {
+          throw new Error('Unable to connect to the server. Please check your internet connection or try again later.');
+        }
+        throw err;
       });
 
       const contentType = response.headers.get('content-type');
@@ -125,6 +130,11 @@ export default function Auth() {
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
           body: JSON.stringify({ email: formData.email })
+        }).catch(err => {
+          if (err.message === 'Failed to fetch') {
+            throw new Error('Unable to connect to the server. Please check your internet connection or try again later.');
+          }
+          throw err;
         });
 
         const contentType = response.headers.get('content-type');
@@ -154,6 +164,11 @@ export default function Auth() {
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
           body: JSON.stringify({ email: formData.email, token: verificationCode })
+        }).catch(err => {
+          if (err.message === 'Failed to fetch') {
+            throw new Error('Unable to connect to the server. Please check your internet connection or try again later.');
+          }
+          throw err;
         });
 
         const contentType = response.headers.get('content-type');
@@ -212,6 +227,11 @@ export default function Auth() {
             location: formData.location,
             password: formData.password
           })
+        }).catch(err => {
+          if (err.message === 'Failed to fetch') {
+            throw new Error('Unable to connect to the server. Please check your internet connection or try again later.');
+          }
+          throw err;
         });
 
         const contentType = response.headers.get('content-type');
@@ -285,7 +305,7 @@ export default function Auth() {
           {isLogin ? 'Welcome Back' : 'Join Zavr'}
         </h1>
         <p className="opacity-30 text-sm leading-relaxed">
-          {isLogin ? 'Sign in with your username' : 'Start your gamified savings adventure'}
+          {isLogin ? 'Sign in with your email' : 'Start your gamified savings adventure'}
         </p>
       </motion.div>
 
@@ -321,10 +341,11 @@ export default function Auth() {
             className="space-y-4"
           >
             <Input 
-              icon={AtSign} 
-              name="username" 
-              placeholder="Username" 
-              value={formData.username} 
+              icon={Mail} 
+              name="email" 
+              type="email"
+              placeholder="Email Address" 
+              value={formData.email} 
               onChange={handleInputChange}
             />
             <div className="relative">
