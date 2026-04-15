@@ -11,7 +11,7 @@ import { AVATARS } from '../constants';
 export default function ProfileHeader() {
   const { 
     currentUser, theme, setTheme, notifications, 
-    markAllNotificationsRead, clearNotifications,
+    markNotificationRead, markAllNotificationsRead, clearNotifications,
     updateQuestProgress 
   } = useStore();
   const navigate = useNavigate();
@@ -154,7 +154,7 @@ export default function ProfileHeader() {
                           n.read ? "bg-foreground/5 border-transparent opacity-60" : "clay-card border-foreground/5"
                         )}
                       >
-                        <div className="flex gap-3">
+                        <div className="flex gap-3 items-start">
                           <div className={cn(
                             "w-8 h-8 rounded-xl flex items-center justify-center shrink-0",
                             n.type === 'achievement' ? "bg-amber-500/10 text-amber-500" :
@@ -166,7 +166,18 @@ export default function ProfileHeader() {
                              <Sparkles size={16} />}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className="text-xs font-bold text-foreground truncate">{n.title}</p>
+                            <div className="flex justify-between items-start gap-2">
+                              <p className="text-xs font-bold text-foreground truncate">{n.title}</p>
+                              {!n.read && (
+                                <button 
+                                  onClick={() => markNotificationRead(n.id)}
+                                  className="p-1 rounded-md hover:bg-foreground/5 text-emerald-500 shrink-0"
+                                  title="Mark as read"
+                                >
+                                  <Check size={12} strokeWidth={3} />
+                                </button>
+                              )}
+                            </div>
                             <p className="text-[10px] opacity-40 leading-relaxed mt-0.5">{n.message}</p>
                             <p className="text-[8px] font-black opacity-20 uppercase tracking-widest mt-2">
                               {formatDistanceToNow(parseISO(n.timestamp), { addSuffix: true })}

@@ -180,7 +180,7 @@ export default function Profile() {
                 <input 
                   type="text"
                   value={editData.username}
-                  onChange={e => setEditData({ ...editData, username: e.target.value })}
+                  onChange={e => setEditData({ ...editData, username: e.target.value.toLowerCase().replace(/\s+/g, '') })}
                   className="w-full bg-transparent px-4 py-3 text-center font-bold outline-none opacity-60"
                   placeholder="Username"
                 />

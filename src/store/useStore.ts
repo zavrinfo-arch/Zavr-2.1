@@ -58,6 +58,7 @@ interface AppState {
   
   // Notification Actions
   addNotification: (notification: Omit<Notification, 'id' | 'timestamp' | 'read'>) => void;
+  markNotificationRead: (id: string) => void;
   markAllNotificationsRead: () => void;
   clearNotifications: () => void;
   
@@ -367,27 +368,15 @@ export const useStore = create<AppState>()(
           category = 'Emergency';
           
           const newAmount = goal.currentAmount + amount;
-          const isCompleted = newAmount >= goal.targetAmount;
           
           set((state) => ({
             emergencyGoals: state.emergencyGoals.map(g => 
               g.id === goalId ? { 
                 ...g, 
-                currentAmount: newAmount, 
-                completed: isCompleted,
-                completedAt: isCompleted ? timestamp : g.completedAt
+                currentAmount: newAmount
               } : g
             )
           }));
-
-          if (isCompleted) {
-            get().addNotification({
-              userId,
-              title: 'Emergency Fund Ready!',
-              message: `Your emergency fund "${goalName}" is now fully funded!`,
-              type: 'goal'
-            });
-          }
         } else {
           const goal = state.groupGoals.find(g => g.id === goalId);
           if (!goal) return;
@@ -579,8 +568,7 @@ export const useStore = create<AppState>()(
             emergencyGoals: state.emergencyGoals.map(g => 
               g.id === goalId ? { 
                 ...g, 
-                currentAmount: newAmount, 
-                completed: newAmount >= g.targetAmount
+                currentAmount: newAmount
               } : g
             )
           }));
@@ -765,6 +753,13 @@ export const useStore = create<AppState>()(
           notifications: [newNotification, ...state.notifications]
         }));
         await supabaseService.saveNotification(newNotification);
+      },
+
+      markNotificationRead: async (id) => {
+        set((state) => ({
+          notifications: state.notifications.map(n => n.id === id ? { ...n, read: true } : n)
+        }));
+        await supabaseService.markNotificationRead(id);
       },
 
       markAllNotificationsRead: async () => {

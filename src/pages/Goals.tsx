@@ -719,77 +719,41 @@ export default function Goals({ onAddMoney, onWithdraw }: {
                   <div className="space-y-4">
                     <div className="flex justify-between items-end">
                       <div>
-                        <p className="text-[10px] opacity-20 font-bold uppercase tracking-widest mb-2">Progress</p>
+                        <p className="text-[10px] opacity-20 font-bold uppercase tracking-widest mb-2">Total Saved</p>
                         <p className="text-3xl font-black">
                           {formatCurrency(goal.currentAmount, currentUser?.preferences.currency)}
-                          <span className="text-sm opacity-20 font-bold ml-3">
-                            / {formatCurrency(goal.targetAmount, currentUser?.preferences.currency)}
-                          </span>
                         </p>
                       </div>
                       <div className="flex items-center gap-4">
                         <GoalSparkline goalId={goal.id} color="#E2B05E" transactions={transactions} />
-                        <span className="text-lg font-black text-[#E2B05E]">
-                          {Math.round((goal.currentAmount / goal.targetAmount) * 100)}%
-                        </span>
                       </div>
-                    </div>
-                    <div className="h-4 w-full clay-inset overflow-hidden rounded-full">
-                      <motion.div 
-                        initial={{ width: 0 }}
-                        animate={{ width: `${Math.min(100, (goal.currentAmount / goal.targetAmount) * 100)}%` }}
-                        className="h-full bg-gradient-to-r from-[#E2B05E] to-[#C1944E] rounded-full"
-                      />
                     </div>
                   </div>
 
                   <div className="flex flex-col gap-4 pt-2">
-                    {(() => {
-                      const needed = getNeededThisPeriod(goal);
-                      const contributed = getContributedThisPeriod(goal.id, goal.frequency);
-                      const remaining = Math.max(0, needed - contributed);
-
-                      if (remaining > 0) {
-                        return (
-                          <div className="space-y-4">
-                            <div className="p-4 clay-inset bg-foreground/5 text-center">
-                              <p className="text-[8px] font-black opacity-30 uppercase tracking-[0.2em] mb-1">Estimated money to add</p>
-                              <p className="text-xl font-black text-[#E2B05E]">
-                                {formatCurrency(remaining, currentUser?.preferences.currency)}
-                              </p>
-                            </div>
-                            <button 
-                              onClick={() => onAddMoney(goal.id, 'emergency', remaining)}
-                              className="w-full bg-[#E2B05E] text-black text-[10px] font-black uppercase tracking-[0.2em] rounded-xl flex items-center justify-center gap-2 shadow-xl active:scale-95 transition-all py-4"
-                            >
-                              <Plus size={14} /> Add {formatCurrency(remaining, currentUser?.preferences.currency)}
-                            </button>
-                          </div>
-                        );
-                      }
-
-                      return (
-                        <div className="space-y-4">
-                          <div className="p-4 clay-inset bg-emerald-500/5 text-center border border-emerald-500/10">
-                            <p className="text-[8px] font-black text-emerald-500 uppercase tracking-[0.2em]">Goal met for this {goal.frequency}! ✨</p>
-                          </div>
-                          <div className="flex gap-4">
-                            <button 
-                              onClick={() => onAddMoney(goal.id, 'emergency')}
-                              className="flex-1 py-4 bg-[#E2B05E] text-black text-[10px] font-black uppercase tracking-[0.2em] rounded-xl flex items-center justify-center gap-2 shadow-xl active:scale-95 transition-all"
-                            >
-                              <Plus size={14} /> Add More
-                            </button>
-                            <button 
-                              onClick={() => onWithdraw(goal.id, 'emergency')}
-                              className="flex-1 py-4 clay-card opacity-40 text-[10px] font-black uppercase tracking-[0.2em] rounded-xl flex items-center justify-center gap-2 active:scale-95 transition-all"
-                            >
-                              <MinusCircle size={14} /> Withdraw
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })()}
+                    <div className="space-y-4">
+                      <div className="p-4 clay-inset bg-foreground/5 text-center">
+                        <p className="text-[8px] font-black opacity-30 uppercase tracking-[0.2em] mb-1">Routine Saving</p>
+                        <p className="text-xl font-black text-[#E2B05E]">
+                          {formatCurrency(goal.routineAmount, currentUser?.preferences.currency)}
+                          <span className="text-[10px] font-bold ml-1 opacity-40">/{goal.frequency}</span>
+                        </p>
+                      </div>
+                      <div className="flex gap-4">
+                        <button 
+                          onClick={() => onAddMoney(goal.id, 'emergency', goal.routineAmount)}
+                          className="flex-1 py-4 bg-[#E2B05E] text-black text-[10px] font-black uppercase tracking-[0.2em] rounded-xl flex items-center justify-center gap-2 shadow-xl active:scale-95 transition-all"
+                        >
+                          <Plus size={14} /> Add {formatCurrency(goal.routineAmount, currentUser?.preferences.currency)}
+                        </button>
+                        <button 
+                          onClick={() => onWithdraw(goal.id, 'emergency')}
+                          className="flex-1 py-4 clay-card opacity-40 text-[10px] font-black uppercase tracking-[0.2em] rounded-xl flex items-center justify-center gap-2 active:scale-95 transition-all"
+                        >
+                          <MinusCircle size={14} /> Withdraw
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 </div>
               ))

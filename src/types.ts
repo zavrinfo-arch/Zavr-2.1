@@ -26,7 +26,6 @@ export interface User {
   streak: number;
   onboardingCompleted: boolean;
   interests: string[];
-  weeklyTarget: number;
   badges: Badge[];
   createdAt: string;
   lastLoginDate: string | null;
@@ -104,7 +103,6 @@ export interface EmergencyGoal {
   id: string;
   userId: string;
   name: string;
-  targetAmount: number;
   currentAmount: number;
   frequency: SavingFrequency;
   routineAmount: number;

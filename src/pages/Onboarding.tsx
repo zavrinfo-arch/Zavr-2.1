@@ -35,7 +35,6 @@ export default function Onboarding() {
   const [data, setData] = useState({
     avatar: AVATARS[0],
     interests: [] as string[],
-    weeklyTarget: 1000,
   });
 
   const handleNext = () => {
@@ -43,7 +42,7 @@ export default function Onboarding() {
       toast.error('Select at least 2 interests');
       return;
     }
-    if (step < 4) setStep(step + 1);
+    if (step < 3) setStep(step + 1);
     else handleFinish();
   };
 
@@ -52,7 +51,6 @@ export default function Onboarding() {
       avatar: data.avatar.url,
       avatarId: data.avatar.id,
       interests: data.interests,
-      weeklyTarget: data.weeklyTarget,
       onboardingCompleted: true,
     });
     resetWeeklyChallenge();
@@ -74,7 +72,7 @@ export default function Onboarding() {
   return (
     <div className="min-h-screen bg-background flex flex-col p-8 overflow-hidden">
       <div className="flex gap-2 mb-12">
-        {[1, 2, 3, 4].map((s) => (
+        {[1, 2, 3].map((s) => (
           <div 
             key={s} 
             className={cn(
@@ -160,40 +158,6 @@ export default function Onboarding() {
               className="space-y-8"
             >
               <div>
-                <h2 className="text-3xl font-bold mb-2">Set weekly target</h2>
-                <p className="opacity-40">How much do you want to save every week?</p>
-              </div>
-              <div className="clay p-8 rounded-3xl space-y-8">
-                <div className="text-center">
-                  <span className="text-5xl font-black text-foreground">₹{data.weeklyTarget}</span>
-                  <p className="opacity-40 text-[10px] mt-2 uppercase tracking-widest font-bold">Target Amount</p>
-                </div>
-                <input 
-                  type="range" 
-                  min="100" 
-                  max="10000" 
-                  step="100"
-                  value={data.weeklyTarget}
-                  onChange={(e) => setData({ ...data, weeklyTarget: parseInt(e.target.value) })}
-                  className="w-full h-1 bg-foreground/5 rounded-lg appearance-none cursor-pointer accent-[#FF6B6B]"
-                />
-                <div className="flex justify-between text-[10px] opacity-20 font-bold">
-                  <span>₹100</span>
-                  <span>₹10,000</span>
-                </div>
-              </div>
-            </motion.div>
-          )}
-
-          {step === 4 && (
-            <motion.div
-              key="step4"
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
-              className="space-y-8"
-            >
-              <div>
                 <h2 className="text-3xl font-bold mb-2">Welcome to Zavr</h2>
                 <p className="opacity-40">Here's what you can do</p>
               </div>
@@ -251,7 +215,7 @@ export default function Onboarding() {
           onClick={handleNext}
           className="flex-1 h-16 clay-coral rounded-2xl font-bold flex items-center justify-center gap-2 shadow-lg text-white"
         >
-          {step === 4 ? 'Get Started' : 'Continue'}
+          {step === 3 ? 'Get Started' : 'Continue'}
           <ArrowRight size={24} />
         </button>
       </div>

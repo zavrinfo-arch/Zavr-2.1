@@ -53,9 +53,15 @@ export default function Auth() {
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value, type, checked } = e.target;
+    let finalValue = type === 'checkbox' ? checked : value;
+    
+    if (name === 'username' && typeof finalValue === 'string') {
+      finalValue = finalValue.toLowerCase().replace(/\s+/g, '');
+    }
+
     setFormData(prev => ({
       ...prev,
-      [name]: type === 'checkbox' ? checked : value
+      [name]: finalValue
     }));
     
     if (errors[name]) {

@@ -294,19 +294,27 @@ export default function Home({ onAddMoney, onWithdraw }: {
 
                   <div className="space-y-2">
                     <div className="flex justify-between text-[9px] font-black uppercase tracking-widest">
-                      <span className="opacity-20">Progress</span>
-                      <span className="opacity-100">{Math.round((('totalCollected' in goal ? goal.totalCollected : goal.currentAmount) / goal.targetAmount) * 100)}%</span>
+                      <span className="opacity-20">{('targetAmount' in goal) ? 'Progress' : 'Total Saved'}</span>
+                      {('targetAmount' in goal) && (
+                        <span className="opacity-100">{Math.round((('totalCollected' in goal ? goal.totalCollected : goal.currentAmount) / goal.targetAmount) * 100)}%</span>
+                      )}
                     </div>
-                    <div className="h-2 w-full clay-inset overflow-hidden">
-                      <motion.div 
-                        initial={{ width: 0 }}
-                        animate={{ width: `${Math.min(100, (('totalCollected' in goal ? goal.totalCollected : goal.currentAmount) / goal.targetAmount) * 100)}%` }}
-                        className={cn(
-                          "h-full",
-                          'members' in goal ? "bg-[#4ECDC4]" : "bg-[#FF6B6B]"
-                        )}
-                      />
-                    </div>
+                    {('targetAmount' in goal) ? (
+                      <div className="h-2 w-full clay-inset overflow-hidden">
+                        <motion.div 
+                          initial={{ width: 0 }}
+                          animate={{ width: `${Math.min(100, (('totalCollected' in goal ? goal.totalCollected : goal.currentAmount) / goal.targetAmount) * 100)}%` }}
+                          className={cn(
+                            "h-full",
+                            'members' in goal ? "bg-[#4ECDC4]" : "bg-[#FF6B6B]"
+                          )}
+                        />
+                      </div>
+                    ) : (
+                      <div className="text-xl font-black">
+                        {formatCurrency(goal.currentAmount, currentUser?.preferences.currency)}
+                      </div>
+                    )}
                   </div>
 
                   <div className="flex flex-col gap-3">

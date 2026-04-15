@@ -101,6 +101,14 @@ export const supabaseService = {
     return { data, error };
   },
 
+  async markNotificationRead(notificationId: string) {
+    const { error } = await supabase
+      .from('notifications')
+      .update({ read: true })
+      .eq('id', notificationId);
+    return { error };
+  },
+
   async markNotificationsRead(userId: string) {
     const { error } = await supabase
       .from('notifications')

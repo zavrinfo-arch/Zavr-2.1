@@ -132,7 +132,17 @@ app.post('/api/auth/complete-profile', async (req, res) => {
   const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token);
   if (authError || !user) return res.status(401).json({ error: 'Invalid session' });
 
-  const { username, fullName, dob, phone, address, password } = req.body;
+  const { username: rawUsername, fullName, dob, phone, address, password } = req.body;
+  const username = rawUsername.toLowerCase().replace(/\s+/g, '');
+
+  // 0. Check if username is taken
+  const { data: existingUser } = await supabaseAdmin
+    .from('profiles')
+    .select('username')
+    .eq('username', username)
+    .maybeSingle();
+
+  if (existingUser) return res.status(400).json({ error: 'Username is already taken' });
 
   // 1. Update Password
   const { error: pwdError } = await supabaseAdmin.auth.admin.updateUserById(user.id, {

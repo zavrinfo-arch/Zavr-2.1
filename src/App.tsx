@@ -92,6 +92,11 @@ export default function App() {
         resetWeeklyChallenge();
       }
     }
+
+    const interval = setInterval(() => {
+      checkReminders();
+    }, 60000); // Every minute
+    return () => clearInterval(interval);
   }, []);
 
   // Monitor for 100-day streak
@@ -218,13 +223,12 @@ function PlusModal({ action, setAction, onClose, selectedGoal, initialAmount }: 
 
   const handleCreateEmergency = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.name || !formData.target || !formData.routineAmount) return toast.error('Fill all fields');
+    if (!formData.name || !formData.routineAmount) return toast.error('Fill all fields');
     
     addEmergencyGoal({
       id: Math.random().toString(36).substr(2, 9),
       userId: currentUser!.id,
       name: formData.name,
-      targetAmount: formData.target,
       currentAmount: 0,
       frequency: formData.frequency,
       routineAmount: formData.routineAmount,
@@ -480,7 +484,7 @@ function PlusModal({ action, setAction, onClose, selectedGoal, initialAmount }: 
               </div>
             </div>
 
-            <div className={cn("grid gap-4", action === 'emergency' ? "grid-cols-1" : "grid-cols-2")}>
+            <div className={cn("grid gap-4", action === 'emergency' ? "hidden" : "grid-cols-2")}>
               <div className="space-y-2">
                 <label className="text-[10px] font-bold uppercase tracking-widest opacity-40 ml-4">Target Amount</label>
                 <div className="flex items-center clay-inset rounded-2xl px-4 py-4">
@@ -587,18 +591,24 @@ function PlusModal({ action, setAction, onClose, selectedGoal, initialAmount }: 
                 <div>
                   <p className="text-[10px] font-black uppercase tracking-[0.2em] opacity-20">Estimated Routine</p>
                   <p className="text-2xl font-black mt-1">
-                    {formatCurrency(neededPerPeriod, currentUser?.preferences.currency)}
+                    {action === 'emergency' 
+                      ? formatCurrency(formData.routineAmount, currentUser?.preferences.currency)
+                      : formatCurrency(neededPerPeriod, currentUser?.preferences.currency)}
                     <span className="text-[10px] font-bold ml-1 opacity-40">/{formData.frequency}</span>
                   </p>
                 </div>
-                <div className="text-right">
-                  <p className="text-[10px] font-black uppercase tracking-[0.2em] opacity-20">Target</p>
-                  <p className="text-sm font-bold opacity-60 mt-1">{formatCurrency(formData.target, currentUser?.preferences.currency)}</p>
-                </div>
+                {action !== 'emergency' && (
+                  <div className="text-right">
+                    <p className="text-[10px] font-black uppercase tracking-[0.2em] opacity-20">Target</p>
+                    <p className="text-sm font-bold opacity-60 mt-1">{formatCurrency(formData.target, currentUser?.preferences.currency)}</p>
+                  </div>
+                )}
               </div>
               <div className="mt-4 pt-4 border-t border-border">
                 <p className="text-[9px] opacity-30 leading-relaxed">
-                  {action === 'group-create' 
+                  {action === 'emergency'
+                    ? `You will save this amount ${formData.frequency} to build your emergency fund. There is no fixed target, save as much as you need.`
+                    : action === 'group-create' 
                     ? `Each of the ${formData.memberCount} members needs to contribute this amount to reach the ${formatCurrency(formData.target, currentUser?.preferences.currency)} goal by the deadline.`
                     : `You need to save this amount ${formData.frequency} to reach your ${formatCurrency(formData.target, currentUser?.preferences.currency)} goal by the deadline.`}
                 </p>
