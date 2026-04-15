@@ -18,6 +18,16 @@ import { format, parseISO } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 
+const DEFAULT_PREFERENCES = {
+  currency: 'INR' as const,
+  notificationsEnabled: true,
+  reminders: {
+    enabled: false,
+    time: '09:00',
+    frequency: 'daily' as const
+  }
+};
+
 export default function Profile() {
   const navigate = useNavigate();
   const { 
@@ -320,7 +330,7 @@ export default function Profile() {
               <div className="flex items-center gap-4">
                 <div className={cn(
                   "w-10 h-10 rounded-xl clay-inset flex items-center justify-center transition-colors",
-                  currentUser?.preferences.reminders?.enabled ? "text-[#4ECDC4]" : "opacity-10"
+                  currentUser?.preferences?.reminders?.enabled ? "text-[#4ECDC4]" : "opacity-10"
                 )}>
                   <Bell size={20} />
                 </div>
@@ -328,22 +338,28 @@ export default function Profile() {
               </div>
               <button 
                 onClick={() => {
-                  const reminders = currentUser?.preferences.reminders || { enabled: false, time: '09:00', frequency: 'daily' };
-                  updateUser({ preferences: { ...currentUser!.preferences, reminders: { ...reminders, enabled: !reminders.enabled } } });
+                  const currentPrefs = currentUser?.preferences || DEFAULT_PREFERENCES;
+                  const reminders = currentPrefs.reminders;
+                  updateUser({ 
+                    preferences: { 
+                      ...currentPrefs, 
+                      reminders: { ...reminders, enabled: !reminders.enabled } 
+                    } 
+                  });
                 }}
                 className={cn(
                   "w-14 h-7 rounded-full transition-all relative clay-inset",
-                  currentUser?.preferences.reminders?.enabled ? "bg-[#4ECDC4]" : "bg-foreground/10"
+                  currentUser?.preferences?.reminders?.enabled ? "bg-[#4ECDC4]" : "bg-foreground/10"
                 )}
               >
                 <motion.div 
-                  animate={{ x: currentUser?.preferences.reminders?.enabled ? 28 : 4 }}
+                  animate={{ x: currentUser?.preferences?.reminders?.enabled ? 28 : 4 }}
                   className="absolute top-1 w-5 h-5 bg-white rounded-full clay shadow-xl"
                 />
               </button>
             </div>
 
-            {currentUser?.preferences.reminders?.enabled && (
+            {currentUser?.preferences?.reminders?.enabled && (
               <motion.div 
                 initial={{ opacity: 0, y: -10 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -356,12 +372,18 @@ export default function Profile() {
                       <button
                         key={freq}
                         onClick={() => {
-                          const reminders = currentUser?.preferences.reminders!;
-                          updateUser({ preferences: { ...currentUser!.preferences, reminders: { ...reminders, frequency: freq } } });
+                          const currentPrefs = currentUser?.preferences || DEFAULT_PREFERENCES;
+                          const reminders = currentPrefs.reminders;
+                          updateUser({ 
+                            preferences: { 
+                              ...currentPrefs, 
+                              reminders: { ...reminders, frequency: freq } 
+                            } 
+                          });
                         }}
                         className={cn(
                           "flex-1 py-2.5 rounded-lg text-[10px] font-black transition-all uppercase tracking-widest",
-                          currentUser?.preferences.reminders?.frequency === freq ? "clay-coral text-white" : "opacity-20 hover:opacity-40"
+                          currentUser?.preferences?.reminders?.frequency === freq ? "clay-coral text-white" : "opacity-20 hover:opacity-40"
                         )}
                       >
                         {freq}
@@ -379,16 +401,22 @@ export default function Profile() {
                   </div>
                   <input 
                     type="time"
-                    value={currentUser?.preferences.reminders?.time || '09:00'}
+                    value={currentUser?.preferences?.reminders?.time || '09:00'}
                     onChange={(e) => {
-                      const reminders = currentUser?.preferences.reminders!;
-                      updateUser({ preferences: { ...currentUser!.preferences, reminders: { ...reminders, time: e.target.value } } });
+                      const currentPrefs = currentUser?.preferences || DEFAULT_PREFERENCES;
+                      const reminders = currentPrefs.reminders;
+                      updateUser({ 
+                        preferences: { 
+                          ...currentPrefs, 
+                          reminders: { ...reminders, time: e.target.value } 
+                        } 
+                      });
                     }}
                     className="bg-foreground/5 px-4 py-2 rounded-xl text-xs font-black outline-none text-[#4ECDC4] clay-inset"
                   />
                 </div>
 
-                {currentUser?.preferences.reminders?.frequency === 'weekly' && (
+                {currentUser?.preferences?.reminders?.frequency === 'weekly' && (
                   <div className="p-5 flex items-center justify-between clay-inset rounded-2xl bg-foreground/5">
                     <div className="flex items-center gap-4">
                       <div className="w-10 h-10 rounded-xl clay-inset flex items-center justify-center opacity-20">
@@ -397,10 +425,16 @@ export default function Profile() {
                       <span className="text-sm font-bold opacity-80">Day of Week</span>
                     </div>
                     <select 
-                      value={currentUser?.preferences.reminders?.day || 'Monday'}
+                      value={currentUser?.preferences?.reminders?.day || 'Monday'}
                       onChange={(e) => {
-                        const reminders = currentUser?.preferences.reminders!;
-                        updateUser({ preferences: { ...currentUser!.preferences, reminders: { ...reminders, day: e.target.value } } });
+                        const currentPrefs = currentUser?.preferences || DEFAULT_PREFERENCES;
+                        const reminders = currentPrefs.reminders;
+                        updateUser({ 
+                          preferences: { 
+                            ...currentPrefs, 
+                            reminders: { ...reminders, day: e.target.value } 
+                          } 
+                        });
                       }}
                       className="bg-foreground/5 px-4 py-2 rounded-xl text-xs font-black outline-none text-[#4ECDC4] clay-inset appearance-none text-center min-w-[100px]"
                     >
@@ -411,7 +445,7 @@ export default function Profile() {
                   </div>
                 )}
 
-                {currentUser?.preferences.reminders?.frequency === 'monthly' && (
+                {currentUser?.preferences?.reminders?.frequency === 'monthly' && (
                   <div className="p-5 flex items-center justify-between clay-inset rounded-2xl bg-foreground/5">
                     <div className="flex items-center gap-4">
                       <div className="w-10 h-10 rounded-xl clay-inset flex items-center justify-center opacity-20">
@@ -423,10 +457,16 @@ export default function Profile() {
                       type="number"
                       min="1"
                       max="31"
-                      value={currentUser?.preferences.reminders?.date || 1}
+                      value={currentUser?.preferences?.reminders?.date || 1}
                       onChange={(e) => {
-                        const reminders = currentUser?.preferences.reminders!;
-                        updateUser({ preferences: { ...currentUser!.preferences, reminders: { ...reminders, date: parseInt(e.target.value) } } });
+                        const currentPrefs = currentUser?.preferences || DEFAULT_PREFERENCES;
+                        const reminders = currentPrefs.reminders;
+                        updateUser({ 
+                          preferences: { 
+                            ...currentPrefs, 
+                            reminders: { ...reminders, date: parseInt(e.target.value) } 
+                          } 
+                        });
                       }}
                       className="bg-foreground/5 px-4 py-2 rounded-xl text-xs font-black outline-none text-[#4ECDC4] clay-inset w-16 text-center"
                     />
@@ -451,8 +491,16 @@ export default function Profile() {
                 <span className="text-sm font-bold opacity-80">Currency</span>
               </div>
               <select 
-                value={currentUser?.preferences.currency}
-                onChange={(e) => updateUser({ preferences: { ...currentUser!.preferences, currency: e.target.value as any } })}
+                value={currentUser?.preferences?.currency}
+                onChange={(e) => {
+                  const currentPrefs = currentUser?.preferences || DEFAULT_PREFERENCES;
+                  updateUser({ 
+                    preferences: { 
+                      ...currentPrefs, 
+                      currency: e.target.value as any 
+                    } 
+                  });
+                }}
                 className="bg-foreground/5 px-4 py-2 rounded-xl text-xs font-black outline-none text-[#4ECDC4] clay-inset appearance-none text-center min-w-[80px]"
               >
                 <option value="INR">₹ INR</option>
@@ -465,21 +513,29 @@ export default function Profile() {
               <div className="flex items-center gap-4">
                 <div className={cn(
                   "w-10 h-10 rounded-xl clay-inset flex items-center justify-center transition-colors",
-                  currentUser?.preferences.notificationsEnabled ? "text-[#FF6B6B]" : "opacity-10"
+                  currentUser?.preferences?.notificationsEnabled ? "text-[#FF6B6B]" : "opacity-10"
                 )}>
                   <Bell size={20} />
                 </div>
                 <span className="text-sm font-bold opacity-80">Notifications</span>
               </div>
               <button 
-                onClick={() => updateUser({ preferences: { ...currentUser!.preferences, notificationsEnabled: !currentUser?.preferences.notificationsEnabled } })}
+                onClick={() => {
+                  const currentPrefs = currentUser?.preferences || DEFAULT_PREFERENCES;
+                  updateUser({ 
+                    preferences: { 
+                      ...currentPrefs, 
+                      notificationsEnabled: !currentPrefs.notificationsEnabled 
+                    } 
+                  });
+                }}
                 className={cn(
                   "w-14 h-7 rounded-full transition-all relative clay-inset",
-                  currentUser?.preferences.notificationsEnabled ? "bg-[#4ECDC4]" : "bg-foreground/10"
+                  currentUser?.preferences?.notificationsEnabled ? "bg-[#4ECDC4]" : "bg-foreground/10"
                 )}
               >
                 <motion.div 
-                  animate={{ x: currentUser?.preferences.notificationsEnabled ? 28 : 4 }}
+                  animate={{ x: currentUser?.preferences?.notificationsEnabled ? 28 : 4 }}
                   className="absolute top-1 w-5 h-5 bg-white rounded-full clay shadow-xl"
                 />
               </button>

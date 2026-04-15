@@ -182,15 +182,15 @@ export default function SalarySplitter() {
           <div className="grid grid-cols-3 gap-6 w-full mt-8">
             <div className="text-center">
               <p className="text-[10px] opacity-30 font-bold uppercase tracking-widest mb-2">Needs</p>
-              <p className="font-black text-[#FF6B6B] text-sm">{formatCurrency(amounts.needs, currentUser?.preferences.currency)}</p>
+              <p className="font-black text-[#FF6B6B] text-sm">{formatCurrency(amounts.needs, currentUser?.preferences?.currency)}</p>
             </div>
             <div className="text-center">
               <p className="text-[10px] opacity-30 font-bold uppercase tracking-widest mb-2">Wants</p>
-              <p className="font-black text-[#E2B05E] text-sm">{formatCurrency(amounts.wants, currentUser?.preferences.currency)}</p>
+              <p className="font-black text-[#E2B05E] text-sm">{formatCurrency(amounts.wants, currentUser?.preferences?.currency)}</p>
             </div>
             <div className="text-center">
               <p className="text-[10px] opacity-30 font-bold uppercase tracking-widest mb-2">Savings</p>
-              <p className="font-black text-[#4ECDC4] text-sm">{formatCurrency(amounts.savings, currentUser?.preferences.currency)}</p>
+              <p className="font-black text-[#4ECDC4] text-sm">{formatCurrency(amounts.savings, currentUser?.preferences?.currency)}</p>
             </div>
           </div>
         </div>

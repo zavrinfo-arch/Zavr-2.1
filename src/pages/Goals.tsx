@@ -377,7 +377,7 @@ export default function Goals({ onAddMoney, onWithdraw }: {
                       <div className="text-right mr-2">
                         <p className="text-[10px] opacity-20 font-bold uppercase tracking-widest mb-1">Needed {goal.frequency}</p>
                         <p className="text-sm font-black text-[#FF6B6B]">
-                          {formatCurrency(calculateNeeded(goal.targetAmount, goal.currentAmount, goal.deadline, goal.frequency), currentUser?.preferences.currency)}
+                          {formatCurrency(calculateNeeded(goal.targetAmount, goal.currentAmount, goal.deadline, goal.frequency), currentUser?.preferences?.currency)}
                         </p>
                       </div>
                       <button 
@@ -400,9 +400,9 @@ export default function Goals({ onAddMoney, onWithdraw }: {
                       <div>
                         <p className="text-[10px] opacity-20 font-bold uppercase tracking-widest mb-2">Progress</p>
                         <p className="text-3xl font-black">
-                          {formatCurrency(goal.currentAmount, currentUser?.preferences.currency)}
+                          {formatCurrency(goal.currentAmount, currentUser?.preferences?.currency)}
                           <span className="text-sm opacity-20 font-bold ml-3">
-                            / {formatCurrency(goal.targetAmount, currentUser?.preferences.currency)}
+                            / {formatCurrency(goal.targetAmount, currentUser?.preferences?.currency)}
                           </span>
                         </p>
                       </div>
@@ -434,14 +434,14 @@ export default function Goals({ onAddMoney, onWithdraw }: {
                               <div className="p-4 clay-inset bg-foreground/5 text-center">
                                 <p className="text-[8px] font-black opacity-30 uppercase tracking-[0.2em] mb-1">Estimated money to add</p>
                                 <p className="text-xl font-black text-[#FF6B6B]">
-                                  {formatCurrency(remaining, currentUser?.preferences.currency)}
+                                  {formatCurrency(remaining, currentUser?.preferences?.currency)}
                                 </p>
                               </div>
                               <button 
                                 onClick={() => onAddMoney(goal.id, 'solo', remaining)}
                                 className="w-full py-4 clay-coral text-white text-[10px] font-black uppercase tracking-[0.2em] rounded-xl flex items-center justify-center gap-2 shadow-xl active:scale-95 transition-all"
                               >
-                                <Plus size={14} /> Add {formatCurrency(remaining, currentUser?.preferences.currency)}
+                                <Plus size={14} /> Add {formatCurrency(remaining, currentUser?.preferences?.currency)}
                               </button>
                             </div>
                           );
@@ -518,7 +518,7 @@ export default function Goals({ onAddMoney, onWithdraw }: {
                         <div className="text-right">
                           <p className="text-[10px] opacity-20 font-bold uppercase tracking-widest mb-1">Needed {goal.frequency}</p>
                           <p className="text-sm font-black text-[#4ECDC4]">
-                            {formatCurrency(calculateNeeded(goal.targetAmount / goal.memberCount, myContribution, goal.deadline, goal.frequency), currentUser?.preferences.currency)}
+                            {formatCurrency(calculateNeeded(goal.targetAmount / goal.memberCount, myContribution, goal.deadline, goal.frequency), currentUser?.preferences?.currency)}
                           </p>
                         </div>
                           <button 
@@ -539,13 +539,13 @@ export default function Goals({ onAddMoney, onWithdraw }: {
                     <div className="grid grid-cols-2 gap-5">
                       <div className="clay-inset p-5 rounded-2xl">
                         <p className="text-[10px] opacity-20 font-bold uppercase tracking-widest mb-2">Total Collected</p>
-                        <p className="text-xl font-bold">{formatCurrency(goal.totalCollected, currentUser?.preferences.currency)}</p>
-                        <p className="text-[10px] opacity-10 font-medium mt-1">Target: {formatCurrency(goal.targetAmount, currentUser?.preferences.currency)}</p>
+                        <p className="text-xl font-bold">{formatCurrency(goal.totalCollected, currentUser?.preferences?.currency)}</p>
+                        <p className="text-[10px] opacity-10 font-medium mt-1">Target: {formatCurrency(goal.targetAmount, currentUser?.preferences?.currency)}</p>
                       </div>
                       <div className="clay-inset p-5 rounded-2xl">
                         <p className="text-[10px] opacity-20 font-bold uppercase tracking-widest mb-2">Your Share</p>
-                        <p className="text-xl font-bold">{formatCurrency(myContribution, currentUser?.preferences.currency)}</p>
-                        <p className="text-[10px] opacity-10 font-medium mt-1">Target: {formatCurrency(myShare, currentUser?.preferences.currency)}</p>
+                        <p className="text-xl font-bold">{formatCurrency(myContribution, currentUser?.preferences?.currency)}</p>
+                        <p className="text-[10px] opacity-10 font-medium mt-1">Target: {formatCurrency(myShare, currentUser?.preferences?.currency)}</p>
                       </div>
                     </div>
 
@@ -607,7 +607,7 @@ export default function Goals({ onAddMoney, onWithdraw }: {
                                 "text-xs font-black",
                                 member.contributed === 0 ? "text-red-500/30" : "text-foreground"
                               )}>
-                                {formatCurrency(member.contributed, currentUser?.preferences.currency)}
+                                {formatCurrency(member.contributed, currentUser?.preferences?.currency)}
                               </span>
                               {isCreator && member.userId !== currentUser?.id && (
                                 <button 
@@ -635,14 +635,14 @@ export default function Goals({ onAddMoney, onWithdraw }: {
                               <div className="p-4 clay-inset bg-foreground/5 text-center">
                                 <p className="text-[8px] font-black opacity-30 uppercase tracking-[0.2em] mb-1">Estimated money to contribute</p>
                                 <p className="text-xl font-black text-[#4ECDC4]">
-                                  {formatCurrency(remaining, currentUser?.preferences.currency)}
+                                  {formatCurrency(remaining, currentUser?.preferences?.currency)}
                                 </p>
                               </div>
                               <button 
                                 onClick={() => onAddMoney(goal.id, 'group', remaining)}
                                 className="w-full py-4 clay-teal text-black text-[10px] font-black uppercase tracking-[0.2em] rounded-xl flex items-center justify-center gap-2 shadow-xl active:scale-95 transition-all"
                               >
-                                <Plus size={14} /> Contribute {formatCurrency(remaining, currentUser?.preferences.currency)}
+                                <Plus size={14} /> Contribute {formatCurrency(remaining, currentUser?.preferences?.currency)}
                               </button>
                             </div>
                           );
@@ -721,7 +721,7 @@ export default function Goals({ onAddMoney, onWithdraw }: {
                       <div>
                         <p className="text-[10px] opacity-20 font-bold uppercase tracking-widest mb-2">Total Saved</p>
                         <p className="text-3xl font-black">
-                          {formatCurrency(goal.currentAmount, currentUser?.preferences.currency)}
+                          {formatCurrency(goal.currentAmount, currentUser?.preferences?.currency)}
                         </p>
                       </div>
                       <div className="flex items-center gap-4">
@@ -735,7 +735,7 @@ export default function Goals({ onAddMoney, onWithdraw }: {
                       <div className="p-4 clay-inset bg-foreground/5 text-center">
                         <p className="text-[8px] font-black opacity-30 uppercase tracking-[0.2em] mb-1">Routine Saving</p>
                         <p className="text-xl font-black text-[#E2B05E]">
-                          {formatCurrency(goal.routineAmount, currentUser?.preferences.currency)}
+                          {formatCurrency(goal.routineAmount, currentUser?.preferences?.currency)}
                           <span className="text-[10px] font-bold ml-1 opacity-40">/{goal.frequency}</span>
                         </p>
                       </div>
@@ -744,7 +744,7 @@ export default function Goals({ onAddMoney, onWithdraw }: {
                           onClick={() => onAddMoney(goal.id, 'emergency', goal.routineAmount)}
                           className="flex-1 py-4 bg-[#E2B05E] text-black text-[10px] font-black uppercase tracking-[0.2em] rounded-xl flex items-center justify-center gap-2 shadow-xl active:scale-95 transition-all"
                         >
-                          <Plus size={14} /> Add {formatCurrency(goal.routineAmount, currentUser?.preferences.currency)}
+                          <Plus size={14} /> Add {formatCurrency(goal.routineAmount, currentUser?.preferences?.currency)}
                         </button>
                         <button 
                           onClick={() => onWithdraw(goal.id, 'emergency')}

@@ -643,7 +643,7 @@ export const useStore = create<AppState>()(
 
       checkReminders: () => {
         const state = get();
-        if (!state.currentUser) return;
+        if (!state.currentUser || !state.currentUser.preferences) return;
 
         const reminders = state.currentUser.preferences.reminders;
         if (!reminders?.enabled) return;

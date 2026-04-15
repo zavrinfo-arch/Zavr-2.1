@@ -619,15 +619,15 @@ function PlusModal({ action, setAction, onClose, selectedGoal, initialAmount }: 
                   <p className="text-[10px] font-black uppercase tracking-[0.2em] opacity-20">Estimated Routine</p>
                   <p className="text-2xl font-black mt-1">
                     {action === 'emergency' 
-                      ? formatCurrency(formData.routineAmount, currentUser?.preferences.currency)
-                      : formatCurrency(neededPerPeriod, currentUser?.preferences.currency)}
+                      ? formatCurrency(formData.routineAmount, currentUser?.preferences?.currency)
+                      : formatCurrency(neededPerPeriod, currentUser?.preferences?.currency)}
                     <span className="text-[10px] font-bold ml-1 opacity-40">/{formData.frequency}</span>
                   </p>
                 </div>
                 {action !== 'emergency' && (
                   <div className="text-right">
                     <p className="text-[10px] font-black uppercase tracking-[0.2em] opacity-20">Target</p>
-                    <p className="text-sm font-bold opacity-60 mt-1">{formatCurrency(formData.target, currentUser?.preferences.currency)}</p>
+                    <p className="text-sm font-bold opacity-60 mt-1">{formatCurrency(formData.target, currentUser?.preferences?.currency)}</p>
                   </div>
                 )}
               </div>
@@ -636,8 +636,8 @@ function PlusModal({ action, setAction, onClose, selectedGoal, initialAmount }: 
                   {action === 'emergency'
                     ? `You will save this amount ${formData.frequency} to build your emergency fund. There is no fixed target, save as much as you need.`
                     : action === 'group-create' 
-                    ? `Each of the ${formData.memberCount} members needs to contribute this amount to reach the ${formatCurrency(formData.target, currentUser?.preferences.currency)} goal by the deadline.`
-                    : `You need to save this amount ${formData.frequency} to reach your ${formatCurrency(formData.target, currentUser?.preferences.currency)} goal by the deadline.`}
+                    ? `Each of the ${formData.memberCount} members needs to contribute this amount to reach the ${formatCurrency(formData.target, currentUser?.preferences?.currency)} goal by the deadline.`
+                    : `You need to save this amount ${formData.frequency} to reach your ${formatCurrency(formData.target, currentUser?.preferences?.currency)} goal by the deadline.`}
                 </p>
               </div>
             </motion.div>

@@ -13,7 +13,7 @@ export default function DashboardSummary() {
   const stats = [
     {
       title: 'Monthly Income',
-      value: formatCurrency(50000, currentUser?.preferences.currency),
+      value: formatCurrency(50000, currentUser?.preferences?.currency),
       icon: <DollarSign size={24} />,
       color: 'text-blue-400',
       bg: 'bg-blue-400/10',
@@ -22,7 +22,7 @@ export default function DashboardSummary() {
     },
     {
       title: 'Total Savings',
-      value: formatCurrency(totalSavings, currentUser?.preferences.currency),
+      value: formatCurrency(totalSavings, currentUser?.preferences?.currency),
       icon: <PiggyBank size={24} />,
       color: 'text-[#4ECDC4]',
       bg: 'bg-[#4ECDC4]/10',
@@ -31,7 +31,7 @@ export default function DashboardSummary() {
     },
     {
       title: 'Monthly Expenses',
-      value: formatCurrency(12500, currentUser?.preferences.currency),
+      value: formatCurrency(12500, currentUser?.preferences?.currency),
       icon: <TrendingDown size={24} />,
       color: 'text-[#FF6B6B]',
       bg: 'bg-[#FF6B6B]/10',

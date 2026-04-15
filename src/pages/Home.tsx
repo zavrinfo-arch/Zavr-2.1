@@ -169,7 +169,7 @@ export default function Home({ onAddMoney, onWithdraw }: {
             <p className="text-[10px] font-black opacity-20 uppercase tracking-[0.2em]">Total Savings</p>
             <div className="flex items-baseline gap-4">
               <h2 className="text-5xl font-black tracking-tighter">
-                {formatCurrency(totalSavings, currentUser?.preferences.currency)}
+                {formatCurrency(totalSavings, currentUser?.preferences?.currency)}
               </h2>
               <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-[#4ECDC4]/10 text-[#4ECDC4] text-[10px] font-black">
                 <TrendingUp size={12} />
@@ -312,7 +312,7 @@ export default function Home({ onAddMoney, onWithdraw }: {
                       </div>
                     ) : (
                       <div className="text-xl font-black">
-                        {formatCurrency(goal.currentAmount, currentUser?.preferences.currency)}
+                        {formatCurrency(goal.currentAmount, currentUser?.preferences?.currency)}
                       </div>
                     )}
                   </div>
@@ -330,14 +330,14 @@ export default function Home({ onAddMoney, onWithdraw }: {
                             <div className="p-4 clay-inset bg-foreground/5 text-center">
                               <p className="text-[8px] font-black opacity-30 uppercase tracking-[0.2em] mb-1">Estimated money to add</p>
                               <p className="text-xl font-black text-[#FF6B6B]">
-                                {formatCurrency(remaining, currentUser?.preferences.currency)}
+                                {formatCurrency(remaining, currentUser?.preferences?.currency)}
                               </p>
                             </div>
                             <button 
                               onClick={() => onAddMoney(goal.id, type, remaining)}
                               className="w-full py-4 clay-coral text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 hover:brightness-110 transition-all rounded-xl shadow-xl text-white"
                             >
-                              <Plus size={14} /> Add {formatCurrency(remaining, currentUser?.preferences.currency)}
+                              <Plus size={14} /> Add {formatCurrency(remaining, currentUser?.preferences?.currency)}
                             </button>
                           </div>
                         );
@@ -461,7 +461,7 @@ export default function Home({ onAddMoney, onWithdraw }: {
                   "font-black text-sm",
                   tx.type === 'deposit' ? "text-[#4ECDC4]" : "text-[#FF6B6B]"
                 )}>
-                  {tx.type === 'deposit' ? '+' : '-'}{formatCurrency(tx.amount, currentUser?.preferences.currency)}
+                  {tx.type === 'deposit' ? '+' : '-'}{formatCurrency(tx.amount, currentUser?.preferences?.currency)}
                 </p>
               </div>
             ))}

@@ -65,7 +65,7 @@ export default function ProfileHeader() {
         </div>
         <div className="flex flex-col">
           <p className="text-[9px] font-black opacity-30 tracking-[0.2em]">{getTimeGreeting()}</p>
-          <h2 className="text-2xl font-bold text-foreground tracking-tight leading-tight serif-heading">{currentUser.fullName.split(' ')[0]}</h2>
+          <h2 className="text-2xl font-bold text-foreground tracking-tight leading-tight serif-heading">{(currentUser.fullName || '').split(' ')[0]}</h2>
           <div className="w-24 h-1 clay-inset mt-1 overflow-hidden">
             <motion.div 
               initial={{ width: 0 }}

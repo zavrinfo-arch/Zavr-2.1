@@ -94,13 +94,13 @@ export default function TransactionHistory() {
           <div>
             <p className="text-[10px] opacity-20 font-black uppercase tracking-[0.2em] mb-2">Net Savings</p>
             <p className="text-3xl font-black text-[#4ECDC4]">
-              {formatCurrency(stats.total, currentUser?.preferences.currency)}
+              {formatCurrency(stats.total, currentUser?.preferences?.currency)}
             </p>
           </div>
           <div>
             <p className="text-[10px] opacity-20 font-black uppercase tracking-[0.2em] mb-2">Withdrawn</p>
             <p className="text-3xl font-black text-[#FF6B6B]">
-              {formatCurrency(stats.withdrawn, currentUser?.preferences.currency)}
+              {formatCurrency(stats.withdrawn, currentUser?.preferences?.currency)}
             </p>
           </div>
         </div>
@@ -210,7 +210,7 @@ export default function TransactionHistory() {
                     "font-black text-lg tracking-tight",
                     tx.amount < 0 ? "text-[#FF6B6B]" : "text-[#4ECDC4]"
                   )}>
-                    {tx.amount < 0 ? '-' : '+'}{formatCurrency(Math.abs(tx.amount), currentUser?.preferences.currency)}
+                    {tx.amount < 0 ? '-' : '+'}{formatCurrency(Math.abs(tx.amount), currentUser?.preferences?.currency)}
                   </p>
                   <span className="inline-block text-[8px] font-black uppercase tracking-[0.2em] opacity-10 px-2 py-1 clay-inset rounded-lg mt-1">
                     {tx.type}
