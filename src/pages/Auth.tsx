@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
 import { useStore } from '../store/useStore';
+import { supabase } from '../lib/supabase';
 import { cn } from '../lib/utils';
 import { 
   Mail, Lock, User, Phone, Calendar, MapPin,
@@ -31,7 +32,7 @@ export default function Auth() {
     username: '',
     phone: '',
     dob: '',
-    address: '',
+    location: '',
     password: '',
     confirmPassword: '',
     rememberMe: false,
@@ -80,6 +81,7 @@ export default function Auth() {
       const response = await fetch('/api/auth/signin', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           username: formData.username,
           password: formData.password
@@ -93,6 +95,10 @@ export default function Auth() {
 
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'Login failed');
+
+      if (result.session) {
+        await supabase.auth.setSession(result.session);
+      }
 
       await checkAuth();
       toast.success('Welcome back!');
@@ -117,6 +123,7 @@ export default function Auth() {
         const response = await fetch('/api/auth/signup', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
           body: JSON.stringify({ email: formData.email })
         });
 
@@ -145,6 +152,7 @@ export default function Auth() {
         const response = await fetch('/api/auth/verify', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
           body: JSON.stringify({ email: formData.email, token: verificationCode })
         });
 
@@ -156,6 +164,10 @@ export default function Auth() {
         const result = await response.json();
         if (!response.ok) throw new Error(result.error || 'Verification failed');
         
+        if (result.session) {
+          await supabase.auth.setSession(result.session);
+        }
+
         toast.success('Email verified!');
         setSignupStep('password');
       } catch (error: any) {
@@ -191,12 +203,13 @@ export default function Auth() {
         const response = await fetch('/api/auth/complete-profile', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
           body: JSON.stringify({
             username: formData.username,
             fullName: formData.fullName,
             dob: formData.dob,
             phone: formData.phone,
-            address: formData.address,
+            location: formData.location,
             password: formData.password
           })
         });
@@ -507,9 +520,9 @@ export default function Auth() {
                 />
                 <Input 
                   icon={MapPin} 
-                  name="address" 
-                  placeholder="Address (Optional)" 
-                  value={formData.address} 
+                  name="location" 
+                  placeholder="Location (Optional)" 
+                  value={formData.location} 
                   onChange={handleInputChange}
                 />
                 <button 

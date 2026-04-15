@@ -30,6 +30,7 @@ interface AppState {
   dailyQuests: Quest[];
   weeklyQuests: Quest[];
   focusSessions: FocusSession[];
+  isAuthLoading: boolean;
   
   // Auth Actions
   setCurrentUser: (user: User | null) => void;
@@ -132,6 +133,7 @@ export const useStore = create<AppState>()(
         { id: 'w3', title: 'Level Up!', description: 'Level up twice', target: 2, progress: 0, rewardXP: 150, type: 'weekly', completed: false },
       ],
       focusSessions: [],
+      isAuthLoading: true,
 
       setCurrentUser: (user) => {
         set({ currentUser: user });
@@ -142,16 +144,29 @@ export const useStore = create<AppState>()(
       },
       
       checkAuth: async () => {
+        set({ isAuthLoading: true });
+        console.log('Checking authentication status...');
         try {
-          const response = await fetch('/api/auth/me');
+          const response = await fetch('/api/auth/me', { credentials: 'include' });
           if (response.ok) {
-            const { profile } = await response.json();
+            const { profile, session, user } = await response.json();
+            console.log('Auth check successful. User ID:', user?.id);
+            if (session) {
+              await supabase.auth.setSession(session);
+              console.log('Supabase session synchronized.');
+            }
             if (profile) {
               set({ currentUser: profile });
             }
+          } else {
+            console.log('Auth check failed: Not authenticated.');
+            set({ currentUser: null });
           }
         } catch (error) {
-          console.error('Auth check failed:', error);
+          console.error('Auth check error:', error);
+          set({ currentUser: null });
+        } finally {
+          set({ isAuthLoading: false });
         }
       },
 
@@ -159,7 +174,7 @@ export const useStore = create<AppState>()(
         console.log('Starting signOut process...');
         try {
           // 1. Call backend to clear cookies
-          await fetch('/api/auth/signout', { method: 'POST' });
+          await fetch('/api/auth/signout', { method: 'POST', credentials: 'include' });
           
           // 2. Clear client-side Supabase session
           await supabase.auth.signOut();

@@ -3,21 +3,64 @@ import { User, SoloGoal, GroupGoal, Transaction, Notification, StreakData } from
 
 export const supabaseService = {
   // Profiles
+  async updateProfile(userId: string, updates: Partial<User>) {
+    // Map camelCase to snake_case for DB
+    const dbUpdates: any = { id: userId };
+    if (updates.fullName) dbUpdates.full_name = updates.fullName;
+    if (updates.username) dbUpdates.username = updates.username;
+    if (updates.phone) dbUpdates.phone = updates.phone;
+    if (updates.dob) dbUpdates.dob = updates.dob;
+    if (updates.location) dbUpdates.location = updates.location;
+    if (updates.avatarId) dbUpdates.avatar_id = updates.avatarId;
+    if (updates.xp !== undefined) dbUpdates.xp = updates.xp;
+    if (updates.level !== undefined) dbUpdates.level = updates.level;
+    if (updates.streak !== undefined) dbUpdates.streak = updates.streak;
+    if (updates.interests) dbUpdates.interests = updates.interests;
+    if (updates.badges) dbUpdates.badges = updates.badges;
+    if (updates.lastLoginDate) dbUpdates.last_login_date = updates.lastLoginDate;
+    if (updates.preferences) dbUpdates.preferences = updates.preferences;
+    if (updates.streakFreezeCount !== undefined) dbUpdates.streak_freeze_count = updates.streakFreezeCount;
+
+    const { data, error } = await supabase
+      .from('profiles')
+      .upsert(dbUpdates)
+      .select()
+      .single();
+    return { data, error };
+  },
+
   async getProfile(userId: string) {
     const { data, error } = await supabase
       .from('profiles')
       .select('*')
       .eq('id', userId)
       .single();
-    return { data, error };
-  },
-
-  async updateProfile(userId: string, updates: Partial<User>) {
-    const { data, error } = await supabase
-      .from('profiles')
-      .upsert({ id: userId, ...updates })
-      .select()
-      .single();
+    
+    if (data) {
+      // Map snake_case to camelCase for App
+      const user: User = {
+        id: data.id,
+        fullName: data.full_name,
+        username: data.username,
+        email: data.email || '', // Fallback if missing
+        phone: data.phone,
+        dob: data.dob,
+        location: data.location,
+        avatar: data.avatar,
+        avatarId: data.avatar_id,
+        streak: data.streak,
+        onboardingCompleted: data.onboarding_completed ?? true, // Default to true if missing in DB
+        interests: data.interests || [],
+        badges: data.badges || [],
+        createdAt: data.created_at,
+        lastLoginDate: data.last_login_date,
+        streakFreezeCount: data.streak_freeze_count,
+        xp: data.xp,
+        level: data.level,
+        preferences: data.preferences
+      };
+      return { data: user, error };
+    }
     return { data, error };
   },
 

@@ -66,6 +66,49 @@ const otpLimiter = rateLimit({
   validate: { default: false }
 });
 
+// --- Auth Middleware ---
+async function getAuthenticatedUser(req: express.Request, res: express.Response) {
+  const token = req.cookies['sb-access-token'];
+  const refreshToken = req.cookies['sb-refresh-token'];
+
+  if (!token) return null;
+
+  try {
+    let { data: { user }, error } = await supabaseAdmin.auth.getUser(token);
+
+    if ((error || !user) && refreshToken) {
+      console.log('Token expired, attempting refresh...');
+      const { data: refreshData, error: refreshError } = await supabaseAdmin.auth.refreshSession({ refresh_token: refreshToken });
+      
+      if (!refreshError && refreshData.session) {
+        user = refreshData.user;
+        // Update cookies with new session
+        res.cookie('sb-access-token', refreshData.session.access_token, {
+          httpOnly: true,
+          secure: true,
+          sameSite: 'none',
+          maxAge: refreshData.session.expires_in * 1000
+        });
+        if (refreshData.session.refresh_token) {
+          res.cookie('sb-refresh-token', refreshData.session.refresh_token, {
+            httpOnly: true,
+            secure: true,
+            sameSite: 'none',
+            maxAge: 60 * 60 * 24 * 7 * 1000
+          });
+        }
+        return user;
+      }
+    }
+
+    if (error || !user) return null;
+    return user;
+  } catch (err) {
+    console.error('Auth middleware error:', err);
+    return null;
+  }
+}
+
 // --- Auth Routes ---
 
 // 1. Sign Up / Request OTP
@@ -107,16 +150,17 @@ app.post('/api/auth/verify', async (req, res) => {
 
   // Set session cookie
   if (data.session) {
+    console.log('Setting session cookies after verify for user:', data.user?.id);
     res.cookie('sb-access-token', data.session.access_token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
+      secure: true,
+      sameSite: 'none',
       maxAge: data.session.expires_in * 1000
     });
     res.cookie('sb-refresh-token', data.session.refresh_token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
+      secure: true,
+      sameSite: 'none',
       maxAge: 60 * 60 * 24 * 7 * 1000 // 7 days
     });
   }
@@ -126,14 +170,13 @@ app.post('/api/auth/verify', async (req, res) => {
 
 // 3. Complete Profile
 app.post('/api/auth/complete-profile', async (req, res) => {
-  const token = req.cookies['sb-access-token'];
-  if (!token) return res.status(401).json({ error: 'Unauthorized' });
+  const user = await getAuthenticatedUser(req, res);
+  if (!user) return res.status(401).json({ error: 'Invalid session' });
 
-  const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token);
-  if (authError || !user) return res.status(401).json({ error: 'Invalid session' });
-
-  const { username: rawUsername, fullName, dob, phone, address, password } = req.body;
+  const { username: rawUsername, fullName, dob, phone, location, password } = req.body;
   const username = rawUsername.toLowerCase().replace(/\s+/g, '');
+
+  console.log('Completing profile for user:', user.id, 'Username:', username);
 
   // 0. Check if username is taken
   const { data: existingUser } = await supabaseAdmin
@@ -159,15 +202,21 @@ app.post('/api/auth/complete-profile', async (req, res) => {
       full_name: fullName,
       dob,
       phone,
-      address,
-      onboarding_completed: true,
-      email: user.email
+      location,
+      email: user.email,
+      onboarding_completed: true
     });
 
   if (profileError) {
+    console.error('Profile creation error:', profileError);
     if (profileError.code === '23505') return res.status(400).json({ error: 'Username already taken' });
     return res.status(400).json({ error: profileError.message });
   }
+
+  // 3. Update user metadata as fallback
+  await supabaseAdmin.auth.admin.updateUserById(user.id, {
+    user_metadata: { onboarding_completed: true, username }
+  });
 
   res.json({ message: 'Profile completed successfully' });
 });
@@ -175,69 +224,100 @@ app.post('/api/auth/complete-profile', async (req, res) => {
 // 4. Sign In (Username + Password)
 app.post('/api/auth/signin', signinLimiter, async (req, res) => {
   const { username, password } = req.body;
+  console.log('Signin attempt for username:', username);
   if (!username || !password) return res.status(400).json({ error: 'Username and password are required' });
 
-  // 1. Find email by username
-  const { data: profile, error: profileError } = await supabaseAdmin
-    .from('profiles')
-    .select('email')
-    .eq('username', username)
-    .single();
+  try {
+    // 1. Find user by username in profiles
+    const { data: profile, error: profileError } = await supabaseAdmin
+      .from('profiles')
+      .select('id')
+      .eq('username', username.toLowerCase())
+      .maybeSingle();
 
-  if (profileError || !profile) {
-    return res.status(401).json({ error: 'Invalid username or password' });
-  }
+    if (profileError || !profile) {
+      return res.status(401).json({ error: 'Invalid username or password' });
+    }
 
-  // 2. Sign in with email
-  const { data, error } = await supabaseAdmin.auth.signInWithPassword({
-    email: profile.email,
-    password
-  });
+    // 2. Get user email from auth.admin
+    const { data: { user }, error: userError } = await supabaseAdmin.auth.admin.getUserById(profile.id);
+    if (userError || !user || !user.email) {
+      return res.status(401).json({ error: 'Invalid username or password' });
+    }
+
+    // 3. Sign in with email
+    const { data, error } = await supabaseAdmin.auth.signInWithPassword({
+      email: user.email,
+      password
+    });
 
   if (error) return res.status(401).json({ error: 'Invalid username or password' });
 
   // Set session cookie
   if (data.session) {
+    console.log('Setting session cookies after signin for user:', data.user?.id);
     res.cookie('sb-access-token', data.session.access_token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
+      secure: true,
+      sameSite: 'none',
       maxAge: data.session.expires_in * 1000
     });
     res.cookie('sb-refresh-token', data.session.refresh_token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
+      secure: true,
+      sameSite: 'none',
       maxAge: 60 * 60 * 24 * 7 * 1000 // 7 days
     });
   }
 
   res.json({ user: data.user, session: data.session });
+  } catch (err) {
+    console.error('Signin error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 // 5. Sign Out
 app.post('/api/auth/signout', async (req, res) => {
-  res.clearCookie('sb-access-token', { path: '/' });
-  res.clearCookie('sb-refresh-token', { path: '/' });
+  res.clearCookie('sb-access-token', { 
+    path: '/',
+    secure: true,
+    sameSite: 'none'
+  });
+  res.clearCookie('sb-refresh-token', { 
+    path: '/',
+    secure: true,
+    sameSite: 'none'
+  });
   res.json({ message: 'Signed out' });
 });
 
 // 6. Get Current User
 app.get('/api/auth/me', async (req, res) => {
-  const token = req.cookies['sb-access-token'];
-  if (!token) return res.status(401).json({ error: 'Not authenticated' });
+  const user = await getAuthenticatedUser(req, res);
+  if (!user) return res.status(401).json({ error: 'Not authenticated' });
 
   try {
-    const { data: { user }, error } = await supabaseAdmin.auth.getUser(token);
-    if (error || !user) return res.status(401).json({ error: 'Invalid session' });
-
     const { data: profile } = await supabaseAdmin
       .from('profiles')
       .select('*')
       .eq('id', user.id)
       .single();
 
-    res.json({ user, profile });
+    // Map onboarding status from metadata if missing in DB
+    const profileWithOnboarding = profile ? {
+      ...profile,
+      onboarding_completed: profile.onboarding_completed ?? user.user_metadata?.onboarding_completed ?? false
+    } : null;
+
+    res.json({ 
+      user, 
+      profile: profileWithOnboarding, 
+      session: { 
+        access_token: req.cookies['sb-access-token'],
+        refresh_token: req.cookies['sb-refresh-token']
+      } 
+    });
   } catch (err) {
     res.status(500).json({ error: 'Internal server error' });
   }

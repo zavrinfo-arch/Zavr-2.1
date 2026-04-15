@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 
 import { useStore } from './store/useStore';
+import { supabase } from './lib/supabase';
 import { Layout } from './components/Layout';
 import SplashScreen from './pages/SplashScreen';
 import Auth from './pages/Auth';
@@ -30,7 +31,19 @@ import CelebrationModal from './components/CelebrationModal';
 import { isAfter, startOfWeek, addDays, parseISO, differenceInDays } from 'date-fns';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { currentUser } = useStore();
+  const { currentUser, isAuthLoading } = useStore();
+  
+  if (isAuthLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="w-12 h-12 text-coral animate-spin" />
+          <p className="text-sm font-bold opacity-40 uppercase tracking-widest">Verifying Session...</p>
+        </div>
+      </div>
+    );
+  }
+
   if (!currentUser) return <Navigate to="/auth" />;
   if (!currentUser.onboardingCompleted) return <Navigate to="/onboarding" />;
   return <>{children}</>;
@@ -46,6 +59,20 @@ export default function App() {
 
   useEffect(() => {
     checkAuth();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log('Supabase Auth Event:', event);
+      if (event === 'SIGNED_OUT') {
+        useStore.getState().setCurrentUser(null);
+      } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+        // We let checkAuth handle the state sync to be consistent with our backend
+        checkAuth();
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
 
   useEffect(() => {

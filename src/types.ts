@@ -21,6 +21,7 @@ export interface User {
   passwordHash?: string;
   phone: string;
   dob: string;
+  location: string;
   avatar: string;
   avatarId: number;
   streak: number;

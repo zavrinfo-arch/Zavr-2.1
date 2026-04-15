@@ -30,6 +30,7 @@ export default function Profile() {
   const [editData, setEditData] = useState({
     fullName: currentUser?.fullName || '',
     username: currentUser?.username || '',
+    location: currentUser?.location || '',
   });
 
   const handleSaveProfile = () => {
@@ -40,6 +41,7 @@ export default function Profile() {
     updateUser({
       fullName: editData.fullName,
       username: editData.username,
+      location: editData.location,
     });
     setIsEditing(false);
     toast.success('Profile updated!');
@@ -183,6 +185,15 @@ export default function Profile() {
                   onChange={e => setEditData({ ...editData, username: e.target.value.toLowerCase().replace(/\s+/g, '') })}
                   className="w-full bg-transparent px-4 py-3 text-center font-bold outline-none opacity-60"
                   placeholder="Username"
+                />
+              </div>
+              <div className="clay-inset p-1 rounded-2xl bg-foreground/5">
+                <input 
+                  type="text"
+                  value={editData.location}
+                  onChange={e => setEditData({ ...editData, location: e.target.value })}
+                  className="w-full bg-transparent px-4 py-3 text-center font-bold outline-none"
+                  placeholder="Location"
                 />
               </div>
               <div className="flex gap-2">
