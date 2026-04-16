@@ -77,21 +77,32 @@ export default function Auth() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    try {
-      const response = await fetch('/api/auth/signin', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          email: formData.email,
-          password: formData.password
-        })
-      }).catch(err => {
-        if (err.message === 'Failed to fetch') {
-          throw new Error('Unable to connect to the server. Please check your internet connection or try again later.');
+    
+    const loginWithRetry = async (retries = 3, delay = 1000): Promise<Response> => {
+      try {
+        const response = await fetch('/api/auth/signin', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            email: formData.email,
+            password: formData.password
+          })
+        });
+        return response;
+      } catch (err: any) {
+        const isNetworkError = err.message === 'Failed to fetch' || err.name === 'TypeError';
+        if (retries > 0 && isNetworkError) {
+          console.warn(`Login failed (${err.message}), retrying in ${delay}ms...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+          return loginWithRetry(retries - 1, delay * 1.5);
         }
         throw err;
-      });
+      }
+    };
+
+    try {
+      const response = await loginWithRetry();
 
       const contentType = response.headers.get('content-type');
       if (!contentType || !contentType.includes('application/json')) {
@@ -109,7 +120,10 @@ export default function Auth() {
       toast.success('Welcome back!');
       navigate('/home');
     } catch (error: any) {
-      toast.error(error.message);
+      const message = error.message === 'Failed to fetch' 
+        ? 'Unable to connect to the server. Please check your internet connection or try again later.'
+        : error.message;
+      toast.error(message);
     } finally {
       setLoading(false);
     }
@@ -124,18 +138,28 @@ export default function Auth() {
         return;
       }
       setLoading(true);
-      try {
-        const response = await fetch('/api/auth/signup', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ email: formData.email })
-        }).catch(err => {
-          if (err.message === 'Failed to fetch') {
-            throw new Error('Unable to connect to the server. Please check your internet connection or try again later.');
+      const signupWithRetry = async (retries = 3, delay = 1000): Promise<Response> => {
+        try {
+          const response = await fetch('/api/auth/signup', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ email: formData.email })
+          });
+          return response;
+        } catch (err: any) {
+          const isNetworkError = err.message === 'Failed to fetch' || err.name === 'TypeError';
+          if (retries > 0 && isNetworkError) {
+            console.warn(`Signup failed (${err.message}), retrying in ${delay}ms...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+            return signupWithRetry(retries - 1, delay * 1.5);
           }
           throw err;
-        });
+        }
+      };
+
+      try {
+        const response = await signupWithRetry();
 
         const contentType = response.headers.get('content-type');
         if (!contentType || !contentType.includes('application/json')) {
@@ -148,7 +172,10 @@ export default function Auth() {
         toast.success('Verification code sent!');
         setSignupStep('verify');
       } catch (error: any) {
-        toast.error(error.message);
+        const message = error.message === 'Failed to fetch' 
+          ? 'Unable to connect to the server. Please check your internet connection or try again later.'
+          : error.message;
+        toast.error(message);
       } finally {
         setLoading(false);
       }
@@ -186,7 +213,10 @@ export default function Auth() {
         toast.success('Email verified!');
         setSignupStep('password');
       } catch (error: any) {
-        toast.error(error.message);
+        const message = error.message === 'Failed to fetch' 
+          ? 'Unable to connect to the server. Please check your internet connection or try again later.'
+          : error.message;
+        toast.error(message);
       } finally {
         setLoading(false);
       }
@@ -245,7 +275,10 @@ export default function Auth() {
         await checkAuth();
         setShowWelcome(true);
       } catch (error: any) {
-        toast.error(error.message);
+        const message = error.message === 'Failed to fetch' 
+          ? 'Unable to connect to the server. Please check your internet connection or try again later.'
+          : error.message;
+        toast.error(message);
       } finally {
         setLoading(false);
       }

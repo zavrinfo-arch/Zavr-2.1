@@ -151,13 +151,20 @@ export const useStore = create<AppState>()(
           try {
             console.log(`Fetching /api/auth/me (attempt ${6 - retries})...`);
             const response = await fetch('/api/auth/me', { 
-              credentials: 'include'
+              credentials: 'include',
+              headers: {
+                'Accept': 'application/json',
+                'Cache-Control': 'no-cache'
+              }
             });
             return response;
           } catch (error: any) {
-            const isNetworkError = error.message === 'Failed to fetch' || error.name === 'TypeError';
+            const isNetworkError = error.message === 'Failed to fetch' || 
+                                 error.name === 'TypeError' || 
+                                 error.message.includes('NetworkError');
+            
             if (retries > 0 && isNetworkError) {
-              console.warn(`Auth check failed (${error.message}), retrying in ${delay}ms... (${retries} retries left)`);
+              console.warn(`Auth check network error (${error.message}), retrying in ${delay}ms... (${retries} retries left)`);
               await new Promise(resolve => setTimeout(resolve, delay));
               return fetchWithRetry(retries - 1, delay * 1.5);
             }
