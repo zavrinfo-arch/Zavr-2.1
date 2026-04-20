@@ -31,7 +31,7 @@ import CelebrationModal from './components/CelebrationModal';
 import { isAfter, startOfWeek, addDays, parseISO, differenceInDays } from 'date-fns';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { currentUser, isAuthLoading } = useStore();
+  const { currentUser, session, isAuthLoading } = useStore();
   
   if (isAuthLoading) {
     return (
@@ -44,7 +44,17 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (!currentUser) return <Navigate to="/auth" />;
+  // Use session for first-pass check, then wait for currentUser
+  if (!session) return <Navigate to="/auth" />;
+  if (!currentUser) return (
+    <div className="min-h-screen flex items-center justify-center bg-background">
+      <div className="flex flex-col items-center gap-4">
+        <Loader2 className="w-12 h-12 text-coral animate-spin" />
+        <p className="text-sm font-bold opacity-40 uppercase tracking-widest">Loading Profile...</p>
+      </div>
+    </div>
+  );
+  
   if (!currentUser.onboardingCompleted) return <Navigate to="/onboarding" />;
   return <>{children}</>;
 }
@@ -65,30 +75,15 @@ export default function App() {
     currentUser, addSoloGoal, addGroupGoal, 
     joinGroupGoal, addContribution, checkStreak,
     weeklyChallenge, resetWeeklyChallenge, streakData,
-    checkReminders, triggerMotivation, theme, checkAuth
+    checkReminders, triggerMotivation, theme, checkAuth,
+    initializeAuth
   } = useStore();
 
   useEffect(() => {
-    checkAuth();
+    initializeAuth();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      console.log('Supabase Auth Event:', event);
-      if (event === 'SIGNED_OUT') {
-        useStore.getState().setCurrentUser(null);
-      } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-        // We let checkAuth handle the state sync to be consistent with our backend
-        checkAuth();
-      }
-    });
-
-    return () => {
-      subscription.unsubscribe();
-    };
-  }, []);
-
-  useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark');
-  }, [theme]);
+  }, [theme, initializeAuth]);
   
   const [isPlusModalOpen, setIsPlusModalOpen] = useState(false);
   const [plusAction, setPlusAction] = useState<'main' | 'solo' | 'group-create' | 'group-join' | 'contribute' | 'withdraw'>('main');

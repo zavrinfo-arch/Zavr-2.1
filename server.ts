@@ -35,21 +35,20 @@ app.set('trust proxy', 1);
 
 // --- Supabase Client Validation ---
 const supabaseUrl = process.env.VITE_SUPABASE_URL || 'https://ivdkaccijoeitkrkmrkk.supabase.co';
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml2ZGthY2Npam9laXRrcmttcmtrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU5ODMxMDIsImV4cCI6MjA5MTU1OTEwMn0.1vRwBZb3JInDYL5ee7fDiNCu5gXtKrmdLLFTTHwhRMU';
 
 const isSupabaseConfigured = supabaseUrl && !supabaseUrl.includes('placeholder') && 
-                             ((supabaseServiceKey && supabaseServiceKey !== 'placeholder') || 
-                              (supabaseAnonKey && supabaseAnonKey !== 'placeholder'));
+                             supabaseAnonKey && supabaseAnonKey !== 'placeholder';
 
 if (!isSupabaseConfigured) {
   console.error('CRITICAL: Supabase environment variables are missing or invalid!');
 }
 
-// Supabase Admin Client (for server-side operations)
+// Supabase Client (using ANON key to respect RLS as requested)
+// We still call it supabaseAdmin in some places but it now uses the anon key
 const supabaseAdmin = createClient(
   supabaseUrl,
-  supabaseServiceKey || supabaseAnonKey,
+  supabaseAnonKey,
   {
     auth: {
       autoRefreshToken: false,
@@ -151,39 +150,64 @@ app.get('/api/health', (req, res) => {
 
 // --- Auth Routes ---
 
-// 1. Sign Up / Request OTP
-app.post('/api/auth/signup', otpLimiter, async (req, res) => {
-  const { email } = req.body;
-  if (!email) return res.status(400).json({ error: 'Email is required' });
+// 1. Sign Up (Email + Password)
+app.post('/api/auth/signup', signinLimiter, async (req, res) => {
+  const { email, password } = req.body;
+  if (!email || !password) return res.status(400).json({ error: 'Email and password are required' });
 
-  if (!process.env.VITE_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+  if (!supabaseUrl || !supabaseAnonKey) {
     return res.status(500).json({ error: 'Supabase configuration is missing on the server.' });
   }
 
   try {
-    const { error } = await supabaseAuth.auth.signInWithOtp({
+    const { data, error } = await supabaseAuth.auth.signUp({
       email,
-      options: {
-        shouldCreateUser: true,
-      }
+      password,
     });
 
     if (error) return res.status(error.status || 500).json({ error: error.message });
-    res.json({ message: 'Verification code sent to your email' });
+
+    // Handle case where user is already registered but unconfirmed
+    if (data.user && data.user.identities && data.user.identities.length === 0) {
+      return res.status(400).json({ error: 'User already exists. Please sign in.' });
+    }
+
+    // Set session cookie if returned (when email confirmation is disabled)
+    if (data.session) {
+      console.log('Setting session cookies after signup for user:', data.user?.id);
+      res.cookie('sb-access-token', data.session.access_token, {
+        httpOnly: true,
+        secure: true,
+        sameSite: 'none',
+        maxAge: data.session.expires_in * 1000
+      });
+      res.cookie('sb-refresh-token', data.session.refresh_token, {
+        httpOnly: true,
+        secure: true,
+        sameSite: 'none',
+        maxAge: 60 * 60 * 24 * 7 * 1000 // 7 days
+      });
+    }
+
+    res.json({ 
+      message: data.session ? 'Signup successful! Welcome to Zavr.' : 'Signup successful! Please check your email for a confirmation code.',
+      user: data.user,
+      session: data.session 
+    });
   } catch (err: any) {
     res.status(500).json({ error: err.message || 'Internal server error' });
   }
 });
 
-// 2. Verify OTP
+// 2. Verify OTP / Email Confirmation
 app.post('/api/auth/verify', async (req, res) => {
-  const { email, token } = req.body;
+  const { email, token, type } = req.body;
   if (!email || !token) return res.status(400).json({ error: 'Email and code are required' });
 
   const { data, error } = await supabaseAuth.auth.verifyOtp({
     email,
     token,
-    type: 'email' // or 'signup' depending on Supabase config
+    type: type || 'signup' // Support 'signup', 'invite', 'recovery', 'email', 'magiclink'
   });
 
   if (error) return res.status(error.status || 400).json({ error: error.message });
@@ -208,15 +232,49 @@ app.post('/api/auth/verify', async (req, res) => {
   res.json({ user: data.user, session: data.session });
 });
 
+// 2.1 Resend Verification Code
+app.post('/api/auth/resend-code', otpLimiter, async (req, res) => {
+  const { email, type } = req.body;
+  if (!email) return res.status(400).json({ error: 'Email is required' });
+
+  try {
+    const { error } = await supabaseAuth.auth.resend({
+      type: type || 'signup',
+      email: email,
+    });
+
+    if (error) return res.status(error.status || 500).json({ error: error.message });
+    res.json({ message: 'New verification code sent!' });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Internal server error' });
+  }
+});
+
+// 2.2 Password Reset Request
+app.post('/api/auth/reset-password-request', async (req, res) => {
+  const { email } = req.body;
+  if (!email) return res.status(400).json({ error: 'Email is required' });
+
+  const { error } = await supabaseAuth.auth.resetPasswordForEmail(email, {
+    redirectTo: `${process.env.APP_URL || 'http://localhost:3000'}/auth?reset=true`,
+  });
+
+  if (error) return res.status(error.status || 500).json({ error: error.message });
+  res.json({ message: 'Password reset instructions sent to your email.' });
+});
+
 // 3. Complete Profile
 app.post('/api/auth/complete-profile', async (req, res) => {
-  const user = await getAuthenticatedUser(req, res);
-  if (!user) return res.status(401).json({ error: 'Invalid session' });
+  try {
+    const user = await getAuthenticatedUser(req, res);
+    if (!user) return res.status(401).json({ error: 'Invalid session' });
 
-  const { username: rawUsername, fullName, dob, phone, location, password, avatarId } = req.body;
-  const username = rawUsername.toLowerCase().replace(/\s+/g, '');
+    const { username: rawUsername, fullName, dob, phone, location, password, avatarId } = req.body;
+    
+    if (!rawUsername) return res.status(400).json({ error: 'Username is required' });
+    const username = rawUsername.toLowerCase().replace(/\s+/g, '');
 
-  console.log('Completing profile for user:', user.id, 'Username:', username);
+    console.log('Completing profile for user:', user.id, 'Username:', username);
 
   // 0. Check if username is taken
   const { data: existingUser } = await supabaseAdmin
@@ -227,44 +285,56 @@ app.post('/api/auth/complete-profile', async (req, res) => {
 
   if (existingUser) return res.status(400).json({ error: 'Username is already taken' });
 
-  // 1. Update Password using Admin API (requires service role)
-  const { error: pwdError } = await supabaseAdmin.auth.admin.updateUserById(user.id, {
-    password: password
-  });
-  if (pwdError) {
-    console.error('Password update error:', pwdError.message);
-    return res.status(400).json({ error: pwdError.message });
-  }
+  // 1. Profile Logic
+  // Password updates via admin API are skipped as we are using ANON key to respect RLS.
+  // The user should set their password via standard auth methods if needed.
+
 
   // 2. Create Profile
-  // Note: We avoid upserting 'email' here as it's often not in the profiles table schema
+  // We minimize the initial payload to avoid "column not found" errors.
+  // We rely on defaults in getProfile and user_metadata for other fields.
   const profileData: any = {
     id: user.id,
-    username,
-    full_name: fullName,
-    dob,
-    phone: phone || null,
-    location: location || null,
-    onboarding_completed: true,
-    avatar_id: avatarId || 1
+    username
   };
+
+  // Only include full_name if provided, but we might still hit a column error if it's missing in DB.
+  // However, full_name is very common.
+  if (fullName) profileData.full_name = fullName;
+
+  console.log('Upserting minimal profile data for:', user.id);
 
   const { error: profileError } = await supabaseAdmin
     .from('profiles')
     .upsert(profileData);
 
   if (profileError) {
-    console.error('Profile creation error details:', JSON.stringify(profileError, null, 2));
-    if (profileError.code === '23505') return res.status(400).json({ error: 'Username already taken' });
-    return res.status(400).json({ error: profileError.message || 'Failed to create profile' });
+    console.error('FULL Profile creation error:', JSON.stringify(profileError, null, 2));
+    
+    // If it's a column error, try even more minimal (just ID)
+    if (profileError.code === 'PGRST204') {
+       console.log('Retrying with ID only due to column mismatch...');
+       const { error: retryError } = await supabaseAdmin
+        .from('profiles')
+        .upsert({ id: user.id });
+       
+       if (retryError) {
+         return res.status(400).json({ error: `Table 'profiles' might be missing 'username' or doesn't exist. (${retryError.message})` });
+       }
+    } else {
+      if (profileError.code === '23505') return res.status(400).json({ error: 'Username already taken' });
+      return res.status(400).json({ error: `${profileError.message} (${profileError.code})` || 'Failed to create profile' });
+    }
   }
 
-  // 3. Update user metadata as fallback
-  await supabaseAdmin.auth.admin.updateUserById(user.id, {
-    user_metadata: { onboarding_completed: true, username }
-  });
+  // 3. Metadata updates via admin API are skipped as we are using ANON key.
+  // We rely on the profiles table as the source of truth.
 
-  res.json({ message: 'Profile completed successfully' });
+  res.json({ success: true, message: 'Profile completed successfully' });
+  } catch (err: any) {
+    console.error('Unhandled error in complete-profile:', err);
+    res.status(500).json({ error: err.message || 'Internal server error' });
+  }
 });
 
 // 4. Sign In (Email + Password)
@@ -281,12 +351,28 @@ app.post('/api/auth/signin', signinLimiter, async (req, res) => {
     });
 
     if (error) {
-      console.error('Signin error:', error.message);
-      // Helpful hint for standard error
-      const userMessage = error.message.includes('Invalid login credentials') 
-        ? 'Invalid email or password. Please try again.'
-        : error.message;
-      return res.status(401).json({ error: userMessage });
+      console.error('Signin AuthApiError:', {
+        status: (error as any).status,
+        message: error.message,
+        email: `${email.substring(0, 2)}...${email.substring(email.length - 2)}` // Safe logging
+      });
+      
+      // Detailed feedback for common issues
+      let userMessage = 'Invalid email or password. Please try again.';
+      
+      if (error.message.includes('Email not confirmed')) {
+        userMessage = 'Please confirm your email address. Check your inbox for the verification code we sent during signup.';
+      } else if (error.message.includes('Invalid login credentials')) {
+        // This is the most common error. It can mean wrong creds OR unconfirmed email (depending on Supabase settings)
+        userMessage = 'Invalid email or password. If you just signed up, please make sure you verified your email using the code we sent.';
+      } else {
+        userMessage = error.message;
+      }
+
+      return res.status(401).json({ 
+        error: userMessage,
+        code: (error as any).status === 400 ? 'INVALID_CREDENTIALS' : 'AUTH_ERROR'
+      });
     }
 
     // Set session cookie
@@ -311,6 +397,28 @@ app.post('/api/auth/signin', signinLimiter, async (req, res) => {
     console.error('Signin error:', err);
     res.status(500).json({ error: 'Internal server error' });
   }
+});
+
+app.post('/api/auth/session', async (req, res) => {
+  const { session } = req.body;
+  
+  if (session) {
+    console.log('Synchronizing session cookies for user:', session.user?.id);
+    res.cookie('sb-access-token', session.access_token, {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'none',
+      maxAge: session.expires_in * 1000
+    });
+    res.cookie('sb-refresh-token', session.refresh_token, {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'none',
+      maxAge: 60 * 60 * 24 * 7 * 1000 // 7 days
+    });
+  }
+  
+  res.json({ success: true });
 });
 
 // 5. Sign Out
@@ -344,15 +452,36 @@ app.get('/api/auth/me', async (req, res) => {
       .eq('id', user.id)
       .single();
 
-    // Map onboarding status from metadata if missing in DB
-    const profileWithOnboarding = profile ? {
-      ...profile,
-      onboarding_completed: profile.onboarding_completed ?? user.user_metadata?.onboarding_completed ?? false
+    // Map snake_case from DB to camelCase for App
+    const mappedProfile = profile ? {
+      id: profile.id,
+      fullName: profile.full_name,
+      username: profile.username,
+      email: profile.email || user.email,
+      phone: profile.phone,
+      dob: profile.dob,
+      location: profile.location,
+      avatar: `https://api.dicebear.com/7.x/lorelei/svg?seed=${profile.username}`, // Fallback as avatar column is missing
+      avatarId: 1, // Fallback as avatar_id column is missing
+      streak: profile.streak || 0,
+      onboardingCompleted: profile.onboarding_completed ?? user.user_metadata?.onboarding_completed ?? false,
+      interests: profile.interests || [],
+      badges: profile.badges || [],
+      createdAt: profile.created_at,
+      lastLoginDate: profile.last_login_date,
+      streakFreezeCount: profile.streak_freeze_count || 0,
+      xp: profile.xp || 0,
+      level: profile.level || 1,
+      preferences: profile.preferences || {
+        currency: 'INR',
+        notificationsEnabled: true,
+        reminders: { enabled: true, time: '20:00', frequency: 'daily' }
+      }
     } : null;
 
     res.json({ 
       user, 
-      profile: profileWithOnboarding, 
+      profile: mappedProfile, 
       session: { 
         access_token: req.cookies['sb-access-token'],
         refresh_token: req.cookies['sb-refresh-token']

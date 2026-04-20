@@ -24,7 +24,18 @@ export default function Auth() {
   const [loading, setLoading] = useState(false);
   
   const navigate = useNavigate();
-  const { setCurrentUser, checkAuth } = useStore();
+  const { currentUser, session, checkAuth, isAuthLoading } = useStore();
+
+  useEffect(() => {
+    // If the user already has a session, redirect them out
+    if (session && !isAuthLoading) {
+      if (currentUser && !currentUser.onboardingCompleted) {
+        navigate('/onboarding');
+      } else {
+        navigate('/home');
+      }
+    }
+  }, [session, currentUser, isAuthLoading, navigate]);
 
   const [formData, setFormData] = useState({
     fullName: '',
@@ -80,53 +91,65 @@ export default function Auth() {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!formData.email || !formData.password) {
+      toast.error('Email and password are required');
+      return;
+    }
+
     setLoading(true);
-    
-    const loginWithRetry = async (retries = 3, delay = 1000): Promise<Response> => {
-      try {
-        const response = await fetch('/api/auth/signin', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({
-            email: formData.email.trim().toLowerCase(),
-            password: formData.password
-          })
-        });
-        return response;
-      } catch (err: any) {
-        const isNetworkError = err.message === 'Failed to fetch' || err.name === 'TypeError';
-        if (retries > 0 && isNetworkError) {
-          console.warn(`Login failed (${err.message}), retrying in ${delay}ms...`);
-          await new Promise(resolve => setTimeout(resolve, delay));
-          return loginWithRetry(retries - 1, delay * 1.5);
-        }
-        throw err;
-      }
-    };
-
     try {
-      const response = await loginWithRetry();
+      // 1. Authenticate directly via Supabase as requested
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: formData.email.trim().toLowerCase(),
+        password: formData.password
+      });
 
-      const contentType = response.headers.get('content-type');
-      if (!contentType || !contentType.includes('application/json')) {
-        throw new Error('Server returned an invalid response. Please try again later.');
-      }
+      if (error) throw error;
+      
+      const session = data.session;
+      if (!session) throw new Error('Authentication failed: No session returned.');
 
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || 'Login failed');
+      // 2. Synchronize with backend cookies
+      await fetch('/api/auth/session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session })
+      });
 
-      if (result.session) {
-        await supabase.auth.setSession(result.session);
-      }
-
+      // 3. Finalize
       await checkAuth();
       toast.success('Welcome back!');
       navigate('/home');
     } catch (error: any) {
-      const message = error.message === 'Failed to fetch' 
-        ? 'Unable to connect to the server. Please check your internet connection or try again later.'
-        : error.message;
+      console.error('Login error:', error);
+      let message = error.message;
+      
+      if (message.toLowerCase().includes('invalid login credentials')) {
+        toast((t) => (
+          <div className="flex flex-col gap-2">
+            <p className="font-bold text-xs uppercase tracking-tight">Invalid Credentials</p>
+            <p className="text-[10px] opacity-60 leading-relaxed">
+              Check your email and password. If you haven't disabled "Confirm email" in Supabase, you might need to verify your account first.
+            </p>
+            <div className="flex gap-2 pt-1">
+              <button 
+                onClick={() => { toast.dismiss(t.id); setIsLogin(false); setSignupStep('verify'); }}
+                className="text-[9px] bg-foreground px-2 py-1.5 rounded-md uppercase font-black text-background"
+              >
+                Go to Verification
+              </button>
+              <button 
+                onClick={() => { toast.dismiss(t.id); }}
+                className="text-[9px] bg-foreground/5 px-2 py-1.5 rounded-md uppercase font-black"
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        ), { duration: 6000 });
+        return;
+      }
+      
       toast.error(message);
     } finally {
       setLoading(false);
@@ -137,10 +160,27 @@ export default function Auth() {
     e.preventDefault();
     
     if (signupStep === 'email') {
-      if (!formData.email) {
-        setErrors({ email: 'Email required' });
+      if (!formData.email || !formData.password) {
+        setErrors({ 
+          email: !formData.email ? 'Email required' : '',
+          password: !formData.password ? 'Password required' : ''
+        });
         return;
       }
+      
+      const email = formData.email.trim().toLowerCase();
+      
+      const strength = validatePassword(formData.password);
+      if (strength !== 'Strong') {
+        toast.error('Password must be strong (8+ chars, Uppercase, Number, Special)');
+        return;
+      }
+
+      if (formData.password !== formData.confirmPassword) {
+        toast.error('Passwords do not match');
+        return;
+      }
+
       setLoading(true);
       const signupWithRetry = async (retries = 3, delay = 1000): Promise<Response> => {
         try {
@@ -148,7 +188,10 @@ export default function Auth() {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             credentials: 'include',
-            body: JSON.stringify({ email: formData.email })
+            body: JSON.stringify({ 
+              email,
+              password: formData.password
+            })
           });
           return response;
         } catch (err: any) {
@@ -173,8 +216,14 @@ export default function Auth() {
         const result = await response.json();
         if (!response.ok) throw new Error(result.error || 'Signup failed');
         
-        toast.success('Verification code sent!');
-        setSignupStep('verify');
+        if (result.session) {
+          await supabase.auth.setSession(result.session);
+          toast.success('Account created! Let\'s set up your profile.');
+          setSignupStep('profile');
+        } else {
+          toast.success('Check your email for verification code!');
+          setSignupStep('verify');
+        }
       } catch (error: any) {
         const message = error.message === 'Failed to fetch' 
           ? 'Unable to connect to the server. Please check your internet connection or try again later.'
@@ -190,11 +239,12 @@ export default function Auth() {
       }
       setLoading(true);
       try {
+        const email = formData.email.trim().toLowerCase();
         const response = await fetch('/api/auth/verify', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
-          body: JSON.stringify({ email: formData.email, token: verificationCode })
+          body: JSON.stringify({ email, token: verificationCode, type: 'signup' })
         }).catch(err => {
           if (err.message === 'Failed to fetch') {
             throw new Error('Unable to connect to the server. Please check your internet connection or try again later.');
@@ -215,7 +265,7 @@ export default function Auth() {
         }
 
         toast.success('Email verified!');
-        setSignupStep('password');
+        setSignupStep('profile');
       } catch (error: any) {
         const message = error.message === 'Failed to fetch' 
           ? 'Unable to connect to the server. Please check your internet connection or try again later.'
@@ -225,15 +275,7 @@ export default function Auth() {
         setLoading(false);
       }
     } else if (signupStep === 'password') {
-      const strength = validatePassword(formData.password);
-      if (strength !== 'Strong') {
-        toast.error('Password must be strong (8+ chars, Uppercase, Number, Special)');
-        return;
-      }
-      if (formData.password !== formData.confirmPassword) {
-        setErrors({ confirmPassword: 'Passwords do not match' });
-        return;
-      }
+      // Logic moved to 'email' step (account creation)
       setSignupStep('profile');
     } else if (signupStep === 'profile') {
       if (!formData.fullName || !formData.username || !formData.dob) {
@@ -403,10 +445,39 @@ export default function Auth() {
                 {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
               </button>
             </div>
+            <div className="flex justify-end px-1">
+              <button 
+                type="button"
+                onClick={async () => {
+                  if (!formData.email) {
+                    toast.error('Enter your email first');
+                    return;
+                  }
+                  setLoading(true);
+                  try {
+                    const response = await fetch('/api/auth/reset-password-request', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ email: formData.email })
+                    });
+                    const result = await response.json();
+                    if (!response.ok) throw new Error(result.error);
+                    toast.success('Reset email sent!');
+                  } catch (err: any) {
+                    toast.error(err.message);
+                  } finally {
+                    setLoading(false);
+                  }
+                }}
+                className="text-[10px] uppercase font-bold tracking-widest text-[#FF6B6B] opacity-60 hover:opacity-100 transition-opacity"
+              >
+                Forgot Password?
+              </button>
+            </div>
             <button 
               type="submit"
               disabled={loading}
-              className="w-full py-4 mt-6 clay-coral rounded-2xl font-bold flex items-center justify-center gap-2 shadow-xl hover:brightness-110 transition-all active:scale-95 text-white uppercase tracking-widest text-xs disabled:opacity-50"
+              className="w-full py-4 mt-2 clay-coral rounded-2xl font-bold flex items-center justify-center gap-2 shadow-xl hover:brightness-110 transition-all active:scale-95 text-white uppercase tracking-widest text-xs disabled:opacity-50"
             >
               {loading ? <Loader2 className="animate-spin" size={18} /> : (
                 <>
@@ -439,6 +510,56 @@ export default function Auth() {
                   onChange={handleInputChange}
                   error={errors.email}
                 />
+                <div className="relative">
+                  <Input 
+                    icon={Lock} 
+                    name="password" 
+                    type={showPassword ? 'text' : 'password'} 
+                    placeholder="Create Password" 
+                    value={formData.password} 
+                    onChange={handleInputChange}
+                    error={errors.password}
+                  />
+                  <button 
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-4 top-4 opacity-40 hover:opacity-100"
+                  >
+                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
+                
+                {formData.password && (
+                  <div className="flex items-center gap-2 px-1">
+                    <div className="flex-1 h-1 rounded-full bg-foreground/10 overflow-hidden">
+                      <motion.div 
+                        initial={{ width: 0 }}
+                        animate={{ 
+                          width: passwordStrength === 'Weak' ? '33%' : passwordStrength === 'Medium' ? '66%' : '100%',
+                          backgroundColor: passwordStrength === 'Weak' ? '#ef4444' : passwordStrength === 'Medium' ? '#f59e0b' : '#10b981'
+                        }}
+                        className="h-full"
+                      />
+                    </div>
+                    <span className={cn(
+                      "text-[10px] font-bold uppercase tracking-wider",
+                      passwordStrength === 'Weak' ? "text-red-500" : passwordStrength === 'Medium' ? "text-amber-500" : "text-emerald-500"
+                    )}>
+                      {passwordStrength}
+                    </span>
+                  </div>
+                )}
+
+                <Input 
+                  icon={Lock} 
+                  name="confirmPassword" 
+                  type="password" 
+                  placeholder="Confirm Password" 
+                  value={formData.confirmPassword} 
+                  onChange={handleInputChange}
+                  error={errors.confirmPassword}
+                />
+
                 <button 
                   type="submit"
                   disabled={loading}
@@ -446,7 +567,7 @@ export default function Auth() {
                 >
                   {loading ? <Loader2 className="animate-spin" size={18} /> : (
                     <>
-                      Send Code
+                      Create Account
                       <ArrowRight size={18} />
                     </>
                   )}
@@ -484,64 +605,32 @@ export default function Auth() {
                 >
                   {loading ? <Loader2 className="animate-spin" size={18} /> : 'Verify Code'}
                 </button>
-              </motion.div>
-            )}
-
-            {signupStep === 'password' && (
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-4">
-                <div className="w-16 h-16 mx-auto clay-inset flex items-center justify-center text-[#FF6B6B] mb-4">
-                  <KeyRound size={32} />
-                </div>
-                <div className="relative">
-                  <Input 
-                    icon={Lock} 
-                    name="password" 
-                    type={showPassword ? 'text' : 'password'} 
-                    placeholder="New Password" 
-                    value={formData.password} 
-                    onChange={handleInputChange}
-                  />
+                <div className="pt-6">
                   <button 
                     type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-4 top-1/2 -translate-y-1/2 opacity-40 hover:opacity-100"
+                    onClick={async () => {
+                      setLoading(true);
+                      try {
+                        const email = formData.email.trim().toLowerCase();
+                        const response = await fetch('/api/auth/resend-code', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ email, type: 'signup' })
+                        });
+                        const result = await response.json();
+                        if (!response.ok) throw new Error(result.error);
+                        toast.success('Code resent! Check your inbox.');
+                      } catch (err: any) {
+                        toast.error(err.message);
+                      } finally {
+                        setLoading(false);
+                      }
+                    }}
+                    className="text-[10px] uppercase font-bold tracking-widest text-[#FF6B6B] opacity-60 hover:opacity-100 transition-opacity"
                   >
-                    {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                    Didn't receive code? Resend
                   </button>
                 </div>
-                <div className="flex items-center gap-2 px-1">
-                  <div className="flex-1 h-1 rounded-full bg-foreground/10 overflow-hidden">
-                    <motion.div 
-                      initial={{ width: 0 }}
-                      animate={{ 
-                        width: formData.password ? (passwordStrength === 'Weak' ? '33%' : passwordStrength === 'Medium' ? '66%' : '100%') : 0,
-                        backgroundColor: passwordStrength === 'Weak' ? '#ef4444' : passwordStrength === 'Medium' ? '#f59e0b' : '#10b981'
-                      }}
-                      className="h-full"
-                    />
-                  </div>
-                  <span className={cn(
-                    "text-[10px] font-bold uppercase tracking-wider",
-                    passwordStrength === 'Weak' ? "text-red-500" : passwordStrength === 'Medium' ? "text-amber-500" : "text-emerald-500"
-                  )}>
-                    {formData.password ? passwordStrength : ''}
-                  </span>
-                </div>
-                <Input 
-                  icon={Lock} 
-                  name="confirmPassword" 
-                  type="password" 
-                  placeholder="Confirm Password" 
-                  value={formData.confirmPassword} 
-                  onChange={handleInputChange}
-                  error={errors.confirmPassword}
-                />
-                <button 
-                  type="submit"
-                  className="w-full py-4 mt-6 clay-coral rounded-2xl font-bold text-white uppercase tracking-widest text-xs"
-                >
-                  Continue
-                </button>
               </motion.div>
             )}
 

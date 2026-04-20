@@ -5,6 +5,7 @@
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { Session } from '@supabase/supabase-js';
 import { 
   User, SoloGoal, GroupGoal, Transaction, Notification, 
   WeeklyChallenge, StreakData, Currency, Badge, EmergencyGoal,
@@ -17,6 +18,7 @@ import { supabase, isConfigured } from '../lib/supabase';
 interface AppState {
   users: User[];
   currentUser: User | null;
+  session: Session | null;
   soloGoals: SoloGoal[];
   groupGoals: GroupGoal[];
   emergencyGoals: EmergencyGoal[];
@@ -34,11 +36,13 @@ interface AppState {
   
   // Auth Actions
   setCurrentUser: (user: User | null) => void;
+  setSession: (session: Session | null) => void;
   addUser: (user: User) => void;
   updateUser: (updates: Partial<User>) => void;
   setTheme: (theme: 'light' | 'dark') => void;
-  checkAuth: () => Promise<void>;
+  checkAuth: (isInitial?: boolean) => Promise<void>;
   signOut: () => Promise<void>;
+  initializeAuth: () => void;
   
   // Goal Actions
   addSoloGoal: (goal: SoloGoal) => void;
@@ -98,6 +102,7 @@ export const useStore = create<AppState>()(
     (set, get) => ({
       users: [],
       currentUser: null,
+      session: null,
       soloGoals: [],
       groupGoals: [],
       emergencyGoals: [],
@@ -142,14 +147,20 @@ export const useStore = create<AppState>()(
           get().checkStreak();
         }
       },
+
+      setSession: (session) => {
+        set({ session });
+      },
       
-      checkAuth: async () => {
+      checkAuth: async (isInitial = false) => {
+        // Prevent multiple simultaneous auth checks unless it's the initial call
+        if (get().isAuthLoading && !isInitial) return;
+        
         set({ isAuthLoading: true });
         console.log('Checking authentication status...');
         
         const fetchWithRetry = async (retries = 5, delay = 1500): Promise<Response> => {
           try {
-            console.log(`Fetching /api/auth/me (attempt ${6 - retries})...`);
             const response = await fetch('/api/auth/me', { 
               credentials: 'include',
               headers: {
@@ -164,7 +175,6 @@ export const useStore = create<AppState>()(
                                  error.message.includes('NetworkError');
             
             if (retries > 0 && isNetworkError) {
-              console.warn(`Auth check network error (${error.message}), retrying in ${delay}ms... (${retries} retries left)`);
               await new Promise(resolve => setTimeout(resolve, delay));
               return fetchWithRetry(retries - 1, delay * 1.5);
             }
@@ -174,20 +184,14 @@ export const useStore = create<AppState>()(
 
         try {
           const response = await fetchWithRetry();
-          console.log(`Auth check response status: ${response.status}`);
           if (response.ok) {
             const data = await response.json();
             const { profile, session, user } = data;
-            console.log('Auth check successful. User ID:', user?.id);
             
             if (session && session.access_token && session.refresh_token) {
               try {
-                // Only set session if we have a valid Supabase URL
                 if (isConfigured) {
                   await supabase.auth.setSession(session);
-                  console.log('Supabase session synchronized.');
-                } else {
-                  console.warn('Supabase session sync skipped: Placeholder or missing URL.');
                 }
               } catch (sessErr) {
                 console.error('Error synchronizing Supabase session:', sessErr);
@@ -197,20 +201,11 @@ export const useStore = create<AppState>()(
             if (profile) {
               set({ currentUser: profile });
             }
-          } else if (response.status === 503) {
-            console.warn('Auth check: Server reports Supabase is not configured.');
-            set({ currentUser: null });
           } else {
-            const errorData = await response.json().catch(() => ({}));
-            console.log('Auth check failed:', response.status, errorData.error || 'Not authenticated');
             set({ currentUser: null });
           }
         } catch (error: any) {
-          console.error('Auth check FINAL error:', {
-            message: error.message,
-            name: error.name,
-            stack: error.stack
-          });
+          console.error('Auth check error:', error);
           set({ currentUser: null });
         } finally {
           set({ isAuthLoading: false });
@@ -220,26 +215,55 @@ export const useStore = create<AppState>()(
       signOut: async () => {
         console.log('Starting signOut process...');
         try {
-          // 1. Call backend to clear cookies
           await fetch('/api/auth/signout', { method: 'POST', credentials: 'include' });
-          
-          // 2. Clear client-side Supabase session
           await supabase.auth.signOut();
-          
-          // 3. Clear store state
           set({ currentUser: null });
-          
-          // 4. Clear local storage for this store to be extra safe
-          // localStorage.removeItem('zavr-storage'); // Optional, but might be too aggressive
-          
-          console.log('Sign out successful');
         } catch (error) {
           console.error('Sign out failed:', error);
-          // Still clear local state even if server call fails
           set({ currentUser: null });
         }
       },
       
+      initializeAuth: async () => {
+        if (!isConfigured) {
+          set({ isAuthLoading: false });
+          return;
+        }
+
+        try {
+          // 1. Initial check
+          const { data: { session: initialSession } } = await supabase.auth.getSession();
+          set({ session: initialSession });
+          
+          if (initialSession) {
+            await get().checkAuth(true);
+          } else {
+            set({ isAuthLoading: false });
+          }
+        } catch (err) {
+          console.error('Initial session check failed:', err);
+          set({ isAuthLoading: false });
+        }
+
+        // 2. Listen for changes
+        supabase.auth.onAuthStateChange(async (event, session) => {
+          console.log(`Auth state changed: ${event}`, session?.user?.id);
+          set({ session });
+          
+          if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+            if (session) {
+              if (!get().currentUser) {
+                await get().checkAuth();
+              } else {
+                get().refreshData();
+              }
+            }
+          } else if (event === 'SIGNED_OUT') {
+            set({ currentUser: null, session: null, isAuthLoading: false });
+          }
+        });
+      },
+
       addUser: async (user) => {
         set((state) => ({ users: [...state.users, user] }));
         await supabaseService.updateProfile(user.id, user);
