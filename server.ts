@@ -47,10 +47,21 @@ if (!isSupabaseConfigured) {
 }
 
 // Supabase Admin Client (for server-side operations)
-// Note: We prefer service role key for admin tasks, but fallback to anon if necessary
 const supabaseAdmin = createClient(
   supabaseUrl,
   supabaseServiceKey || supabaseAnonKey,
+  {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false
+    }
+  }
+);
+
+// Supabase Auth Client (for regular auth operations like signin)
+const supabaseAuth = createClient(
+  supabaseUrl,
+  supabaseAnonKey,
   {
     auth: {
       autoRefreshToken: false,
@@ -150,7 +161,7 @@ app.post('/api/auth/signup', otpLimiter, async (req, res) => {
   }
 
   try {
-    const { error } = await supabaseAdmin.auth.signInWithOtp({
+    const { error } = await supabaseAuth.auth.signInWithOtp({
       email,
       options: {
         shouldCreateUser: true,
@@ -169,7 +180,7 @@ app.post('/api/auth/verify', async (req, res) => {
   const { email, token } = req.body;
   if (!email || !token) return res.status(400).json({ error: 'Email and code are required' });
 
-  const { data, error } = await supabaseAdmin.auth.verifyOtp({
+  const { data, error } = await supabaseAuth.auth.verifyOtp({
     email,
     token,
     type: 'email' // or 'signup' depending on Supabase config
@@ -202,7 +213,7 @@ app.post('/api/auth/complete-profile', async (req, res) => {
   const user = await getAuthenticatedUser(req, res);
   if (!user) return res.status(401).json({ error: 'Invalid session' });
 
-  const { username: rawUsername, fullName, dob, phone, location, password } = req.body;
+  const { username: rawUsername, fullName, dob, phone, location, password, avatarId } = req.body;
   const username = rawUsername.toLowerCase().replace(/\s+/g, '');
 
   console.log('Completing profile for user:', user.id, 'Username:', username);
@@ -216,30 +227,36 @@ app.post('/api/auth/complete-profile', async (req, res) => {
 
   if (existingUser) return res.status(400).json({ error: 'Username is already taken' });
 
-  // 1. Update Password
+  // 1. Update Password using Admin API (requires service role)
   const { error: pwdError } = await supabaseAdmin.auth.admin.updateUserById(user.id, {
     password: password
   });
-  if (pwdError) return res.status(400).json({ error: pwdError.message });
+  if (pwdError) {
+    console.error('Password update error:', pwdError.message);
+    return res.status(400).json({ error: pwdError.message });
+  }
 
   // 2. Create Profile
+  // Note: We avoid upserting 'email' here as it's often not in the profiles table schema
+  const profileData: any = {
+    id: user.id,
+    username,
+    full_name: fullName,
+    dob,
+    phone: phone || null,
+    location: location || null,
+    onboarding_completed: true,
+    avatar_id: avatarId || 1
+  };
+
   const { error: profileError } = await supabaseAdmin
     .from('profiles')
-    .upsert({
-      id: user.id,
-      username,
-      full_name: fullName,
-      dob,
-      phone,
-      location,
-      email: user.email,
-      onboarding_completed: true
-    });
+    .upsert(profileData);
 
   if (profileError) {
-    console.error('Profile creation error:', profileError);
+    console.error('Profile creation error details:', JSON.stringify(profileError, null, 2));
     if (profileError.code === '23505') return res.status(400).json({ error: 'Username already taken' });
-    return res.status(400).json({ error: profileError.message });
+    return res.status(400).json({ error: profileError.message || 'Failed to create profile' });
   }
 
   // 3. Update user metadata as fallback
@@ -257,15 +274,19 @@ app.post('/api/auth/signin', signinLimiter, async (req, res) => {
   if (!email || !password) return res.status(400).json({ error: 'Email and password are required' });
 
   try {
-    // Sign in with email directly
-    const { data, error } = await supabaseAdmin.auth.signInWithPassword({
+    // Sign in with email directly using the standard auth client
+    const { data, error } = await supabaseAuth.auth.signInWithPassword({
       email,
       password
     });
 
     if (error) {
       console.error('Signin error:', error.message);
-      return res.status(401).json({ error: 'Invalid email or password' });
+      // Helpful hint for standard error
+      const userMessage = error.message.includes('Invalid login credentials') 
+        ? 'Invalid email or password. Please try again.'
+        : error.message;
+      return res.status(401).json({ error: userMessage });
     }
 
     // Set session cookie

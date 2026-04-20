@@ -59,6 +59,10 @@ export default function Auth() {
     if (name === 'username' && typeof finalValue === 'string') {
       finalValue = finalValue.toLowerCase().replace(/\s+/g, '');
     }
+    
+    if (name === 'email' && typeof finalValue === 'string') {
+      finalValue = finalValue.trim().toLowerCase();
+    }
 
     setFormData(prev => ({
       ...prev,
@@ -85,7 +89,7 @@ export default function Auth() {
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
           body: JSON.stringify({
-            email: formData.email,
+            email: formData.email.trim().toLowerCase(),
             password: formData.password
           })
         });
@@ -255,7 +259,8 @@ export default function Auth() {
             dob: formData.dob,
             phone: formData.phone,
             location: formData.location,
-            password: formData.password
+            password: formData.password,
+            avatarId: formData.avatarId
           })
         }).catch(err => {
           if (err.message === 'Failed to fetch') {
