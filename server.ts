@@ -105,38 +105,57 @@ async function getAuthenticatedUser(req: express.Request, res: express.Response)
   if (!token) return null;
 
   try {
-    const { data, error } = await supabaseAdmin.auth.getUser(token);
-    let user = data?.user;
+    const { data: userData, error: userError } = await supabaseAdmin.auth.getUser(token);
+    let user = userData?.user;
 
-    if ((error || !user) && refreshToken) {
-      console.log('Token expired, attempting refresh...');
-      const { data: refreshData, error: refreshError } = await supabaseAdmin.auth.refreshSession({ refresh_token: refreshToken });
-      
-      if (!refreshError && refreshData.session) {
-        user = refreshData.user;
-        // Update cookies with new session
-        res.cookie('sb-access-token', refreshData.session.access_token, {
-          httpOnly: true,
-          secure: true,
-          sameSite: 'none',
-          maxAge: refreshData.session.expires_in * 1000
-        });
-        if (refreshData.session.refresh_token) {
-          res.cookie('sb-refresh-token', refreshData.session.refresh_token, {
+    if ((userError || !user) && refreshToken && refreshToken !== 'undefined' && refreshToken !== 'null') {
+      console.log('Token expired or invalid, attempting refresh using cookie...');
+      try {
+        const { data: refreshData, error: refreshError } = await supabaseAdmin.auth.refreshSession({ refresh_token: refreshToken });
+        
+        if (!refreshError && refreshData.session) {
+          user = refreshData.user;
+          // Update cookies with new session
+          const session = refreshData.session;
+          res.cookie('sb-access-token', session.access_token, {
             httpOnly: true,
             secure: true,
             sameSite: 'none',
-            maxAge: 60 * 60 * 24 * 7 * 1000
+            maxAge: session.expires_in * 1000
           });
+          if (session.refresh_token) {
+            res.cookie('sb-refresh-token', session.refresh_token, {
+              httpOnly: true,
+              secure: true,
+              sameSite: 'none',
+              maxAge: 60 * 60 * 24 * 7 * 1000
+            });
+          }
+          // Attach the fresh tokens to the request object so handlers can access them
+          (req as any).freshSession = session;
+          return user;
+        } else {
+          console.warn('Refresh failed, clearing auth cookies:', refreshError?.message);
+          res.clearCookie('sb-access-token', { path: '/', secure: true, sameSite: 'none' });
+          res.clearCookie('sb-refresh-token', { path: '/', secure: true, sameSite: 'none' });
+          return null;
         }
-        return user;
+      } catch (refreshErr) {
+        console.error('Refresh throw error:', refreshErr);
+        res.clearCookie('sb-access-token', { path: '/', secure: true, sameSite: 'none' });
+        res.clearCookie('sb-refresh-token', { path: '/', secure: true, sameSite: 'none' });
+        return null;
       }
     }
 
-    if (error || !user) return null;
+    if (userError || !user) {
+      res.clearCookie('sb-access-token', { path: '/', secure: true, sameSite: 'none' });
+      return null;
+    }
+    
     return user;
   } catch (err) {
-    console.error('Auth middleware error:', err);
+    console.error('Auth middleware catch error:', err);
     return null;
   }
 }
@@ -152,8 +171,9 @@ app.get('/api/health', (req, res) => {
 
 // 1. Sign Up (Email + Password)
 app.post('/api/auth/signup', signinLimiter, async (req, res) => {
-  const { email, password } = req.body;
-  if (!email || !password) return res.status(400).json({ error: 'Email and password are required' });
+  const { email: rawEmail, password } = req.body;
+  if (!rawEmail || !password) return res.status(400).json({ error: 'Email and password are required' });
+  const email = rawEmail.trim().toLowerCase();
 
   if (!supabaseUrl || !supabaseAnonKey) {
     return res.status(500).json({ error: 'Supabase configuration is missing on the server.' });
@@ -201,8 +221,9 @@ app.post('/api/auth/signup', signinLimiter, async (req, res) => {
 
 // 2. Verify OTP / Email Confirmation
 app.post('/api/auth/verify', async (req, res) => {
-  const { email, token, type } = req.body;
-  if (!email || !token) return res.status(400).json({ error: 'Email and code are required' });
+  const { email: rawEmail, token, type } = req.body;
+  if (!rawEmail || !token) return res.status(400).json({ error: 'Email and code are required' });
+  const email = rawEmail.trim().toLowerCase();
 
   const { data, error } = await supabaseAuth.auth.verifyOtp({
     email,
@@ -234,8 +255,9 @@ app.post('/api/auth/verify', async (req, res) => {
 
 // 2.1 Resend Verification Code
 app.post('/api/auth/resend-code', otpLimiter, async (req, res) => {
-  const { email, type } = req.body;
-  if (!email) return res.status(400).json({ error: 'Email is required' });
+  const { email: rawEmail, type } = req.body;
+  if (!rawEmail) return res.status(400).json({ error: 'Email is required' });
+  const email = rawEmail.trim().toLowerCase();
 
   try {
     const { error } = await supabaseAuth.auth.resend({
@@ -252,8 +274,9 @@ app.post('/api/auth/resend-code', otpLimiter, async (req, res) => {
 
 // 2.2 Password Reset Request
 app.post('/api/auth/reset-password-request', async (req, res) => {
-  const { email } = req.body;
-  if (!email) return res.status(400).json({ error: 'Email is required' });
+  const { email: rawEmail } = req.body;
+  if (!rawEmail) return res.status(400).json({ error: 'Email is required' });
+  const email = rawEmail.trim().toLowerCase();
 
   const { error } = await supabaseAuth.auth.resetPasswordForEmail(email, {
     redirectTo: `${process.env.APP_URL || 'http://localhost:3000'}/auth?reset=true`,
@@ -276,9 +299,14 @@ app.post('/api/auth/complete-profile', async (req, res) => {
 
     console.log('Completing profile for user:', user.id, 'Username:', username);
 
-  // 0. Check if username is taken
+  // 0. Check if username is taken (3-20 chars, lowercase, numbers, underscore only)
+  const usernameRegex = /^[a-z0-9_]{3,20}$/;
+  if (!usernameRegex.test(username)) {
+    return res.status(400).json({ error: 'Username must be 3-20 characters and contain only lowercase letters, numbers, and underscores.' });
+  }
+
   const { data: existingUser } = await supabaseAdmin
-    .from('profiles')
+    .from('user_profiles')
     .select('username')
     .eq('username', username)
     .maybeSingle();
@@ -286,51 +314,31 @@ app.post('/api/auth/complete-profile', async (req, res) => {
   if (existingUser) return res.status(400).json({ error: 'Username is already taken' });
 
   // 1. Profile Logic
-  // Password updates via admin API are skipped as we are using ANON key to respect RLS.
-  // The user should set their password via standard auth methods if needed.
-
-
-  // 2. Create Profile
-  // We minimize the initial payload to avoid "column not found" errors.
-  // We rely on defaults in getProfile and user_metadata for other fields.
   const profileData: any = {
     id: user.id,
-    username
+    username,
+    email: user.email,
+    full_name: fullName,
+    dob,
+    phone,
+    location,
+    avatar_url: `https://api.dicebear.com/7.x/lorelei/svg?seed=${username}`,
+    onboarding_completed: false
   };
 
-  // Only include full_name if provided, but we might still hit a column error if it's missing in DB.
-  // However, full_name is very common.
-  if (fullName) profileData.full_name = fullName;
-
-  console.log('Upserting minimal profile data for:', user.id);
+  console.log('Creating profile record for:', user.id);
 
   const { error: profileError } = await supabaseAdmin
-    .from('profiles')
+    .from('user_profiles')
     .upsert(profileData);
 
   if (profileError) {
-    console.error('FULL Profile creation error:', JSON.stringify(profileError, null, 2));
-    
-    // If it's a column error, try even more minimal (just ID)
-    if (profileError.code === 'PGRST204') {
-       console.log('Retrying with ID only due to column mismatch...');
-       const { error: retryError } = await supabaseAdmin
-        .from('profiles')
-        .upsert({ id: user.id });
-       
-       if (retryError) {
-         return res.status(400).json({ error: `Table 'profiles' might be missing 'username' or doesn't exist. (${retryError.message})` });
-       }
-    } else {
-      if (profileError.code === '23505') return res.status(400).json({ error: 'Username already taken' });
-      return res.status(400).json({ error: `${profileError.message} (${profileError.code})` || 'Failed to create profile' });
-    }
+    console.error('Profile creation error:', profileError);
+    if (profileError.code === '23505') return res.status(400).json({ error: 'Username already taken' });
+    return res.status(400).json({ error: profileError.message || 'Failed to create profile' });
   }
 
-  // 3. Metadata updates via admin API are skipped as we are using ANON key.
-  // We rely on the profiles table as the source of truth.
-
-  res.json({ success: true, message: 'Profile completed successfully' });
+  res.json({ success: true, message: 'Profile created successfully' });
   } catch (err: any) {
     console.error('Unhandled error in complete-profile:', err);
     res.status(500).json({ error: err.message || 'Internal server error' });
@@ -339,9 +347,9 @@ app.post('/api/auth/complete-profile', async (req, res) => {
 
 // 4. Sign In (Email + Password)
 app.post('/api/auth/signin', signinLimiter, async (req, res) => {
-  const { email, password } = req.body;
-  console.log('Signin attempt for email:', email);
-  if (!email || !password) return res.status(400).json({ error: 'Email and password are required' });
+  const { email: rawEmail, password } = req.body;
+  if (!rawEmail || !password) return res.status(400).json({ error: 'Email and password are required' });
+  const email = rawEmail.trim().toLowerCase();
 
   try {
     // Sign in with email directly using the standard auth client
@@ -447,7 +455,7 @@ app.get('/api/auth/me', async (req, res) => {
 
   try {
     const { data: profile } = await supabaseAdmin
-      .from('profiles')
+      .from('user_profiles')
       .select('*')
       .eq('id', user.id)
       .single();
@@ -461,10 +469,10 @@ app.get('/api/auth/me', async (req, res) => {
       phone: profile.phone,
       dob: profile.dob,
       location: profile.location,
-      avatar: `https://api.dicebear.com/7.x/lorelei/svg?seed=${profile.username}`, // Fallback as avatar column is missing
-      avatarId: 1, // Fallback as avatar_id column is missing
+      avatar: profile.avatar_url || `https://api.dicebear.com/7.x/lorelei/svg?seed=${profile.username}`,
+      avatarId: profile.avatar_id || 1,
       streak: profile.streak || 0,
-      onboardingCompleted: profile.onboarding_completed ?? user.user_metadata?.onboarding_completed ?? false,
+      onboardingCompleted: profile.onboarding_completed,
       interests: profile.interests || [],
       badges: profile.badges || [],
       createdAt: profile.created_at,
@@ -482,13 +490,645 @@ app.get('/api/auth/me', async (req, res) => {
     res.json({ 
       user, 
       profile: mappedProfile, 
-      session: { 
+      session: (req as any).freshSession || { 
         access_token: req.cookies['sb-access-token'],
         refresh_token: req.cookies['sb-refresh-token']
       } 
     });
   } catch (err) {
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// --- Zettl API Implementation ---
+
+// 1. User & Friends
+app.get('/api/users/search', async (req, res) => {
+  const user = await getAuthenticatedUser(req, res);
+  if (!user) return res.status(401).json({ error: 'Not authenticated' });
+
+  const query = req.query.q as string;
+  if (!query) return res.json([]);
+
+  try {
+    const { data } = await supabaseAdmin
+      .from('user_profiles')
+      .select('id, username, full_name, avatar_url')
+      .ilike('username', `%${query}%`)
+      .neq('id', user.id)
+      .limit(10);
+    
+    res.json(data || []);
+  } catch (err) {
+    res.status(500).json({ error: 'Search failed' });
+  }
+});
+
+app.post('/api/friends/request', async (req, res) => {
+  const user = await getAuthenticatedUser(req, res);
+  if (!user) return res.status(401).json({ error: 'Not authenticated' });
+
+  const { friendId } = req.body;
+  if (!friendId) return res.status(400).json({ error: 'friendId is required' });
+
+  try {
+    const { error } = await supabaseAdmin
+      .from('friends')
+      .insert({ user_id: user.id, friend_id: friendId, status: 'pending' });
+    
+    if (error) {
+      if (error.code === '23505') return res.status(400).json({ error: 'Relationship already exists' });
+      throw error;
+    }
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Friend request failed' });
+  }
+});
+
+app.post('/api/friends/accept/:requestId', async (req, res) => {
+  const user = await getAuthenticatedUser(req, res);
+  if (!user) return res.status(401).json({ error: 'Not authenticated' });
+
+  try {
+    const { error } = await supabaseAdmin
+      .from('friends')
+      .update({ status: 'accepted' })
+      .eq('id', req.params.requestId)
+      .eq('friend_id', user.id); // Only the recipient can accept
+    
+    if (error) throw error;
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Accept failed' });
+  }
+});
+
+app.post('/api/friends/decline/:requestId', async (req, res) => {
+  const user = await getAuthenticatedUser(req, res);
+  if (!user) return res.status(401).json({ error: 'Not authenticated' });
+
+  try {
+    const { error } = await supabaseAdmin
+      .from('friends')
+      .delete()
+      .eq('id', req.params.requestId)
+      .eq('friend_id', user.id);
+    
+    if (error) throw error;
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Decline failed' });
+  }
+});
+
+app.get('/api/friends/list', async (req, res) => {
+  const user = await getAuthenticatedUser(req, res);
+  if (!user) return res.status(401).json({ error: 'Not authenticated' });
+
+  try {
+    // Relationships where I initiated
+    const { data: initiated } = await supabaseAdmin
+      .from('friends')
+      .select(`
+        id, status, created_at, friend_id,
+        user_profiles!friends_friend_id_fkey(id, username, full_name, avatar_url)
+      `)
+      .eq('user_id', user.id);
+    
+    // Relationships where I am the recipient
+    const { data: received } = await supabaseAdmin
+      .from('friends')
+      .select(`
+        id, status, created_at, user_id,
+        user_profiles!friends_user_id_fkey(id, username, full_name, avatar_url)
+      `)
+      .eq('friend_id', user.id);
+
+    const friendsList = [
+      ...(initiated || []).map(f => ({
+        ...f,
+        friend: (f as any).user_profiles,
+        type: 'outgoing'
+      })),
+      ...(received || []).map(f => ({
+        ...f,
+        friend: (f as any).user_profiles,
+        friend_id: f.user_id,
+        type: 'incoming'
+      }))
+    ];
+
+    res.json(friendsList);
+  } catch (err) {
+    res.status(500).json({ error: 'Fetch friends failed' });
+  }
+});
+
+// 2. Personal Zettl
+app.post('/api/zettl/personal', async (req, res) => {
+  const user = await getAuthenticatedUser(req, res);
+  if (!user) return res.status(401).json({ error: 'Not authenticated' });
+
+  const { friendId, amount, note, dueDate, direction } = req.body;
+  // direction: 'lent' (friend owes me) or 'borrowed' (I owe friend)
+  
+  if (!friendId || !amount) return res.status(400).json({ error: 'Missing required fields' });
+
+  const fromUserId = direction === 'lent' ? friendId : user.id;
+  const toUserId = direction === 'lent' ? user.id : friendId;
+
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('personal_zettls')
+      .insert({
+        from_user_id: fromUserId,
+        to_user_id: toUserId,
+        amount,
+        note,
+        due_date: dueDate,
+        currency: 'INR'
+      })
+      .select()
+      .single();
+    
+    if (error) throw error;
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: 'Creation failed' });
+  }
+});
+
+app.get('/api/zettl/personal/list', async (req, res) => {
+  const user = await getAuthenticatedUser(req, res);
+  if (!user) return res.status(401).json({ error: 'Not authenticated' });
+
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('personal_zettls')
+      .select(`
+        *,
+        from_profile:user_profiles!personal_zettls_from_user_id_fkey(username, full_name, avatar_url),
+        to_profile:user_profiles!personal_zettls_to_user_id_fkey(username, full_name, avatar_url)
+      `)
+      .or(`from_user_id.eq.${user.id},to_user_id.eq.${user.id}`)
+      .order('created_at', { ascending: false });
+    
+    if (error) throw error;
+    res.json(data || []);
+  } catch (err) {
+    res.status(500).json({ error: 'Fetch failed' });
+  }
+});
+
+app.get('/api/zettl/personal/balance/:friendId', async (req, res) => {
+  const user = await getAuthenticatedUser(req, res);
+  if (!user) return res.status(401).json({ error: 'Not authenticated' });
+
+  const friendId = req.params.friendId;
+
+  try {
+    // Owed to me by this friend
+    const { data: owedToMe } = await supabaseAdmin
+      .from('personal_zettls')
+      .select('amount')
+      .eq('from_user_id', friendId)
+      .eq('to_user_id', user.id)
+      .eq('is_settled', false);
+
+    // I owe to this friend
+    const { data: iOwe } = await supabaseAdmin
+      .from('personal_zettls')
+      .select('amount')
+      .eq('from_user_id', user.id)
+      .eq('to_user_id', friendId)
+      .eq('is_settled', false);
+
+    const totalOwedToMe = (owedToMe || []).reduce((acc, curr) => acc + curr.amount, 0);
+    const totalIOwe = (iOwe || []).reduce((acc, curr) => acc + curr.amount, 0);
+    const net = totalOwedToMe - totalIOwe;
+
+    res.json({
+      owed_to_me: totalOwedToMe,
+      i_owe: totalIOwe,
+      net,
+      friend_id: friendId
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Balance check failed' });
+  }
+});
+
+app.post('/api/zettl/personal/:zettlId/remind', async (req, res) => {
+  const user = await getAuthenticatedUser(req, res);
+  if (!user) return res.status(401).json({ error: 'Not authenticated' });
+
+  try {
+    const { data: zettl } = await supabaseAdmin
+      .from('personal_zettls')
+      .select('*, from_user_id, to_user_id, reminder_last_sent_at, reminder_count')
+      .eq('id', req.params.zettlId)
+      .single();
+
+    if (!zettl) return res.status(404).json({ error: 'Zettl not found' });
+    if (zettl.to_user_id !== user.id) return res.status(403).json({ error: 'Only the payee can remind' });
+
+    // Throttling: Max 1 every 24 hours, max 10 total
+    const oneDayAgo = new Date();
+    oneDayAgo.setDate(oneDayAgo.getDate() - 1);
+
+    if (zettl.reminder_last_sent_at && new Date(zettl.reminder_last_sent_at) > oneDayAgo) {
+      return res.status(429).json({ error: 'Reminder sent recently. Please wait 24 hours.' });
+    }
+    if (zettl.reminder_count >= 10) {
+      return res.status(400).json({ error: 'Maximum reminders reached for this Zettl' });
+    }
+
+    await supabaseAdmin
+      .from('personal_zettls')
+      .update({ 
+        reminder_last_sent_at: new Date().toISOString(),
+        reminder_count: (zettl.reminder_count || 0) + 1
+      })
+      .eq('id', zettl.id);
+
+    await supabaseAdmin
+      .from('zettl_reminders_log')
+      .insert({
+        zettl_id: zettl.id,
+        reminded_to_user_id: zettl.from_user_id,
+        reminder_type: 'manual'
+      });
+
+    res.json({ success: true, message: 'Reminder sent!' });
+  } catch (err) {
+    res.status(500).json({ error: 'Reminder failed' });
+  }
+});
+
+app.put('/api/zettl/personal/:zettlId/settle', async (req, res) => {
+  const user = await getAuthenticatedUser(req, res);
+  if (!user) return res.status(401).json({ error: 'Not authenticated' });
+
+  try {
+    // Both parties can mark as settled or confirm? Let's say only payee can confirm standard settlement
+    // or both for peer-to-peer trust
+    const { error } = await supabaseAdmin
+      .from('personal_zettls')
+      .update({ is_settled: true, settled_at: new Date().toISOString() })
+      .eq('id', req.params.zettlId)
+      .or(`from_user_id.eq.${user.id},to_user_id.eq.${user.id}`);
+    
+    if (error) throw error;
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Settlement failed' });
+  }
+});
+
+app.delete('/api/zettl/personal/:zettlId', async (req, res) => {
+  const user = await getAuthenticatedUser(req, res);
+  if (!user) return res.status(401).json({ error: 'Not authenticated' });
+
+  try {
+    const { data: zettl } = await supabaseAdmin
+      .from('personal_zettls')
+      .select('is_settled, from_user_id, to_user_id')
+      .eq('id', req.params.zettlId)
+      .single();
+
+    if (!zettl) return res.status(404).json({ error: 'Not found' });
+    if (zettl.is_settled) return res.status(400).json({ error: 'Cannot delete settled Zettl' });
+    
+    const { error } = await supabaseAdmin
+      .from('personal_zettls')
+      .delete()
+      .eq('id', req.params.zettlId)
+      .or(`from_user_id.eq.${user.id},to_user_id.eq.${user.id}`);
+    
+    if (error) throw error;
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Deletions failed' });
+  }
+});
+
+// 3. Groups
+app.post('/api/zettl/groups', async (req, res) => {
+  const user = await getAuthenticatedUser(req, res);
+  if (!user) return res.status(401).json({ error: 'Not authenticated' });
+
+  const { name, avatarUrl, memberIds } = req.body;
+  if (!name) return res.status(400).json({ error: 'Group name required' });
+
+  try {
+    const { data: group, error } = await supabaseAdmin
+      .from('zettl_groups')
+      .insert({ name, avatar_url: avatarUrl, created_by_user_id: user.id })
+      .select()
+      .single();
+    
+    if (error) throw error;
+
+    // Add creator and requested members
+    const uniqueIds = [...new Set([user.id, ...(memberIds || [])])];
+    const members = uniqueIds.map(mId => ({
+      group_id: group.id,
+      user_id: mId
+    }));
+
+    await supabaseAdmin.from('zettl_group_members').insert(members);
+    
+    res.json(group);
+  } catch (err) {
+    res.status(500).json({ error: 'Group creation failed' });
+  }
+});
+
+app.get('/api/zettl/groups/my', async (req, res) => {
+  const user = await getAuthenticatedUser(req, res);
+  if (!user) return res.status(401).json({ error: 'Not authenticated' });
+
+  try {
+    // Find group IDs where I'm a member
+    const { data: memberOf } = await supabaseAdmin
+      .from('zettl_group_members')
+      .select('group_id')
+      .eq('user_id', user.id);
+    
+    if (!memberOf || memberOf.length === 0) return res.json([]);
+
+    const groupIds = memberOf.map(m => m.group_id);
+
+    const { data: groups } = await supabaseAdmin
+      .from('zettl_groups')
+      .select(`
+        *,
+        members:zettl_group_members(
+          id, user_id, joined_at,
+          user_profiles(username, full_name, avatar_url)
+        )
+      `)
+      .in('id', groupIds);
+    
+    res.json(groups || []);
+  } catch (err) {
+    res.status(500).json({ error: 'Fetch groups failed' });
+  }
+});
+
+app.post('/api/zettl/groups/:groupId/members', async (req, res) => {
+  const user = await getAuthenticatedUser(req, res);
+  if (!user) return res.status(401).json({ error: 'Not authenticated' });
+
+  const { memberIds } = req.body;
+  if (!Array.isArray(memberIds)) return res.status(400).json({ error: 'memberIds array required' });
+
+  try {
+    const members = memberIds.map(mId => ({
+      group_id: req.params.groupId,
+      user_id: mId
+    }));
+
+    const { error } = await supabaseAdmin.from('zettl_group_members').insert(members);
+    if (error && error.code !== '23505') throw error; // Ignore duplicates
+    
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Adding members failed' });
+  }
+});
+
+app.get('/api/zettl/groups/:groupId/summary', async (req, res) => {
+  const user = await getAuthenticatedUser(req, res);
+  if (!user) return res.status(401).json({ error: 'Not authenticated' });
+
+  try {
+    // Get total paid vs total owed per member
+    const { data: expenses } = await supabaseAdmin
+      .from('zettl_group_expenses')
+      .select('id, paid_by_user_id, total_amount')
+      .eq('group_id', req.params.groupId);
+
+    const { data: splits } = await supabaseAdmin
+      .from('zettl_expense_splits')
+      .select('expense_id, user_id, amount_owed, is_settled')
+      .in('expense_id', (expenses || []).map(e => e.id));
+
+    // Simple summary calculation
+    const balances: Record<string, number> = {};
+    
+    expenses?.forEach(e => {
+      balances[e.paid_by_user_id] = (balances[e.paid_by_user_id] || 0) + e.total_amount;
+    });
+
+    splits?.forEach(s => {
+      balances[s.user_id] = (balances[s.user_id] || 0) - s.amount_owed;
+    });
+
+    res.json({ balances });
+  } catch (err) {
+    res.status(500).json({ error: 'Summary failed' });
+  }
+});
+
+// 4. Group Zettl (expenses)
+app.post('/api/zettl/groups/:groupId/expense', async (req, res) => {
+  const user = await getAuthenticatedUser(req, res);
+  if (!user) return res.status(401).json({ error: 'Not authenticated' });
+
+  const { amount, description, splits } = req.body;
+  // splits: Array of { userId, amountOwed }
+
+  try {
+    const { data: expense, error } = await supabaseAdmin
+      .from('zettl_group_expenses')
+      .insert({
+        group_id: req.params.groupId,
+        paid_by_user_id: user.id,
+        total_amount: amount,
+        description
+      })
+      .select()
+      .single();
+    
+    if (error) throw error;
+
+    const splitData = splits.map((s: any) => ({
+      expense_id: expense.id,
+      user_id: s.userId,
+      amount_owed: s.amountOwed
+    }));
+
+    await supabaseAdmin.from('zettl_expense_splits').insert(splitData);
+    
+    res.json(expense);
+  } catch (err) {
+    res.status(500).json({ error: 'Expense creation failed' });
+  }
+});
+
+app.get('/api/zettl/groups/:groupId/expenses', async (req, res) => {
+  const user = await getAuthenticatedUser(req, res);
+  if (!user) return res.status(401).json({ error: 'Not authenticated' });
+
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('zettl_group_expenses')
+      .select(`
+        *,
+        paid_by_profile:user_profiles!zettl_group_expenses_paid_by_user_id_fkey(username, full_name, avatar_url),
+        splits:zettl_expense_splits(
+          id, user_id, amount_owed, is_settled, settled_at,
+          user_profile:user_profiles(username, full_name, avatar_url)
+        )
+      `)
+      .eq('group_id', req.params.groupId)
+      .order('created_at', { ascending: false });
+    
+    if (error) throw error;
+    res.json(data || []);
+  } catch (err) {
+    res.status(500).json({ error: 'Fetch expenses failed' });
+  }
+});
+
+app.post('/api/zettl/groups/expense/:expenseId/settle/:userId', async (req, res) => {
+  const user = await getAuthenticatedUser(req, res);
+  if (!user) return res.status(401).json({ error: 'Not authenticated' });
+
+  try {
+    const { error } = await supabaseAdmin
+      .from('zettl_expense_splits')
+      .update({ is_settled: true, settled_at: new Date().toISOString() })
+      .eq('expense_id', req.params.expenseId)
+      .eq('user_id', req.params.userId);
+    
+    if (error) throw error;
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Group settlement failed' });
+  }
+});
+
+// 5. Dashboard
+app.get('/api/zettl/dashboard', async (req, res) => {
+  const user = await getAuthenticatedUser(req, res);
+  if (!user) return res.status(401).json({ error: 'Not authenticated' });
+
+  try {
+    // 1. Personal Debts
+    const { data: lent } = await supabaseAdmin
+      .from('personal_zettls')
+      .select('amount')
+      .eq('to_user_id', user.id)
+      .eq('is_settled', false);
+    
+    const { data: borrowed } = await supabaseAdmin
+      .from('personal_zettls')
+      .select('amount')
+      .eq('from_user_id', user.id)
+      .eq('is_settled', false);
+
+    const personalOwedToMe = (lent || []).reduce((acc, curr) => acc + curr.amount, 0);
+    const personalIOwe = (borrowed || []).reduce((acc, curr) => acc + curr.amount, 0);
+
+    // 2. Group Debts (Splits)
+    // Splits I owe (where user_id = me)
+    const { data: groupIOweData } = await supabaseAdmin
+      .from('zettl_expense_splits')
+      .select('amount_owed')
+      .eq('user_id', user.id)
+      .eq('is_settled', false);
+    
+    const groupIOwe = (groupIOweData || []).reduce((acc, curr) => acc + curr.amount_owed, 0);
+
+    // Splits owed to me (where expense was paid by me and split user_id != me)
+    const { data: groupOwedToMeData } = await supabaseAdmin
+      .from('zettl_group_expenses')
+      .select('id')
+      .eq('paid_by_user_id', user.id);
+    
+    const myExpenseIds = (groupOwedToMeData || []).map(e => e.id);
+    const { data: owedToMeSplits } = await supabaseAdmin
+      .from('zettl_expense_splits')
+      .select('amount_owed')
+      .in('expense_id', myExpenseIds)
+      .neq('user_id', user.id)
+      .eq('is_settled', false);
+
+    const groupOwedToMe = (owedToMeSplits || []).reduce((acc, curr) => acc + curr.amount_owed, 0);
+
+    const totalOwedToMe = personalOwedToMe + groupOwedToMe;
+    const totalIOwe = personalIOwe + groupIOwe;
+
+    // Recent Activity
+    const { data: recentPersonal } = await supabaseAdmin
+      .from('personal_zettls')
+      .select(`
+        *,
+        from_profile:user_profiles!personal_zettls_from_user_id_fkey(username, full_name, avatar_url),
+        to_profile:user_profiles!personal_zettls_to_user_id_fkey(username, full_name, avatar_url)
+      `)
+      .or(`from_user_id.eq.${user.id},to_user_id.eq.${user.id}`)
+      .limit(5)
+      .order('created_at', { ascending: false });
+
+    res.json({
+      total_owed_to_me: totalOwedToMe,
+      total_i_owe: totalIOwe,
+      net: totalOwedToMe - totalIOwe,
+      recent_activity: recentPersonal || []
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Dashboard failed' });
+  }
+});
+
+// 6. Reminder Settings
+app.get('/api/zettl/settings/reminders', async (req, res) => {
+  const user = await getAuthenticatedUser(req, res);
+  if (!user) return res.status(401).json({ error: 'Not authenticated' });
+
+  try {
+    const { data } = await supabaseAdmin
+      .from('user_profiles')
+      .select('preferences')
+      .eq('id', user.id)
+      .single();
+    
+    res.json(data?.preferences?.reminders || { enabled: false, time: '20:00', frequency: 'daily' });
+  } catch (err) {
+    res.status(500).json({ error: 'Settings fetch failed' });
+  }
+});
+
+app.put('/api/zettl/settings/reminders', async (req, res) => {
+  const user = await getAuthenticatedUser(req, res);
+  if (!user) return res.status(401).json({ error: 'Not authenticated' });
+
+  const { enabled, time, frequency } = req.body;
+
+  try {
+    const { data: profile } = await supabaseAdmin
+      .from('user_profiles')
+      .select('preferences')
+      .eq('id', user.id)
+      .single();
+
+    const newPrefs = {
+      ...(profile?.preferences || {}),
+      reminders: { enabled, time, frequency }
+    };
+
+    await supabaseAdmin
+      .from('user_profiles')
+      .update({ preferences: newPrefs })
+      .eq('id', user.id);
+    
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Settings update failed' });
   }
 });
 

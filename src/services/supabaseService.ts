@@ -21,37 +21,15 @@ export const supabaseService = {
     if (updates.phone) dbUpdates.phone = updates.phone;
     if (updates.dob) dbUpdates.dob = updates.dob;
     if (updates.location) dbUpdates.location = updates.location;
-    if (updates.xp !== undefined) dbUpdates.xp = updates.xp;
-    if (updates.level !== undefined) dbUpdates.level = updates.level;
-    if (updates.streak !== undefined) dbUpdates.streak = updates.streak;
-    if (updates.interests) dbUpdates.interests = updates.interests;
-    if (updates.badges) dbUpdates.badges = updates.badges;
-    if (updates.lastLoginDate) dbUpdates.last_login_date = updates.lastLoginDate;
-    if (updates.preferences) dbUpdates.preferences = updates.preferences;
-    if (updates.streakFreezeCount !== undefined) dbUpdates.streak_freeze_count = updates.streakFreezeCount;
-    // avatar_id and avatar are omitted as requested because they are missing in the schema
+    if (updates.avatar) dbUpdates.avatar_url = updates.avatar;
+    if (updates.avatarId) dbUpdates.avatar_id = updates.avatarId;
+    if (updates.onboardingCompleted !== undefined) dbUpdates.onboarding_completed = updates.onboardingCompleted;
 
-    // Try a safe update: if it fails due to missing columns, we try to update what we can
-    // This is more complex for a single upsert, but we can catch the error and suggest fixes
     const { data, error } = await supabase
-      .from('profiles')
+      .from('user_profiles')
       .upsert(dbUpdates)
       .select()
       .single();
-
-    if (error && error.code === 'PGRST204') {
-       console.warn('Update failed due to missing columns. Attempting minimal update for essential fields.', error.message);
-       // Retry with just common fields
-       const minimalUpdates: any = { id: userId };
-       if (updates.username) minimalUpdates.username = updates.username;
-       if (updates.fullName) minimalUpdates.full_name = updates.fullName;
-       
-       return await supabase
-         .from('profiles')
-         .upsert(minimalUpdates)
-         .select()
-         .single();
-    }
 
     return { data, error };
   },
@@ -59,7 +37,7 @@ export const supabaseService = {
   async getProfile(userId: string) {
     await this.ensureSession();
     const { data, error } = await supabase
-      .from('profiles')
+      .from('user_profiles')
       .select('*')
       .eq('id', userId)
       .single();
@@ -70,21 +48,21 @@ export const supabaseService = {
         id: data.id,
         fullName: data.full_name,
         username: data.username,
-        email: data.email || '', // Fallback if missing
+        email: data.email || '',
         phone: data.phone,
         dob: data.dob,
         location: data.location,
-        avatar: `https://api.dicebear.com/7.x/lorelei/svg?seed=${data.username}`, // Fallback as avatar column is missing
-        avatarId: 1, // Fallback as avatar_id column is missing
-        streak: data.streak,
-        onboardingCompleted: data.onboarding_completed ?? true, // Default to true if missing in DB
+        avatar: data.avatar_url || `https://api.dicebear.com/7.x/lorelei/svg?seed=${data.username}`,
+        avatarId: data.avatar_id,
+        streak: data.streak || 0,
+        onboardingCompleted: data.onboarding_completed,
         interests: data.interests || [],
         badges: data.badges || [],
         createdAt: data.created_at,
         lastLoginDate: data.last_login_date,
-        streakFreezeCount: data.streak_freeze_count,
-        xp: data.xp,
-        level: data.level,
+        streakFreezeCount: data.streak_freeze_count || 0,
+        xp: data.xp || 0,
+        level: data.level || 1,
         preferences: data.preferences
       };
       return { data: user, error };
@@ -137,6 +115,31 @@ export const supabaseService = {
 
     const { data, error } = await supabase
       .from('solo_goals')
+      .upsert(dbGoal)
+      .select()
+      .single();
+    return { data, error };
+  },
+
+  async saveEmergencyGoal(goal: any) {
+    await this.ensureSession();
+    const dbGoal: any = {
+      id: goal.id,
+      user_id: goal.userId,
+      name: goal.name,
+      target_amount: goal.targetAmount,
+      current_amount: goal.currentAmount,
+      deadline: goal.deadline,
+      category: goal.category,
+      frequency: goal.frequency,
+      created_at: goal.createdAt,
+      completed: goal.completed,
+      completed_at: goal.completedAt,
+      routine_amount: goal.routineAmount
+    };
+
+    const { data, error } = await supabase
+      .from('emergency_goals') 
       .upsert(dbGoal)
       .select()
       .single();
@@ -253,6 +256,83 @@ export const supabaseService = {
       .select()
       .single();
     return { data, error };
+  },
+
+  async deleteGroupGoal(goalId: string) {
+    await this.ensureSession();
+    // 1. Delete transactions
+    await supabase.from('transactions').delete().eq('goal_id', goalId);
+    // 2. Delete the goal (cascades or manual member cleanup)
+    const { error } = await supabase.from('group_goals').delete().eq('id', goalId);
+    return { error };
+  },
+
+  async leaveGroup(goalId: string, userId: string) {
+    await this.ensureSession();
+    // 1. Fetch current goal state
+    const { data: goal } = await supabase.from('group_goals').select('*').eq('id', goalId).single();
+    if (!goal) throw new Error('Goal not found');
+
+    // 2. Update members array (JSONB)
+    const updatedMembers = goal.members.filter((m: any) => m.userId !== userId);
+    const { error } = await supabase
+      .from('group_goals')
+      .update({ members: updatedMembers })
+      .eq('id', goalId);
+
+    // 3. Remove from junction table if exists
+    await supabase.from('group_goal_members').delete().eq('goal_id', goalId).eq('user_id', userId);
+
+    return { error };
+  },
+
+  async transferAdminRole(goalId: string, newAdminId: string) {
+    await this.ensureSession();
+    const { error } = await supabase
+      .from('group_goals')
+      .update({ creator_id: newAdminId })
+      .eq('id', goalId);
+    return { error };
+  },
+
+  async deleteTransaction(transactionId: string) {
+    await this.ensureSession();
+    // 1. Get info
+    const { data: tx } = await supabase.from('transactions').select('*').eq('id', transactionId).single();
+    if (!tx) throw new Error('Transaction not found');
+
+    const { amount, type, goal_id, goal_type } = tx;
+
+    // 2. Update balance
+    const table = goal_type === 'solo' ? 'solo_goals' : goal_type === 'group' ? 'group_goals' : 'emergency_goals';
+    const field = goal_type === 'group' ? 'total_collected' : 'current_amount';
+
+    const { data: goal } = await supabase.from(table).select(field).eq('id', goal_id).single();
+    if (goal) {
+      const adjustment = type === 'deposit' ? -amount : amount;
+      await supabase.from(table).update({ [field]: goal[field] + adjustment }).eq('id', goal_id);
+    }
+
+    // 3. Delete
+    const { error } = await supabase.from('transactions').delete().eq('id', transactionId);
+    return { error };
+  },
+
+  async clearAllTransactions(userId: string) {
+    await this.ensureSession();
+    // 1. Delete all transactions
+    const { error } = await supabase.from('transactions').delete().eq('user_id', userId);
+    if (error) return { error };
+
+    // 2. Reset balances
+    await supabase.from('solo_goals').update({ current_amount: 0 }).eq('user_id', userId);
+    await supabase.from('emergency_goals').update({ current_amount: 0 }).eq('user_id', userId);
+    
+    // For group goals, we usually only reset the specific creator's collected if we want to be aggressive,
+    // but the user said "reset all goal balances to zero".
+    await supabase.from('group_goals').update({ total_collected: 0 }).eq('creator_id', userId);
+
+    return { error: null };
   },
 
   // Notifications

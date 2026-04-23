@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
-import { AVATARS } from '../constants';
+import { AVATARS_50 } from '../constants/avatars';
 
 const CATEGORIES = [
   { id: 'travel', label: 'Travel', icon: '✈️' },
@@ -33,7 +33,7 @@ export default function Onboarding() {
   const { currentUser, updateUser, resetWeeklyChallenge } = useStore();
 
   const [data, setData] = useState({
-    avatar: AVATARS[0],
+    avatar: AVATARS_50[0],
     interests: [] as string[],
   });
 
@@ -46,16 +46,23 @@ export default function Onboarding() {
     else handleFinish();
   };
 
-  const handleFinish = () => {
-    updateUser({
+  const handleFinish = async () => {
+    console.log('[DEBUG] Completing onboarding flow...');
+    
+    // Update local store AND DB (Await both for consistency)
+    await updateUser({
       avatar: data.avatar.url,
       avatarId: data.avatar.id,
       interests: data.interests,
       onboardingCompleted: true,
     });
+
     resetWeeklyChallenge();
     toast.success('Onboarding complete!');
-    navigate('/home');
+    
+    // Use navigate for soft-navigation to prevent state loss
+    console.log('[DEBUG] Navigating to /home from onboarding');
+    navigate('/home', { replace: true });
   };
 
   const toggleInterest = (id: string) => {
@@ -97,20 +104,22 @@ export default function Onboarding() {
                 <h2 className="text-3xl font-bold mb-2">Choose your avatar</h2>
                 <p className="opacity-40">Pick a character that represents you</p>
               </div>
-              <div className="grid grid-cols-4 gap-4">
-                {AVATARS.slice(0, 12).map((avatar) => (
+              <div className="grid grid-cols-4 gap-4 h-[400px] overflow-y-auto pr-2 custom-scrollbar pb-4">
+                {AVATARS_50.map((avatar) => (
                   <button
                     key={avatar.id}
                     onClick={() => setData({ ...data, avatar })}
                     className={cn(
-                      "relative aspect-square rounded-2xl overflow-hidden clay-card border-2 transition-all",
-                      data.avatar.id === avatar.id ? "border-[#FF6B6B] scale-105" : "border-transparent"
+                      "relative aspect-square rounded-2xl overflow-hidden clay-card border-2 transition-all active:scale-95",
+                      data.avatar.id === avatar.id ? "border-[#FF6B6B] scale-105 shadow-xl" : "border-transparent"
                     )}
                   >
-                    <img src={avatar.url} alt={avatar.name} className="w-full h-full object-cover p-2" />
+                    <img src={avatar.url} alt={avatar.id} className="w-full h-full object-cover p-2" referrerPolicy="no-referrer" />
                     {data.avatar.id === avatar.id && (
-                      <div className="absolute inset-0 bg-[#FF6B6B]/10 flex items-center justify-center">
-                        <Check className="text-[#FF6B6B]" size={20} />
+                      <div className="absolute inset-0 bg-[#FF6B6B]/10 flex items-center justify-center backdrop-blur-[1px]">
+                        <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center">
+                          <Check className="text-[#FF6B6B]" size={16} strokeWidth={4} />
+                        </div>
                       </div>
                     )}
                   </button>

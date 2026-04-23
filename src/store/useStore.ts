@@ -9,11 +9,13 @@ import { Session } from '@supabase/supabase-js';
 import { 
   User, SoloGoal, GroupGoal, Transaction, Notification, 
   WeeklyChallenge, StreakData, Currency, Badge, EmergencyGoal,
-  Quest, FocusSession
+  Quest, FocusSession, Friend, ZettlGroup, PersonalZettl
 } from '../types';
 import { isSameDay, differenceInHours, parseISO, startOfWeek, isAfter, format } from 'date-fns';
 import { supabaseService } from '../services/supabaseService';
 import { supabase, isConfigured } from '../lib/supabase';
+import { fetchWithRetry } from '../lib/utils';
+import { setOnboardingCookie } from '../../lib/onboarding';
 
 interface AppState {
   users: User[];
@@ -26,14 +28,28 @@ interface AppState {
   notifications: Notification[];
   streakData: StreakData;
   weeklyChallenge: WeeklyChallenge | null;
-  isChatOpen: boolean;
   theme: 'light' | 'dark';
-  chatMessages: { id: string; text: string; sender: 'user' | 'ai'; timestamp: string }[];
   dailyQuests: Quest[];
   weeklyQuests: Quest[];
   focusSessions: FocusSession[];
   isAuthLoading: boolean;
   
+  // Zettl State
+  zettlFriends: Friend[];
+  zettlGroups: ZettlGroup[];
+  personalZettls: PersonalZettl[];
+  
+  // Zettl Actions
+  fetchZettlData: () => Promise<void>;
+  searchZettlUsers: (query: string) => Promise<User[]>;
+  sendFriendRequest: (friendId: string) => Promise<void>;
+  respondToFriendRequest: (requestId: string, status: 'accepted' | 'declined') => Promise<void>;
+  createZettlGroup: (name: string, memberIds: string[]) => Promise<void>;
+  createPersonalZettl: (data: { friendId: string, amount: number, note: string, dueDate?: string, direction: 'lent' | 'borrowed' }) => Promise<void>;
+  settleZettl: (id: string) => Promise<void>;
+  remindZettl: (id: string) => Promise<void>;
+  addGroupExpense: (data: { groupId: string, amount: number, description: string, splits: { userId: string, amountOwed: number }[] }) => Promise<void>;
+
   // Auth Actions
   setCurrentUser: (user: User | null) => void;
   setSession: (session: Session | null) => void;
@@ -53,13 +69,17 @@ interface AppState {
   deleteEmergencyGoal: (id: string) => void;
   addGroupGoal: (goal: GroupGoal) => void;
   updateGroupGoal: (id: string, updates: Partial<GroupGoal>) => void;
+  deleteGroupGoal: (id: string) => Promise<void>;
   joinGroupGoal: (groupId: string, password?: string) => { success: boolean; message: string };
-  leaveGroupGoal: (id: string) => void;
+  leaveGroupGoal: (id: string) => Promise<void>;
+  transferAdminRole: (goalId: string, userId: string) => Promise<void>;
   removeGroupMember: (goalId: string, userId: string) => void;
   
   // Transaction & Contribution
   addContribution: (goalId: string, amount: number, type: 'solo' | 'group' | 'emergency') => void;
   withdrawMoney: (goalId: string, amount: number, type: 'solo' | 'group' | 'emergency') => void;
+  deleteTransaction: (id: string) => Promise<void>;
+  clearAllHistory: () => Promise<void>;
   
   // Notification Actions
   addNotification: (notification: Omit<Notification, 'id' | 'timestamp' | 'read'>) => void;
@@ -69,8 +89,6 @@ interface AppState {
   
   // Streak & Badges
   checkStreak: () => void;
-  setIsChatOpen: (isOpen: boolean) => void;
-  sendChatMessage: (text: string) => void;
   
   // Weekly Challenge
   resetWeeklyChallenge: () => void;
@@ -81,6 +99,7 @@ interface AppState {
   triggerMotivation: () => void;
   refreshData: () => Promise<void>;
   nudgeGroup: (goalId: string) => void;
+  clearGoalHistory: (goalId: string, type: 'solo' | 'group' | 'emergency') => Promise<void>;
   
   // New Gaming Actions
   addXP: (amount: number) => void;
@@ -116,16 +135,7 @@ export const useStore = create<AppState>()(
         multiplier: 1.0,
       },
       weeklyChallenge: null,
-      isChatOpen: false,
       theme: 'dark',
-      chatMessages: [
-        {
-          id: '1',
-          text: "Hi! I'm Zavr, your financial assistant. How can I help you with your budget or salary splitting today?",
-          sender: 'ai',
-          timestamp: new Date().toISOString(),
-        }
-      ],
       dailyQuests: [
         { id: 'd1', title: 'Daily Login', description: 'Log in today', target: 1, progress: 0, rewardXP: 25, type: 'daily', completed: false },
         { id: 'd2', title: 'Bell Ringer', description: 'Click notification bell 3 times', target: 3, progress: 0, rewardXP: 15, type: 'daily', completed: false },
@@ -139,6 +149,138 @@ export const useStore = create<AppState>()(
       ],
       focusSessions: [],
       isAuthLoading: true,
+      
+      // Zettl Initial State
+      zettlFriends: [],
+      zettlGroups: [],
+      personalZettls: [],
+
+      // Zettl Actions
+      fetchZettlData: async () => {
+        try {
+          const [friends, groups, zettls, dashboard] = await Promise.all([
+            fetchWithRetry('/api/friends/list', { credentials: 'include' }).then(r => r.json()),
+            fetchWithRetry('/api/zettl/groups/my', { credentials: 'include' }).then(r => r.json()),
+            fetchWithRetry('/api/zettl/personal/list', { credentials: 'include' }).then(r => r.json()),
+            fetchWithRetry('/api/zettl/dashboard', { credentials: 'include' }).then(r => r.json())
+          ]);
+          
+          set({ 
+            zettlFriends: friends.map((f: any) => ({
+              id: f.id,
+              userId: f.user_id,
+              friendId: f.friend_id,
+              friendUsername: f.friend.username,
+              friendFullName: f.friend.full_name,
+              friendAvatar: f.friend.avatar_url,
+              status: f.status,
+              createdAt: f.created_at,
+              type: f.type
+            })),
+            zettlGroups: groups.map((g: any) => ({
+              ...g,
+              memberCount: g.members?.length || 0,
+              myBalance: 0 // Will be calculated by summary if needed
+            })),
+            personalZettls: zettls.map((z: any) => ({
+              id: z.id,
+              fromUserId: z.from_user_id,
+              toUserId: z.to_user_id,
+              fromUsername: z.from_profile.username,
+              toUsername: z.to_profile.username,
+              amount: z.amount,
+              currency: z.currency,
+              note: z.note,
+              createdAt: z.created_at,
+              dueDate: z.due_date,
+              isSettled: z.is_settled,
+              settledAt: z.settled_at,
+              reminderLastSentAt: z.reminder_last_sent_at,
+              reminderCount: z.reminder_count
+            }))
+          });
+        } catch (err) {
+          console.error('Fetch Zettl data failed:', err);
+        }
+      },
+
+      searchZettlUsers: async (query) => {
+        try {
+          const res = await fetchWithRetry(`/api/users/search?q=${query}`, { credentials: 'include' });
+          return await res.json();
+        } catch (err) {
+          return [];
+        }
+      },
+
+      sendFriendRequest: async (friendId) => {
+        await fetchWithRetry('/api/friends/request', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ friendId }),
+          credentials: 'include'
+        });
+        await get().fetchZettlData();
+      },
+
+      respondToFriendRequest: async (requestId, status) => {
+        const path = status === 'accepted' ? `/api/friends/accept/${requestId}` : `/api/friends/decline/${requestId}`;
+        await fetchWithRetry(path, {
+          method: 'POST',
+          credentials: 'include'
+        });
+        await get().fetchZettlData();
+      },
+
+      createZettlGroup: async (name, memberIds) => {
+        await fetchWithRetry('/api/zettl/groups', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, memberIds }),
+          credentials: 'include'
+        });
+        await get().fetchZettlData();
+      },
+
+      createPersonalZettl: async (data) => {
+        await fetchWithRetry('/api/zettl/personal', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data),
+          credentials: 'include'
+        });
+        await get().fetchZettlData();
+      },
+
+      settleZettl: async (id) => {
+        await fetchWithRetry(`/api/zettl/personal/${id}/settle`, {
+          method: 'PUT',
+          credentials: 'include'
+        });
+        await get().fetchZettlData();
+      },
+
+      remindZettl: async (id) => {
+        const res = await fetchWithRetry(`/api/zettl/personal/${id}/remind`, {
+          method: 'POST',
+          credentials: 'include'
+        });
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error);
+        }
+        await get().fetchZettlData();
+      },
+
+      addGroupExpense: async (data) => {
+        await fetchWithRetry(`/api/zettl/groups/${data.groupId}/expense`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data),
+          credentials: 'include'
+        });
+        await get().fetchZettlData();
+      },
 
       setCurrentUser: (user) => {
         set({ currentUser: user });
@@ -159,47 +301,36 @@ export const useStore = create<AppState>()(
         set({ isAuthLoading: true });
         console.log('Checking authentication status...');
         
-        const fetchWithRetry = async (retries = 5, delay = 1500): Promise<Response> => {
-          try {
-            const response = await fetch('/api/auth/me', { 
-              credentials: 'include',
-              headers: {
-                'Accept': 'application/json',
-                'Cache-Control': 'no-cache'
-              }
-            });
-            return response;
-          } catch (error: any) {
-            const isNetworkError = error.message === 'Failed to fetch' || 
-                                 error.name === 'TypeError' || 
-                                 error.message.includes('NetworkError');
-            
-            if (retries > 0 && isNetworkError) {
-              await new Promise(resolve => setTimeout(resolve, delay));
-              return fetchWithRetry(retries - 1, delay * 1.5);
-            }
-            throw error;
-          }
-        };
-
         try {
-          const response = await fetchWithRetry();
+          const response = await fetchWithRetry('/api/auth/me', { 
+            credentials: 'include',
+            headers: {
+              'Accept': 'application/json',
+              'Cache-Control': 'no-cache'
+            }
+          }, 2, 800); // Fewer retries, faster delay for auth check
+          
           if (response.ok) {
             const data = await response.json();
-            const { profile, session, user } = data;
-            
-            if (session && session.access_token && session.refresh_token) {
-              try {
-                if (isConfigured) {
-                  await supabase.auth.setSession(session);
-                }
-              } catch (sessErr) {
-                console.error('Error synchronizing Supabase session:', sessErr);
-              }
-            }
+            const { profile, session } = data;
             
             if (profile) {
               set({ currentUser: profile });
+            }
+            
+            // Sync session from cookies to client SDK
+            if (session && session.access_token) {
+              const currentSession = get().session;
+              if (!currentSession || currentSession.access_token !== session.access_token) {
+                console.log('[AUTH] Syncing session to Supabase client...');
+                await supabase.auth.setSession(session);
+                set({ session });
+              }
+            } else if (!session && get().session) {
+              // Server says no session but we thought we had one
+              console.warn('[AUTH] Session lost on server, clearing client state.');
+              await supabase.auth.signOut();
+              set({ currentUser: null, session: null });
             }
           } else {
             set({ currentUser: null });
@@ -215,9 +346,9 @@ export const useStore = create<AppState>()(
       signOut: async () => {
         console.log('Starting signOut process...');
         try {
-          await fetch('/api/auth/signout', { method: 'POST', credentials: 'include' });
+          await fetchWithRetry('/api/auth/signout', { method: 'POST', credentials: 'include' });
           await supabase.auth.signOut();
-          set({ currentUser: null });
+          set({ currentUser: null, session: null });
         } catch (error) {
           console.error('Sign out failed:', error);
           set({ currentUser: null });
@@ -230,32 +361,43 @@ export const useStore = create<AppState>()(
           return;
         }
 
+        // REQUIREMENT 5: SINGLE global guard variable (lock mechanism)
+        if ((window as any).__supabaseInitialAuthHandled) return;
+        (window as any).__supabaseInitialAuthHandled = true;
+
         try {
-          // 1. Initial check
-          const { data: { session: initialSession } } = await supabase.auth.getSession();
-          set({ session: initialSession });
+          // REQUIREMENT 4: getSession() called only ONCE on app startup
+          const { data: { session } } = await supabase.auth.getSession();
           
-          if (initialSession) {
+          if (session) {
+            set({ session });
+            // Load user profile
             await get().checkAuth(true);
           } else {
-            set({ isAuthLoading: false });
+            // Even without session, check if cookies might have one
+            await get().checkAuth(true);
           }
         } catch (err) {
-          console.error('Initial session check failed:', err);
+          console.error('Initial auth setup failed:', err);
           set({ isAuthLoading: false });
         }
 
-        // 2. Listen for changes
+        // REQUIREMENT 3: Implement a SINGLE global auth state listener
+        // Guarded by the __supabaseInitialAuthHandled check above
         supabase.auth.onAuthStateChange(async (event, session) => {
-          console.log(`Auth state changed: ${event}`, session?.user?.id);
-          set({ session });
+          console.log(`[AUTH] Global Update: ${event}`, session?.user?.id);
           
-          if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+          // Only update session in store if it has specifically changed
+          const currentSession = get().session;
+          if (session?.access_token !== currentSession?.access_token) {
+            set({ session });
+          }
+          
+          if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
             if (session) {
-              if (!get().currentUser) {
+              // Only fetch profile if we don't have it, or it's a critical change
+              if (!get().currentUser || event === 'SIGNED_IN') {
                 await get().checkAuth();
-              } else {
-                get().refreshData();
               }
             }
           } else if (event === 'SIGNED_OUT') {
@@ -273,13 +415,14 @@ export const useStore = create<AppState>()(
         const state = get();
         if (!state.currentUser) return;
         
+        console.log('[STORE] Updating user profile with:', updates);
         const updatedUser = { ...state.currentUser, ...updates };
         
         // Level up logic - every 500 XP
         let newLevel = updatedUser.level;
-        const xpForNextLevel = newLevel * 500;
+        const xpForNextLevel = (newLevel || 1) * 500;
         if (updatedUser.xp >= xpForNextLevel) {
-          newLevel += 1;
+          newLevel = (newLevel || 1) + 1;
           get().addNotification({
             userId: updatedUser.id,
             title: 'Level Up!',
@@ -291,12 +434,30 @@ export const useStore = create<AppState>()(
         }
 
         const finalUser = { ...updatedUser, level: newLevel };
+        
+        // SYNC COOKIE IF ONBOARDING COMPLETED
+        if (updates.onboardingCompleted === true) {
+          console.log('[STORE] Onboarding complete detected. Syncing cookies for middleware.');
+          setOnboardingCookie(finalUser.avatarId || '1');
+        }
+
         set({
           currentUser: finalUser,
           users: state.users.map(u => u.id === finalUser.id ? finalUser : u)
         });
 
-        await supabaseService.updateProfile(finalUser.id, finalUser);
+        const { error } = await supabaseService.updateProfile(finalUser.id, finalUser);
+        if (error) {
+          console.error('[STORE] Remote sync failed, but local state preserved:', error);
+        }
+      },
+
+      // Escape hatch: Force completion if UI gets stuck
+      forceCompleteOnboarding: () => {
+        const state = get();
+        if (!state.currentUser) return;
+        console.warn('[ESCAPE HATCH] Forcing onboarding completion');
+        state.updateUser({ onboardingCompleted: true });
       },
 
       setTheme: (theme) => {
@@ -358,6 +519,14 @@ export const useStore = create<AppState>()(
         }
       },
 
+      deleteGroupGoal: async (id) => {
+        set((state) => ({
+          groupGoals: state.groupGoals.filter(g => g.id !== id)
+        }));
+        await supabaseService.deleteGroupGoal(id);
+        await get().refreshData();
+      },
+
       joinGroupGoal: (groupId, password) => {
         const state = get();
         const goal = state.groupGoals.find(g => g.groupId === groupId);
@@ -390,14 +559,32 @@ export const useStore = create<AppState>()(
         return { success: true, message: 'Joined successfully' };
       },
 
-      leaveGroupGoal: (id) => set((state) => ({
-        groupGoals: state.groupGoals.map(g => {
-          if (g.id === id) {
-            return { ...g, members: g.members.filter(m => m.userId !== state.currentUser?.id) };
-          }
-          return g;
-        }).filter(g => g.members.length > 0)
-      })),
+      leaveGroupGoal: async (id) => {
+        const state = get();
+        if (!state.currentUser) return;
+
+        set((state) => ({
+          groupGoals: state.groupGoals.map(g => {
+            if (g.id === id) {
+              return { ...g, members: g.members.filter(m => m.userId !== state.currentUser?.id) };
+            }
+            return g;
+          }).filter(g => g.members.length > 0)
+        }));
+
+        await supabaseService.leaveGroup(id, state.currentUser.id);
+        await get().refreshData();
+      },
+
+      transferAdminRole: async (goalId, userId) => {
+        await supabaseService.transferAdminRole(goalId, userId);
+        set((state) => ({
+          groupGoals: state.groupGoals.map(g => 
+            g.id === goalId ? { ...g, creatorId: userId } : g
+          )
+        }));
+        await get().refreshData();
+      },
 
       removeGroupMember: (goalId, userId) => set((state) => ({
         groupGoals: state.groupGoals.map(g => 
@@ -510,7 +697,8 @@ export const useStore = create<AppState>()(
           type: 'deposit',
           goalType: type,
           timestamp,
-          category
+          category,
+          userId
         };
 
         set((state) => ({
@@ -696,7 +884,8 @@ export const useStore = create<AppState>()(
           type: 'withdrawal',
           goalType: type,
           timestamp,
-          category
+          category,
+          userId
         };
 
         set((state) => ({
@@ -710,6 +899,18 @@ export const useStore = create<AppState>()(
           message: `You withdrew ₹${amount} from ${goalName}`,
           type: 'goal'
         });
+      },
+
+      deleteTransaction: async (id) => {
+        await supabaseService.deleteTransaction(id);
+        await get().refreshData();
+      },
+
+      clearAllHistory: async () => {
+        const state = get();
+        if (!state.currentUser) return;
+        await supabaseService.clearAllTransactions(state.currentUser.id);
+        await get().refreshData();
       },
 
       checkReminders: () => {
@@ -779,39 +980,38 @@ export const useStore = create<AppState>()(
 
       refreshData: async () => {
         const state = get();
-        if (!state.currentUser) return;
+        if (!state.currentUser || !isConfigured) return;
 
-        // Skip if Supabase is not configured
-        if (!isConfigured) {
-          console.warn('Data refresh skipped: Supabase not configured.');
-          return;
+        try {
+          // Fetch from Supabase
+          const [
+            { data: profile },
+            { data: soloGoals },
+            { data: groupGoals },
+            { data: notifications },
+            { data: transactions }
+          ] = await Promise.all([
+            supabaseService.getProfile(state.currentUser.id).catch(e => { console.warn('Profile fetch failed:', e); return { data: null }; }),
+            supabaseService.getSoloGoals(state.currentUser.id).catch(e => { console.warn('Solo goals fetch failed:', e); return { data: null }; }),
+            supabaseService.getGroupGoals().catch(e => { console.warn('Group goals fetch failed:', e); return { data: null }; }),
+            supabaseService.getNotifications(state.currentUser.id).catch(e => { console.warn('Notifications fetch failed:', e); return { data: null }; }),
+            supabaseService.getTransactions(state.currentUser.id).catch(e => { console.warn('Transactions fetch failed:', e); return { data: null }; })
+          ]);
+
+          set({
+            currentUser: profile ? { ...state.currentUser, ...profile } : state.currentUser,
+            soloGoals: soloGoals || state.soloGoals,
+            groupGoals: groupGoals || state.groupGoals,
+            notifications: notifications || state.notifications,
+            transactions: transactions || state.transactions
+          });
+
+          get().checkStreak();
+          get().checkReminders();
+          await get().fetchZettlData();
+        } catch (err) {
+          console.error('Data refresh unsuccessful:', err);
         }
-
-        // Fetch from Supabase
-        const [
-          { data: profile },
-          { data: soloGoals },
-          { data: groupGoals },
-          { data: notifications },
-          { data: transactions }
-        ] = await Promise.all([
-          supabaseService.getProfile(state.currentUser.id),
-          supabaseService.getSoloGoals(state.currentUser.id),
-          supabaseService.getGroupGoals(),
-          supabaseService.getNotifications(state.currentUser.id),
-          supabaseService.getTransactions(state.currentUser.id)
-        ]);
-
-        set({
-          currentUser: profile ? { ...state.currentUser, ...profile } : state.currentUser,
-          soloGoals: soloGoals || state.soloGoals,
-          groupGoals: groupGoals || state.groupGoals,
-          notifications: notifications || state.notifications,
-          transactions: transactions || state.transactions
-        });
-
-        get().checkStreak();
-        get().checkReminders();
       },
 
       nudgeGroup: (goalId) => {
@@ -832,6 +1032,45 @@ export const useStore = create<AppState>()(
             type: 'group'
           });
         });
+      },
+
+      clearGoalHistory: async (goalId, type) => {
+        const state = get();
+        if (!state.currentUser) return;
+
+        try {
+          // Delete transactions for this goal in DB
+          const { error } = await supabase.from('transactions').delete().eq('goal_id', goalId);
+          if (error) throw error;
+
+          // Reset balance in Goal
+          if (type === 'solo') {
+            const goal = state.soloGoals.find(g => g.id === goalId);
+            if (goal) {
+              const updatedGoal = { ...goal, currentAmount: 0 };
+              await supabaseService.saveSoloGoal(updatedGoal);
+            }
+          } else if (type === 'group') {
+            const goal = state.groupGoals.find(g => g.id === goalId);
+            if (goal) {
+              const updatedMembers = goal.members.map(m => ({ ...m, contributed: 0 }));
+              const updatedGoal = { ...goal, totalCollected: 0, members: updatedMembers };
+              await supabaseService.saveGroupGoal(updatedGoal);
+            }
+          } else if (type === 'emergency') {
+            const goal = state.emergencyGoals.find(g => g.id === goalId);
+            if (goal) {
+              const updatedGoal = { ...goal, currentAmount: 0 };
+              await supabaseService.saveEmergencyGoal(updatedGoal);
+            }
+          }
+
+          // Refresh store data
+          await get().refreshData();
+        } catch (err) {
+          console.error('Failed to clear history:', err);
+          throw err;
+        }
       },
 
       addNotification: async (n) => {
@@ -1019,35 +1258,6 @@ export const useStore = create<AppState>()(
             return s;
           })
         }));
-      },
-
-      setIsChatOpen: (isOpen) => set({ isChatOpen: isOpen }),
-
-      sendChatMessage: (text) => {
-        const newMessage = {
-          id: Date.now().toString(),
-          text,
-          sender: 'user' as const,
-          timestamp: new Date().toISOString(),
-        };
-
-        set((state) => ({
-          chatMessages: [...state.chatMessages, newMessage],
-          isChatOpen: true,
-        }));
-
-        // Mock AI Response
-        setTimeout(() => {
-          const aiResponse = {
-            id: (Date.now() + 1).toString(),
-            text: "I've received your request! As your financial assistant, I recommend focusing on consistent savings and minimizing high-interest debt. Is there anything specific about your finances you'd like to dive into?",
-            sender: 'ai' as const,
-            timestamp: new Date().toISOString(),
-          };
-          set((state) => ({
-            chatMessages: [...state.chatMessages, aiResponse],
-          }));
-        }, 1500);
       },
 
       resetWeeklyChallenge: () => {

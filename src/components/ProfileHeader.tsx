@@ -6,7 +6,7 @@ import { useStore } from '../store/useStore';
 import { cn } from '../lib/utils';
 import { formatDistanceToNow, parseISO } from 'date-fns';
 
-import { AVATARS } from '../constants';
+import { AVATARS_50 } from '../constants/avatars';
 
 export default function ProfileHeader() {
   const { 
@@ -50,7 +50,7 @@ export default function ProfileHeader() {
     updateQuestProgress('w2', 1);
   };
 
-  const avatarUrl = AVATARS.find(a => a.id === currentUser.avatarId)?.url || `https://api.dicebear.com/7.x/lorelei/svg?seed=${currentUser.username}`;
+  const avatarUrl = AVATARS_50.find(a => a.id === currentUser.avatarId?.toString())?.url || `https://api.dicebear.com/7.x/lorelei/svg?seed=${currentUser.username}`;
 
   return (
     <div className="fixed top-0 left-0 right-0 z-[90] px-6 py-6 flex items-center justify-between bg-gradient-to-b from-background to-transparent pointer-events-none">

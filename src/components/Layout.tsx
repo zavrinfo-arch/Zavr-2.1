@@ -7,15 +7,15 @@ import React, { useState, useEffect } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
-  Home, Target, Plus, History, User, 
-  Bell, X, CheckCircle2, Flame, Trophy, Users, Info
+  Home, Target, Plus, History,
+  Bell, X, CheckCircle2, Flame, Trophy, Users, Info,
+  HandCoins
 } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { cn } from '../lib/utils';
 import { formatDistanceToNow } from 'date-fns';
 
 import ProfileHeader from './ProfileHeader';
-import ZavrChat from './ZavrChat';
 
 export function BottomNav({ onPlusClick }: { onPlusClick: () => void }) {
   const navItems = [
@@ -23,11 +23,11 @@ export function BottomNav({ onPlusClick }: { onPlusClick: () => void }) {
     { icon: Target, label: 'Goals', path: '/goals' },
     { icon: null, label: '', path: '' }, // Placeholder for Plus
     { icon: History, label: 'History', path: '/history' },
-    { icon: User, label: 'Profile', path: '/profile' },
+    { icon: HandCoins, label: 'Zettl', path: '/zettl' },
   ];
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-40 px-6 py-6 bg-surface/85 backdrop-blur-2xl flex items-center justify-around border-t border-foreground/5">
+    <nav className="fixed bottom-0 left-0 right-0 z-40 px-6 py-6 bg-surface/85 backdrop-blur-2xl flex items-center justify-around">
       {navItems.map((item, i) => {
         if (i === 2) {
           return (
@@ -66,7 +66,6 @@ export function Layout({ children, onPlusClick }: { children: React.ReactNode, o
   return (
     <div className="min-h-screen pb-24 pt-20 max-w-md mx-auto relative overflow-x-hidden">
       <ProfileHeader />
-      <ZavrChat />
       <main className="px-6">
         {children}
       </main>

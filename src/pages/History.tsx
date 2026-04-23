@@ -8,8 +8,9 @@ import { motion } from 'motion/react';
 import { useStore } from '../store/useStore';
 import { formatCurrency, cn } from '../lib/utils';
 import { 
-  History, Filter, Target, Users, 
-  Calendar, TrendingUp, ArrowDownRight, ArrowUpRight
+  History as HistoryIcon, Filter, Target, Users, 
+  Calendar, TrendingUp, ArrowDownRight, ArrowUpRight,
+  Trash2, Eraser, X
 } from 'lucide-react';
 import { 
   format, parseISO, isWithinInterval, 
@@ -21,11 +22,32 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, 
   Tooltip, ResponsiveContainer, AreaChart, Area 
 } from 'recharts';
+import { AnimatePresence } from 'motion/react';
+import toast from 'react-hot-toast';
 
 export default function TransactionHistory() {
-  const { transactions, currentUser, refreshData } = useStore();
+  const { transactions, currentUser, refreshData, deleteTransaction, clearAllHistory } = useStore();
   const [filter, setFilter] = useState<'all' | 'solo' | 'group'>('all');
   const [timeFilter, setTimeFilter] = useState<'all' | 'month' | 'week'>('all');
+  const [confirmDelete, setConfirmDelete] = useState<{
+    isOpen: boolean;
+    id: string | 'all';
+  }>({ isOpen: false, id: '' });
+
+  const handleConfirmAction = async () => {
+    try {
+      if (confirmDelete.id === 'all') {
+        await clearAllHistory();
+        toast.success('History cleared. All balances reset.');
+      } else {
+        await deleteTransaction(confirmDelete.id);
+        toast.success('Transaction deleted');
+      }
+      setConfirmDelete({ isOpen: false, id: '' });
+    } catch (err) {
+      toast.error('Operation failed');
+    }
+  };
 
   const filteredTransactions = useMemo(() => {
     return transactions.filter(tx => {
@@ -85,7 +107,67 @@ export default function TransactionHistory() {
   return (
     <PullToRefresh onRefresh={refreshData}>
       <div className="space-y-10 pb-12">
-        <h2 className="text-3xl font-bold text-foreground tracking-tight">History</h2>
+        <div className="flex items-center justify-between">
+          <h2 className="text-3xl font-bold text-foreground tracking-tight">History</h2>
+          <button 
+            onClick={() => setConfirmDelete({ isOpen: true, id: 'all' })}
+            className="p-3 clay rounded-2xl text-red-500/60 hover:text-red-500 hover:bg-red-500/5 transition-all active:scale-95"
+            title="Clear all history"
+          >
+            <Eraser size={24} />
+          </button>
+        </div>
+
+        {/* Confirmation Modal */}
+        <AnimatePresence>
+          {confirmDelete.isOpen && (
+            <div className="fixed inset-0 z-[100] flex items-center justify-center px-6">
+              <motion.div 
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={() => setConfirmDelete({ isOpen: false, id: '' })}
+                className="absolute inset-0 bg-background/80 backdrop-blur-sm"
+              />
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.9, y: 20 }}
+                className="relative w-full max-w-sm clay bg-surface p-8 space-y-6 text-center"
+              >
+                <div className="w-16 h-16 mx-auto rounded-2xl clay-inset flex items-center justify-center text-red-500">
+                  <Trash2 size={32} />
+                </div>
+                
+                <div className="space-y-2">
+                  <h3 className="text-xl font-bold">
+                    {confirmDelete.id === 'all' ? 'Clear All History?' : 'Delete Transaction?'}
+                  </h3>
+                  <p className="text-xs opacity-60">
+                    {confirmDelete.id === 'all' 
+                      ? 'This will delete ALL transactions and reset ALL goal balances to zero. This cannot be undone.' 
+                      : 'This transaction will be permanently removed and goal balance will be updated. This cannot be undone.'}
+                  </p>
+                </div>
+
+                <div className="flex gap-4">
+                  <button 
+                    onClick={() => setConfirmDelete({ isOpen: false, id: '' })}
+                    className="flex-1 py-4 clay bg-foreground/5 rounded-xl text-[10px] font-black uppercase tracking-widest active:scale-95 transition-all"
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    onClick={handleConfirmAction}
+                    className="flex-1 py-4 clay-coral text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-2xl active:scale-95 transition-all"
+                  >
+                    {confirmDelete.id === 'all' ? 'Clear All' : 'Delete'}
+                  </button>
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
 
       {/* Stats Overview */}
       <div className="clay p-8 relative overflow-hidden bg-surface">
@@ -194,27 +276,35 @@ export default function TransactionHistory() {
                 <div className="flex items-center gap-5">
                   <div className={cn(
                     "w-14 h-14 rounded-2xl clay-inset flex items-center justify-center transition-transform group-hover:scale-110",
-                    tx.type === 'solo' ? "text-[#FF6B6B]" : "text-[#4ECDC4]"
+                    tx.goalType === 'solo' ? "text-[#FF6B6B]" : tx.goalType === 'group' ? "text-[#4ECDC4]" : "text-[#E2C35E]"
                   )}>
-                    {tx.type === 'solo' ? <Target size={28} /> : <Users size={28} />}
+                    {tx.goalType === 'solo' ? <Target size={28} /> : tx.goalType === 'group' ? <Users size={28} /> : <TrendingUp size={28} />}
                   </div>
                   <div>
                     <h4 className="text-base font-bold text-foreground tracking-tight">{tx.goalName}</h4>
                     <p className="text-[9px] opacity-20 font-black uppercase tracking-[0.2em] mt-1.5">
-                      {tx.amount < 0 ? 'Withdrawal' : 'Contribution'} • {format(parseISO(tx.timestamp), 'MMM dd, yyyy')}
+                      {tx.type === 'withdrawal' ? 'Withdrawal' : 'Contribution'} • {format(parseISO(tx.timestamp), 'MMM dd, yyyy')}
                     </p>
                   </div>
                 </div>
-                <div className="text-right">
-                  <p className={cn(
-                    "font-black text-lg tracking-tight",
-                    tx.amount < 0 ? "text-[#FF6B6B]" : "text-[#4ECDC4]"
-                  )}>
-                    {tx.amount < 0 ? '-' : '+'}{formatCurrency(Math.abs(tx.amount), currentUser?.preferences?.currency)}
-                  </p>
-                  <span className="inline-block text-[8px] font-black uppercase tracking-[0.2em] opacity-10 px-2 py-1 clay-inset rounded-lg mt-1">
-                    {tx.type}
-                  </span>
+                <div className="flex items-center gap-6">
+                  <div className="text-right">
+                    <p className={cn(
+                      "font-black text-lg tracking-tight",
+                      tx.amount < 0 ? "text-[#FF6B6B]" : "text-[#4ECDC4]"
+                    )}>
+                      {tx.amount < 0 ? '-' : '+'}{formatCurrency(Math.abs(tx.amount), currentUser?.preferences?.currency)}
+                    </p>
+                    <span className="inline-block text-[8px] font-black uppercase tracking-[0.2em] opacity-10 px-2 py-1 clay-inset rounded-lg mt-1">
+                      {tx.goalType}
+                    </span>
+                  </div>
+                  <button 
+                    onClick={() => setConfirmDelete({ isOpen: true, id: tx.id })}
+                    className="p-3 opacity-0 group-hover:opacity-100 hover:bg-red-500/5 text-red-500/40 hover:text-red-500 rounded-xl transition-all active:scale-90"
+                  >
+                    <Trash2 size={18} />
+                  </button>
                 </div>
               </motion.div>
             ))

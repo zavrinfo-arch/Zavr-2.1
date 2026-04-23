@@ -23,7 +23,7 @@ export interface User {
   dob: string;
   location: string;
   avatar: string;
-  avatarId: number;
+  avatarId: string;
   streak: number;
   onboardingCompleted: boolean;
   interests: string[];
@@ -57,6 +57,7 @@ export interface Transaction {
   goalType: 'solo' | 'group' | 'emergency';
   timestamp: string;
   category: string;
+  userId: string;
 }
 
 export type SavingFrequency = 'daily' | 'weekly' | 'monthly';
@@ -169,4 +170,75 @@ export interface StreakData {
   streakHistory: string[]; // Array of ISO dates
   tier: 'Bronze' | 'Silver' | 'Gold' | 'Platinum' | 'Diamond' | 'Godlike';
   multiplier: number;
+}
+
+// Zettl Types
+export interface Friend {
+  id: string;
+  userId: string;
+  friendId: string;
+  friendUsername: string;
+  friendFullName: string;
+  friendAvatar: string;
+  status: 'pending' | 'accepted' | 'blocked';
+  createdAt: string;
+}
+
+export interface ZettlGroup {
+  id: string;
+  name: string;
+  createdBy: string;
+  avatar?: string;
+  createdAt: string;
+  memberCount: number;
+  members?: string[]; // userIds
+  myBalance?: number;
+}
+
+export interface PersonalZettl {
+  id: string;
+  fromUserId: string; // owes
+  toUserId: string; // owed
+  fromUsername: string;
+  toUsername: string;
+  amount: number;
+  currency: Currency;
+  note?: string;
+  createdAt: string;
+  dueDate?: string;
+  isSettled: boolean;
+  settledAt?: string;
+  reminderLastSentAt?: string;
+  reminderCount: number;
+}
+
+export interface GroupExpense {
+  id: string;
+  groupId: string;
+  paidByUserId: string;
+  paidByUsername: string;
+  totalAmount: number;
+  description: string;
+  createdAt: string;
+  splits: ExpenseSplit[];
+}
+
+export interface ExpenseSplit {
+  id: string;
+  expenseId: string;
+  userId: string; // owes
+  username: string;
+  amountOwed: number;
+  isSettled: boolean;
+  settledAt?: string;
+}
+
+export interface ZettlReminder {
+  id: string;
+  zettlId?: string;
+  expenseSplitId?: string;
+  remindedToUserId: string;
+  remindedAt: string;
+  type: 'manual' | 'auto';
+  notificationSent: boolean;
 }

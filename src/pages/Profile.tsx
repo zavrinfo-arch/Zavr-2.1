@@ -6,7 +6,7 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useStore } from '../store/useStore';
-import { AVATARS } from '../constants';
+import { AVATARS_50 } from '../constants/avatars';
 import { formatCurrency, cn } from '../lib/utils';
 import { 
   User, Settings, Bell, Globe, 
@@ -99,83 +99,29 @@ export default function Profile() {
       {/* Profile Header */}
       <div className="flex flex-col items-center text-center pt-6">
         <div className="relative group">
-          <div className="w-36 h-36 rounded-full clay bg-surface flex items-center justify-center overflow-hidden">
+          <button 
+            onClick={() => navigate('/avatar-selection')}
+            className="w-36 h-36 rounded-full clay bg-surface flex items-center justify-center overflow-hidden active:scale-95 transition-transform"
+          >
             <img 
-              src={AVATARS.find(a => a.id === currentUser?.avatarId)?.url || `https://api.dicebear.com/7.x/lorelei/svg?seed=${currentUser?.username}`} 
+              src={AVATARS_50.find(a => a.id === currentUser?.avatarId?.toString())?.url || `https://api.dicebear.com/7.x/lorelei/svg?seed=${currentUser?.username}`} 
               alt="Avatar"
               className="w-full h-full object-cover p-2"
+              referrerPolicy="no-referrer"
             />
-          </div>
+          </button>
           <div className="absolute -bottom-1 -right-1 w-12 h-12 clay-coral rounded-2xl flex items-center justify-center text-lg font-black text-white border-4 border-background shadow-2xl">
             {currentUser?.level}
           </div>
           <button 
-            onClick={() => setIsAvatarModalOpen(true)}
+            onClick={() => navigate('/avatar-selection')}
             className="absolute -top-1 -right-1 p-2.5 clay-inset bg-surface opacity-40 rounded-full border-4 border-background hover:scale-110 transition-all hover:opacity-100"
           >
             <Camera size={18} />
           </button>
         </div>
 
-        <AnimatePresence>
-          {isAvatarModalOpen && (
-            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-              <motion.div 
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                onClick={() => setIsAvatarModalOpen(false)}
-                className="absolute inset-0 bg-black/80 backdrop-blur-md"
-              />
-              <motion.div 
-                initial={{ scale: 0.9, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                exit={{ scale: 0.9, opacity: 0 }}
-                className="relative w-full max-w-lg clay bg-surface p-8 overflow-hidden"
-              >
-                <div className="flex items-center justify-between mb-8">
-                  <h3 className="text-xl font-bold">Change Avatar</h3>
-                  <button onClick={() => setIsAvatarModalOpen(false)} className="p-2 hover:bg-foreground/5 rounded-full transition-colors">
-                    <X size={20} />
-                  </button>
-                </div>
-                <div className="grid grid-cols-4 sm:grid-cols-5 gap-4 max-h-[60vh] overflow-y-auto pr-2 hide-scrollbar">
-                  {AVATARS.map((avatar) => {
-                    const isLocked = avatar.minLevel && (currentUser?.level || 1) < avatar.minLevel;
-                    return (
-                      <button
-                        key={avatar.id}
-                        disabled={isLocked}
-                        onClick={() => {
-                          updateUser({ avatarId: avatar.id });
-                          setIsAvatarModalOpen(false);
-                          toast.success('Avatar updated!');
-                        }}
-                        className={cn(
-                          "relative aspect-square rounded-2xl flex items-center justify-center clay-card border-2 transition-all overflow-hidden",
-                          currentUser?.avatarId === avatar.id ? "border-[#FF6B6B] scale-105" : "border-transparent",
-                          isLocked ? "opacity-20 grayscale cursor-not-allowed" : "hover:scale-105"
-                        )}
-                      >
-                        <img src={avatar.url} alt={avatar.name} className="w-full h-full object-cover p-1" />
-                        {isLocked && (
-                          <div className="absolute inset-0 flex items-center justify-center bg-black/20 rounded-2xl">
-                            <Lock size={12} className="text-white" />
-                          </div>
-                        )}
-                        {currentUser?.avatarId === avatar.id && (
-                          <div className="absolute -top-1 -right-1 w-4 h-4 bg-[#FF6B6B] rounded-full flex items-center justify-center">
-                            <Check className="text-white" size={10} strokeWidth={4} />
-                          </div>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              </motion.div>
-            </div>
-          )}
-        </AnimatePresence>
+        {/* Removed legacy avatar modal as we use the dedicated AvatarSelection page */}
         <div className="mt-8 space-y-4 w-full max-w-xs mx-auto">
           {isEditing ? (
             <div className="space-y-4">

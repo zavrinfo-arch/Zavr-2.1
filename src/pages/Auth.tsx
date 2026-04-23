@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
 import { useStore } from '../store/useStore';
-import { supabase } from '../lib/supabase';
-import { cn } from '../lib/utils';
+import { supabase, isConfigured } from '../lib/supabase';
+import { cn, fetchWithRetry } from '../lib/utils';
 import { 
   Mail, Lock, User, Phone, Calendar, MapPin,
   CheckCircle2, AlertCircle, Eye, EyeOff, ArrowRight, AtSign,
@@ -27,12 +27,19 @@ export default function Auth() {
   const { currentUser, session, checkAuth, isAuthLoading } = useStore();
 
   useEffect(() => {
-    // If the user already has a session, redirect them out
+    // Redirect logic:
+    // 1. If we have both session and user, go home or onboarding
+    // 2. If we have session but NO user yet (after loading), go to onboarding
     if (session && !isAuthLoading) {
-      if (currentUser && !currentUser.onboardingCompleted) {
-        navigate('/onboarding');
+      if (currentUser) {
+        if (!currentUser.onboardingCompleted) {
+          navigate('/onboarding');
+        } else {
+          navigate('/home');
+        }
       } else {
-        navigate('/home');
+        // Session exists but no profile found in DB - force onboarding flow
+        navigate('/onboarding', { replace: true });
       }
     }
   }, [session, currentUser, isAuthLoading, navigate]);
@@ -98,28 +105,37 @@ export default function Auth() {
 
     setLoading(true);
     try {
-      // 1. Authenticate directly via Supabase as requested
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: formData.email.trim().toLowerCase(),
-        password: formData.password
-      });
-
-      if (error) throw error;
-      
-      const session = data.session;
-      if (!session) throw new Error('Authentication failed: No session returned.');
-
-      // 2. Synchronize with backend cookies
-      await fetch('/api/auth/session', {
+      // 1. Authenticate via backend to ensure consistency and cookie synchronization
+      const email = formData.email.trim().toLowerCase();
+      const response = await fetchWithRetry('/api/auth/signin', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ session })
+        credentials: 'include',
+        body: JSON.stringify({ 
+          email,
+          password: formData.password
+        })
       });
 
-      // 3. Finalize
-      await checkAuth();
+      const result = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(result.error || 'Login failed');
+      }
+      
+      const { session } = result;
+      if (!session) throw new Error('Authentication failed: No session returned.');
+
+      // 2. Synchronize Supabase Client session
+      if (isConfigured) {
+        // This will trigger onAuthStateChange in initializeAuth, which calls checkAuth()
+        await supabase.auth.setSession(session);
+        // Also trigger checkAuth immediately for faster navigation
+        await checkAuth();
+      }
+
       toast.success('Welcome back!');
-      navigate('/home');
+      // Redirection is handled by the useEffect above once currentUser is loaded via onAuthStateChange
     } catch (error: any) {
       console.error('Login error:', error);
       let message = error.message;
@@ -129,18 +145,46 @@ export default function Auth() {
           <div className="flex flex-col gap-2">
             <p className="font-bold text-xs uppercase tracking-tight">Invalid Credentials</p>
             <p className="text-[10px] opacity-60 leading-relaxed">
-              Check your email and password. If you haven't disabled "Confirm email" in Supabase, you might need to verify your account first.
+              Check your email and password. You might need to verify your account first if you haven't done so, or reset your password if you've forgotten it.
             </p>
-            <div className="flex gap-2 pt-1">
+            <div className="flex flex-wrap gap-2 pt-1">
               <button 
                 onClick={() => { toast.dismiss(t.id); setIsLogin(false); setSignupStep('verify'); }}
-                className="text-[9px] bg-foreground px-2 py-1.5 rounded-md uppercase font-black text-background"
+                className="text-[9px] bg-foreground px-2 py-1.5 rounded-md uppercase font-black text-background transition-opacity hover:opacity-80 shrink-0"
               >
-                Go to Verification
+                Verify Code
+              </button>
+              <button 
+                onClick={async () => { 
+                  toast.dismiss(t.id);
+                  setLoading(true);
+                  try {
+                    const email = formData.email.trim().toLowerCase();
+                    const response = await fetchWithRetry('/api/auth/resend-code', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ email, type: 'signup' })
+                    });
+                    if (!response.ok) {
+                      const resData = await response.json();
+                      throw new Error(resData.error || 'Failed to resend code');
+                    }
+                    toast.success('Code resent! Go to verification.');
+                    setIsLogin(false);
+                    setSignupStep('verify');
+                  } catch (err: any) {
+                    toast.error(err.message);
+                  } finally {
+                    setLoading(false);
+                  }
+                }}
+                className="text-[9px] bg-[#FF6B6B] px-2 py-1.5 rounded-md uppercase font-black text-white transition-opacity hover:opacity-80 shrink-0"
+              >
+                Resend Code
               </button>
               <button 
                 onClick={() => { toast.dismiss(t.id); }}
-                className="text-[9px] bg-foreground/5 px-2 py-1.5 rounded-md uppercase font-black"
+                className="text-[9px] bg-foreground/5 px-2 py-1.5 rounded-md uppercase font-black transition-colors hover:bg-foreground/10 shrink-0"
               >
                 Dismiss
               </button>
@@ -184,7 +228,7 @@ export default function Auth() {
       setLoading(true);
       const signupWithRetry = async (retries = 3, delay = 1000): Promise<Response> => {
         try {
-          const response = await fetch('/api/auth/signup', {
+          const response = await fetchWithRetry('/api/auth/signup', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             credentials: 'include',
@@ -195,12 +239,6 @@ export default function Auth() {
           });
           return response;
         } catch (err: any) {
-          const isNetworkError = err.message === 'Failed to fetch' || err.name === 'TypeError';
-          if (retries > 0 && isNetworkError) {
-            console.warn(`Signup failed (${err.message}), retrying in ${delay}ms...`);
-            await new Promise(resolve => setTimeout(resolve, delay));
-            return signupWithRetry(retries - 1, delay * 1.5);
-          }
           throw err;
         }
       };
@@ -240,17 +278,12 @@ export default function Auth() {
       setLoading(true);
       try {
         const email = formData.email.trim().toLowerCase();
-        const response = await fetch('/api/auth/verify', {
+        const response = await fetchWithRetry('/api/auth/verify', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
           body: JSON.stringify({ email, token: verificationCode, type: 'signup' })
-        }).catch(err => {
-          if (err.message === 'Failed to fetch') {
-            throw new Error('Unable to connect to the server. Please check your internet connection or try again later.');
-          }
-          throw err;
-        });
+        })
 
         const contentType = response.headers.get('content-type');
         if (!contentType || !contentType.includes('application/json')) {
@@ -291,7 +324,7 @@ export default function Auth() {
 
       setLoading(true);
       try {
-        const response = await fetch('/api/auth/complete-profile', {
+        const response = await fetchWithRetry('/api/auth/complete-profile', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
@@ -304,12 +337,7 @@ export default function Auth() {
             password: formData.password,
             avatarId: formData.avatarId
           })
-        }).catch(err => {
-          if (err.message === 'Failed to fetch') {
-            throw new Error('Unable to connect to the server. Please check your internet connection or try again later.');
-          }
-          throw err;
-        });
+        })
 
         const contentType = response.headers.get('content-type');
         if (!contentType || !contentType.includes('application/json')) {
@@ -455,7 +483,7 @@ export default function Auth() {
                   }
                   setLoading(true);
                   try {
-                    const response = await fetch('/api/auth/reset-password-request', {
+                    const response = await fetchWithRetry('/api/auth/reset-password-request', {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({ email: formData.email })
@@ -612,7 +640,7 @@ export default function Auth() {
                       setLoading(true);
                       try {
                         const email = formData.email.trim().toLowerCase();
-                        const response = await fetch('/api/auth/resend-code', {
+                        const response = await fetchWithRetry('/api/auth/resend-code', {
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify({ email, type: 'signup' })

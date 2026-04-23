@@ -10,9 +10,12 @@ import { useStore } from '../store/useStore';
 
 export default function SplashScreen() {
   const navigate = useNavigate();
-  const { currentUser } = useStore();
+  const { currentUser, isAuthLoading } = useStore();
 
   useEffect(() => {
+    // We only navigate once auth loading is definitely finished
+    if (isAuthLoading) return;
+
     const timer = setTimeout(() => {
       if (!currentUser) {
         navigate('/auth');
@@ -21,10 +24,10 @@ export default function SplashScreen() {
       } else {
         navigate('/home');
       }
-    }, 2500);
+    }, 1000); // Reduced delay for better feel
 
     return () => clearTimeout(timer);
-  }, [currentUser, navigate]);
+  }, [currentUser, isAuthLoading, navigate]);
 
   return (
     <div className="fixed inset-0 bg-background flex flex-col items-center justify-center z-50">
@@ -71,7 +74,7 @@ export default function SplashScreen() {
           <motion.div 
             initial={{ width: 0 }}
             animate={{ width: '100%' }}
-            transition={{ duration: 2.5, ease: "linear" }}
+            transition={{ duration: 1, ease: "linear" }}
             className="h-full bg-gradient-to-r from-[#FF6B6B] to-[#4ECDC4]"
           />
         </div>

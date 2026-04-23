@@ -10,13 +10,14 @@ import { formatCurrency, cn } from '../lib/utils';
 import { 
   Target, Users, Plus, Calendar, 
   ChevronRight, Trash2, Edit3, Copy, LogOut, UserMinus,
-  MinusCircle, Bell, X
+  MinusCircle, Bell, X, Settings2, Eraser
 } from 'lucide-react';
 import { format, parseISO, differenceInDays, startOfDay, startOfWeek, startOfMonth, isAfter } from 'date-fns';
 import toast from 'react-hot-toast';
 import PullToRefresh from '../components/PullToRefresh';
 import { AreaChart, Area, ResponsiveContainer } from 'recharts';
 import { ShieldAlert } from 'lucide-react';
+import { getRandomQuote } from '../constants/quotes';
 
 const GoalSparkline = ({ goalId, color, transactions }: { goalId: string, color: string, transactions: any[] }) => {
   const data = useMemo(() => {
@@ -66,16 +67,96 @@ export default function Goals({ onAddMoney, onWithdraw }: {
   const { 
     currentUser, soloGoals, groupGoals, emergencyGoals, transactions,
     deleteSoloGoal, leaveGroupGoal, removeGroupMember, refreshData,
-    nudgeGroup, updateSoloGoal, updateGroupGoal, deleteEmergencyGoal
+    nudgeGroup, updateSoloGoal, updateGroupGoal, deleteEmergencyGoal,
+    clearGoalHistory, deleteGroupGoal, transferAdminRole
   } = useStore();
+
+  const [activeActionsMenu, setActiveActionsMenu] = useState<string | null>(null);
 
   const [editModal, setEditModal] = useState<{
     isOpen: boolean;
     goal: any;
-    type: 'solo' | 'group';
+    type: 'solo' | 'group' | 'emergency';
   }>({ isOpen: false, goal: null, type: 'solo' });
 
-  const handleEditGoal = (goal: any, type: 'solo' | 'group') => {
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    type: 'delete-solo' | 'leave-group' | 'delete-emergency' | 'delete-group' | 'clear-history';
+    id: string;
+    goalType?: 'solo' | 'group' | 'emergency';
+    quote: string;
+  }>({ isOpen: false, type: 'delete-solo', id: '', quote: '' });
+
+  const [transferModal, setTransferModal] = useState<{
+    isOpen: boolean;
+    goal: any;
+    selectedUserId: string;
+  }>({ isOpen: false, goal: null, selectedUserId: '' });
+
+  const handleAction = (type: typeof confirmModal['type'], id: string, goalType?: 'solo' | 'group' | 'emergency') => {
+    // Permission check for Leave Group
+    if (type === 'leave-group') {
+      const goal = groupGoals.find(g => g.id === id);
+      if (goal && goal.creatorId === currentUser?.id) {
+        toast.error("You are the admin. Delete the goal or transfer admin role first.");
+        setActiveActionsMenu(null);
+        return;
+      }
+    }
+
+    setConfirmModal({
+      isOpen: true,
+      type,
+      id,
+      goalType,
+      quote: getRandomQuote()
+    });
+    setActiveActionsMenu(null);
+  };
+
+  const confirmAction = async () => {
+    try {
+      if (confirmModal.type === 'delete-solo') {
+        await deleteSoloGoal(confirmModal.id);
+        toast.success('Solo goal deleted. Start a new journey soon!');
+      } else if (confirmModal.type === 'delete-group') {
+        await deleteGroupGoal(confirmModal.id);
+        toast.success('Group goal deleted.');
+      } else if (confirmModal.type === 'delete-emergency') {
+        await deleteEmergencyGoal(confirmModal.id);
+        toast.success('Emergency fund removed.');
+      } else if (confirmModal.type === 'leave-group') {
+        await leaveGroupGoal(confirmModal.id);
+        toast.success('You left the group');
+      } else if (confirmModal.type === 'clear-history') {
+        await clearGoalHistory(confirmModal.id, confirmModal.goalType!);
+        toast.success('History cleared. Start fresh!');
+      }
+      setConfirmModal({ ...confirmModal, isOpen: false });
+    } catch (err: any) {
+      const failMsg = confirmModal.type.includes('delete') ? 'Failed to delete goal' : 
+                     confirmModal.type === 'leave-group' ? 'Failed to leave group' : 
+                     'Action failed';
+      toast.error(failMsg);
+    }
+  };
+
+  const handleTransferAdmin = async () => {
+    if (!transferModal.selectedUserId) {
+      toast.error('Please select a member to transfer to');
+      return;
+    }
+    try {
+      await transferAdminRole(transferModal.goal.id, transferModal.selectedUserId);
+      await leaveGroupGoal(transferModal.goal.id);
+      setTransferModal({ isOpen: false, goal: null, selectedUserId: '' });
+      toast.success('Admin role transferred and you left the group');
+    } catch (err) {
+      toast.error('Failed to transfer admin role');
+    }
+  };
+
+  const handleEditGoal = (goal: any, type: 'solo' | 'group' | 'emergency') => {
     setEditModal({ isOpen: true, goal: { ...goal }, type });
   };
 
@@ -83,7 +164,7 @@ export default function Goals({ onAddMoney, onWithdraw }: {
     e.preventDefault();
     if (editModal.type === 'solo') {
       updateSoloGoal(editModal.goal.id, editModal.goal);
-    } else {
+    } else if (editModal.type === 'group') {
       updateGroupGoal(editModal.goal.id, editModal.goal);
     }
     setEditModal({ isOpen: false, goal: null, type: 'solo' });
@@ -144,47 +225,78 @@ export default function Goals({ onAddMoney, onWithdraw }: {
       .reduce((sum, t) => sum + t.amount, 0);
   };
 
-  const [confirmModal, setConfirmModal] = useState<{
-    isOpen: boolean;
-    type: 'delete-solo' | 'leave-group' | 'delete-emergency';
-    id: string;
-    quote?: string;
-  }>({ isOpen: false, type: 'delete-solo', id: '' });
-
-  const quotes = [
-    "It does not matter how slowly you go as long as you do not stop. 🐢",
-    "Success is the sum of small efforts, repeated day in and day out. ✨",
-    "Don't give up. The beginning is always the hardest. 💪",
-    "Your future self will thank you for not giving up today. 🚀",
-    "Consistency is what transforms average into excellence. 💎"
-  ];
-
-  const handleDeleteSolo = (id: string) => {
-    const quote = quotes[Math.floor(Math.random() * quotes.length)];
-    setConfirmModal({ isOpen: true, type: 'delete-solo', id, quote });
-  };
-
-  const handleLeaveGroup = (id: string) => {
-    setConfirmModal({ isOpen: true, type: 'leave-group', id });
-  };
-
-  const confirmAction = () => {
-    if (confirmModal.type === 'delete-solo') {
-      deleteSoloGoal(confirmModal.id);
-      toast.success('Goal deleted. Start a new journey soon!');
-    } else if (confirmModal.type === 'delete-emergency') {
-      deleteEmergencyGoal(confirmModal.id);
-      toast.success('Emergency fund removed.');
-    } else {
-      leaveGroupGoal(confirmModal.id);
-      toast.success('Left the group.');
-    }
-    setConfirmModal({ ...confirmModal, isOpen: false });
-  };
-
   return (
     <PullToRefresh onRefresh={refreshData}>
       <div className="space-y-8 pb-8">
+        {/* Transfer Admin Modal */}
+        <AnimatePresence>
+          {transferModal.isOpen && (
+            <div className="fixed inset-0 z-[110] flex items-center justify-center px-6">
+              <motion.div 
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={() => setTransferModal({ ...transferModal, isOpen: false })}
+                className="absolute inset-0 bg-background/80 backdrop-blur-sm"
+              />
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.9, y: 20 }}
+                className="relative w-full max-w-sm clay bg-surface p-8 space-y-6"
+              >
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xl font-bold">Transfer Admin</h3>
+                  <button onClick={() => setTransferModal({ ...transferModal, isOpen: false })} className="p-2 hover:bg-foreground/5 rounded-full transition-colors">
+                    <X size={20} />
+                  </button>
+                </div>
+                
+                <p className="text-sm opacity-60">Choose a member to transfer the admin role to. You will leave the group after transferring.</p>
+                
+                <div className="space-y-3 max-h-60 overflow-y-auto pr-2 custom-scrollbar">
+                  {transferModal.goal?.members
+                    .filter((m: any) => m.userId !== currentUser?.id)
+                    .map((member: any) => (
+                      <button
+                        key={member.userId}
+                        onClick={() => setTransferModal({ ...transferModal, selectedUserId: member.userId })}
+                        className={cn(
+                          "w-full flex items-center gap-4 p-4 rounded-xl border transition-all",
+                          transferModal.selectedUserId === member.userId 
+                            ? "clay border-[#4ECDC4] bg-surface" 
+                            : "bg-foreground/5 border-transparent hover:bg-foreground/10"
+                        )}
+                      >
+                        <div className="w-10 h-10 rounded-full overflow-hidden clay-inset">
+                          <img src={member.avatar} alt={member.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                        </div>
+                        <div className="text-left flex-1">
+                          <p className="text-xs font-bold">{member.name}</p>
+                          <p className="text-[10px] opacity-40 uppercase tracking-widest">{formatCurrency(member.contributed, currentUser?.preferences?.currency)} saved</p>
+                        </div>
+                      </button>
+                    ))}
+                    
+                  {transferModal.goal?.members.length <= 1 && (
+                    <div className="p-10 text-center opacity-40">
+                      <p className="text-xs">No other members to transfer to.</p>
+                    </div>
+                  )}
+                </div>
+
+                <button 
+                  onClick={handleTransferAdmin}
+                  disabled={!transferModal.selectedUserId}
+                  className="w-full py-4 clay-teal text-white rounded-xl text-xs font-black uppercase tracking-widest shadow-2xl active:scale-95 transition-all disabled:opacity-50 disabled:active:scale-100"
+                >
+                  Confirm Transfer & Leave
+                </button>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
+
         {/* Edit Modal */}
         <AnimatePresence>
           {editModal.isOpen && (
@@ -265,25 +377,33 @@ export default function Goals({ onAddMoney, onWithdraw }: {
                 className="relative w-full max-w-sm clay bg-surface p-10 space-y-8 text-center"
               >
                 <div className={cn(
-                  "w-20 h-20 mx-auto rounded-2xl clay-inset flex items-center justify-center",
-                  confirmModal.type === 'delete-solo' ? "text-[#FF6B6B]" : "text-[#E2B05E]"
+                  "w-20 h-20 mx-auto rounded-3xl clay-inset flex items-center justify-center",
+                  (confirmModal.type.includes('delete') || confirmModal.type === 'clear-history') ? "text-[#FF6B6B]" : "text-[#E2B05E]"
                 )}>
-                  {confirmModal.type === 'delete-solo' ? <Trash2 size={36} /> : <LogOut size={36} />}
+                  {confirmModal.type.includes('delete') ? <Trash2 size={36} /> : 
+                   confirmModal.type === 'clear-history' ? <Eraser size={36} /> :
+                   <LogOut size={36} />}
                 </div>
                 
-                <div className="space-y-3">
+                <div className="space-y-4">
                   <h3 className="text-2xl font-bold tracking-tight">
-                    {confirmModal.type === 'delete-solo' ? 'Delete Goal?' : 'Leave Group?'}
+                    {confirmModal.type.includes('delete') ? 'Delete Goal?' : 
+                     confirmModal.type === 'clear-history' ? 'Clear History?' :
+                     'Leave Group?'}
                   </h3>
-                  {confirmModal.type === 'delete-solo' && (
-                    <p className="text-xs italic opacity-30 px-4 leading-relaxed">
+                  
+                  <div className="p-4 clay-inset bg-foreground/5 rounded-2xl">
+                    <p className="text-[11px] font-medium leading-relaxed italic opacity-60">
                       "{confirmModal.quote}"
                     </p>
-                  )}
-                  <p className="text-[11px] opacity-20 uppercase tracking-widest leading-relaxed">
-                    {confirmModal.type === 'delete-solo' 
-                      ? 'Are you sure you want to remove this goal? All progress will be lost.' 
-                      : 'Are you sure you want to exit this group goal?'}
+                  </div>
+
+                  <p className="text-[11px] opacity-30 uppercase font-black tracking-widest leading-relaxed">
+                    {confirmModal.type.includes('delete')
+                      ? 'All transactions will be permanently deleted. This cannot be undone.' 
+                      : confirmModal.type === 'clear-history'
+                      ? 'All transaction records will be deleted. Current balance will reset to zero. This cannot be undone.'
+                      : 'You will lose access to this goal\'s history. Are you sure?'}
                   </p>
                 </div>
 
@@ -292,16 +412,17 @@ export default function Goals({ onAddMoney, onWithdraw }: {
                     onClick={() => setConfirmModal({ ...confirmModal, isOpen: false })}
                     className="flex-1 py-4 clay-card rounded-xl text-[10px] font-bold uppercase tracking-[0.2em] opacity-40 hover:opacity-100 transition-all"
                   >
-                    No, Stay
+                    Cancel
                   </button>
                   <button 
                     onClick={confirmAction}
                     className={cn(
                       "flex-1 py-4 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] text-white shadow-2xl transition-all active:scale-95",
-                      confirmModal.type === 'delete-solo' ? "clay-coral" : "bg-[#E2B05E]"
+                      (confirmModal.type.includes('delete') || confirmModal.type === 'clear-history') ? "clay-coral" : "bg-[#E2B05E]"
                     )}
                   >
-                    Yes, {confirmModal.type === 'delete-solo' ? 'Delete' : 'Leave'}
+                    Yes, {confirmModal.type === 'delete-solo' || confirmModal.type === 'delete-group' || confirmModal.type === 'delete-emergency' ? 'Delete' : 
+                          confirmModal.type === 'clear-history' ? 'Clear' : 'Leave'}
                   </button>
                 </div>
               </motion.div>
@@ -373,25 +494,43 @@ export default function Goals({ onAddMoney, onWithdraw }: {
                         </div>
                       </div>
                     </div>
-                    <div className="flex gap-3">
-                      <div className="text-right mr-2">
-                        <p className="text-[10px] opacity-20 font-bold uppercase tracking-widest mb-1">Needed {goal.frequency}</p>
-                        <p className="text-sm font-black text-[#FF6B6B]">
-                          {formatCurrency(calculateNeeded(goal.targetAmount, goal.currentAmount, goal.deadline, goal.frequency), currentUser?.preferences?.currency)}
-                        </p>
-                      </div>
+                    <div className="flex gap-2 relative">
                       <button 
-                        onClick={() => handleEditGoal(goal, 'solo')}
-                        className="p-3 rounded-xl clay-inset opacity-20 hover:text-[#4ECDC4] hover:opacity-100 transition-all"
+                        onClick={() => setActiveActionsMenu(activeActionsMenu === goal.id ? null : goal.id)}
+                        className="p-3 rounded-xl clay-inset opacity-40 hover:opacity-100 transition-all"
                       >
-                        <Edit3 size={16} />
+                        <Settings2 size={16} />
                       </button>
-                      <button 
-                        onClick={() => handleDeleteSolo(goal.id)}
-                        className="p-3 rounded-xl clay-inset opacity-20 hover:text-red-500 hover:opacity-100 transition-all"
-                      >
-                        <Trash2 size={16} />
-                      </button>
+
+                      <AnimatePresence>
+                        {activeActionsMenu === goal.id && (
+                          <motion.div
+                            initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                            exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                            className="absolute top-12 right-0 w-48 bg-surface clay border border-foreground/5 p-2 z-50 space-y-1 shadow-2xl"
+                          >
+                            <button 
+                              onClick={() => { handleEditGoal(goal, 'solo'); setActiveActionsMenu(null); }}
+                              className="w-full flex items-center gap-3 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-foreground/60 hover:bg-foreground/5 rounded-lg transition-colors"
+                            >
+                              <Edit3 size={14} /> Edit Goal
+                            </button>
+                            <button 
+                              onClick={() => handleAction('clear-history', goal.id, 'solo')}
+                              className="w-full flex items-center gap-3 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-foreground/60 hover:bg-foreground/5 rounded-lg transition-colors"
+                            >
+                              <Eraser size={14} /> Clear History
+                            </button>
+                            <button 
+                              onClick={() => handleAction('delete-solo', goal.id, 'solo')}
+                              className="w-full flex items-center gap-3 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-red-500/80 hover:bg-red-500/5 rounded-lg transition-colors"
+                            >
+                              <Trash2 size={14} /> Delete Goal
+                            </button>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
                     </div>
                   </div>
 
@@ -514,26 +653,67 @@ export default function Goals({ onAddMoney, onWithdraw }: {
                           </div>
                         </div>
                       </div>
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-2 relative">
                         <div className="text-right">
                           <p className="text-[10px] opacity-20 font-bold uppercase tracking-widest mb-1">Needed {goal.frequency}</p>
                           <p className="text-sm font-black text-[#4ECDC4]">
                             {formatCurrency(calculateNeeded(goal.targetAmount / goal.memberCount, myContribution, goal.deadline, goal.frequency), currentUser?.preferences?.currency)}
                           </p>
                         </div>
-                          <button 
-                            onClick={() => handleEditGoal(goal, 'group')}
-                            className="p-3 rounded-xl clay-inset opacity-20 hover:text-[#4ECDC4] transition-all"
-                          >
-                            <Edit3 size={16} />
-                          </button>
-                          <button 
-                          onClick={() => handleLeaveGroup(goal.id)}
-                          className="p-3 rounded-xl clay-inset opacity-20 hover:text-red-500 transition-all"
+                        <button 
+                          onClick={() => setActiveActionsMenu(activeActionsMenu === goal.id ? null : goal.id)}
+                          className="p-3 rounded-xl clay-inset opacity-40 hover:opacity-100 transition-all"
                         >
-                          <LogOut size={16} />
+                          <Settings2 size={16} />
                         </button>
-                    </div>
+
+                        <AnimatePresence>
+                          {activeActionsMenu === goal.id && (
+                            <motion.div
+                              initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                              animate={{ opacity: 1, y: 0, scale: 1 }}
+                              exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                              className="absolute top-12 right-0 w-48 bg-surface clay border border-foreground/5 p-2 z-50 space-y-1 shadow-2xl"
+                            >
+                              {isCreator ? (
+                                <>
+                                  <button 
+                                    onClick={() => { handleEditGoal(goal, 'group'); setActiveActionsMenu(null); }}
+                                    className="w-full flex items-center gap-3 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-foreground/60 hover:bg-foreground/5 rounded-lg transition-colors"
+                                  >
+                                    <Edit3 size={14} /> Edit Goal
+                                  </button>
+                                  <button 
+                                    onClick={() => { setTransferModal({ isOpen: true, goal, selectedUserId: '' }); setActiveActionsMenu(null); }}
+                                    className="w-full flex items-center gap-3 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-[#E2B05E] hover:bg-[#E2B05E]/5 rounded-lg transition-colors"
+                                  >
+                                    <UserMinus size={14} /> Transfer Admin
+                                  </button>
+                                  <button 
+                                    onClick={() => handleAction('clear-history', goal.id, 'group')}
+                                    className="w-full flex items-center gap-3 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-foreground/60 hover:bg-foreground/5 rounded-lg transition-colors"
+                                  >
+                                    <Eraser size={14} /> Clear History
+                                  </button>
+                                  <button 
+                                    onClick={() => handleAction('delete-group', goal.id, 'group')}
+                                    className="w-full flex items-center gap-3 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-red-500/80 hover:bg-red-500/5 rounded-lg transition-colors"
+                                  >
+                                    <Trash2 size={14} /> Delete Goal
+                                  </button>
+                                </>
+                              ) : (
+                                <button 
+                                  onClick={() => handleAction('leave-group', goal.id)}
+                                  className="w-full flex items-center gap-3 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-red-500/80 hover:bg-red-500/5 rounded-lg transition-colors"
+                                >
+                                  <LogOut size={14} /> Leave Group
+                                </button>
+                              )}
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </div>
                   </div>
 
                     <div className="grid grid-cols-2 gap-5">

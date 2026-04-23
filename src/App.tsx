@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Component } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { AnimatePresence, motion } from 'motion/react';
@@ -25,6 +25,8 @@ import Home from './pages/Home';
 import Goals from './pages/Goals';
 import History from './pages/History';
 import Profile from './pages/Profile';
+import Zettl from './pages/Zettl';
+import AvatarSelection from './pages/AvatarSelection';
 import { formatCurrency, cn } from './lib/utils';
 import toast from 'react-hot-toast';
 import CelebrationModal from './components/CelebrationModal';
@@ -32,6 +34,17 @@ import { isAfter, startOfWeek, addDays, parseISO, differenceInDays } from 'date-
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { currentUser, session, isAuthLoading } = useStore();
+  const location = useLocation();
+  
+  useEffect(() => {
+    console.log('[DEBUG] Route Guard Check:', {
+      path: location.pathname,
+      isAuthLoading,
+      hasSession: !!session,
+      hasUser: !!currentUser,
+      onboardingCompleted: currentUser?.onboardingCompleted
+    });
+  }, [location.pathname, isAuthLoading, session, currentUser]);
   
   if (isAuthLoading) {
     return (
@@ -44,18 +57,33 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
     );
   }
 
-  // Use session for first-pass check, then wait for currentUser
-  if (!session) return <Navigate to="/auth" />;
-  if (!currentUser) return (
-    <div className="min-h-screen flex items-center justify-center bg-background">
-      <div className="flex flex-col items-center gap-4">
-        <Loader2 className="w-12 h-12 text-coral animate-spin" />
-        <p className="text-sm font-bold opacity-40 uppercase tracking-widest">Loading Profile...</p>
-      </div>
-    </div>
-  );
+  // Use session for first-pass check
+  if (!session) {
+    console.log('[DEBUG] No session, redirecting to /auth');
+    return <Navigate to="/auth" state={{ from: location }} replace />;
+  }
   
-  if (!currentUser.onboardingCompleted) return <Navigate to="/onboarding" />;
+  const isSetupPage = location.pathname === '/onboarding' || location.pathname === '/avatar-selection';
+
+  // If we have a session but no profile yet, they MUST be on onboarding to create one
+  // or we need to wait for checkAuth to finish (which is handled by isAuthLoading above)
+  if (!currentUser) {
+    if (isSetupPage) return <>{children}</>;
+    console.log('[DEBUG] No user profile, redirecting to /onboarding');
+    return <Navigate to="/onboarding" replace />;
+  }
+  
+  // Handled onboarding completion transfers
+  if (!currentUser.onboardingCompleted && !isSetupPage) {
+    console.log('[DEBUG] Onboarding not completed, redirecting to /onboarding');
+    return <Navigate to="/onboarding" replace />;
+  }
+
+  if (currentUser.onboardingCompleted && isSetupPage) {
+    console.log('[DEBUG] Onboarding already done, redirecting to /home');
+    return <Navigate to="/home" replace />;
+  }
+
   return <>{children}</>;
 }
 
@@ -70,20 +98,77 @@ function ConfigWarning() {
   );
 }
 
+interface ErrorBoundaryProps {
+  children: React.ReactNode;
+}
+
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error: Error | null;
+}
+
+class ErrorBoundary extends Component<any, any> {
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error('[CRITICAL] App Crash:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen bg-background flex items-center justify-center p-8 text-center">
+          <div className="max-w-md space-y-6">
+            <div className="w-16 h-16 bg-red-500/20 text-red-500 rounded-2xl flex items-center justify-center mx-auto">
+              <ShieldAlert size={32} />
+            </div>
+            <h1 className="text-2xl font-black">Something went wrong</h1>
+            <p className="opacity-60 text-sm leading-relaxed">
+              The application encountered a runtime error. This could be due to corrupted local state or a temporary service issue.
+            </p>
+            <div className="p-4 bg-foreground/5 rounded-xl text-left overflow-auto max-h-40">
+              <code className="text-[10px] whitespace-pre-wrap text-red-500">
+                {this.state.error?.message}
+              </code>
+            </div>
+            <button 
+              onClick={() => window.location.href = '/'}
+              className="w-full py-4 clay-coral rounded-2xl font-bold"
+            >
+              Restart Application
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
 export default function App() {
   const { 
     currentUser, addSoloGoal, addGroupGoal, 
     joinGroupGoal, addContribution, checkStreak,
     weeklyChallenge, resetWeeklyChallenge, streakData,
     checkReminders, triggerMotivation, theme, checkAuth,
-    initializeAuth
+    initializeAuth, isAuthLoading, session
   } = useStore();
 
   useEffect(() => {
     initializeAuth();
+  }, []);
 
+  useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark');
-  }, [theme, initializeAuth]);
+  }, [theme]);
   
   const [isPlusModalOpen, setIsPlusModalOpen] = useState(false);
   const [plusAction, setPlusAction] = useState<'main' | 'solo' | 'group-create' | 'group-join' | 'contribute' | 'withdraw'>('main');
@@ -108,27 +193,21 @@ export default function App() {
     checkStreak();
     checkReminders();
     
-    // Randomly trigger motivation (20% chance on load)
     if (Math.random() < 0.2) {
       triggerMotivation();
     }
     
-    // Weekly Challenge Reset Logic
-    const lastReset = weeklyChallenge?.lastResetDate;
-    const now = new Date();
-    const nextMonday = addDays(startOfWeek(now, { weekStartsOn: 1 }), 7);
-    
-    if (!lastReset || isAfter(now, parseISO(lastReset))) {
-      // If it's a new week or first time
-      const resetNeeded = !lastReset || isAfter(now, addDays(parseISO(lastReset), 7));
-      if (resetNeeded) {
-        resetWeeklyChallenge();
-      }
-    }
+    // Global escape hatch for developers
+    (window as any).forceOnboarding = () => {
+      console.warn('[MANUAL] Forcing onboarding completion state...');
+      useStore.getState().updateUser({ onboardingCompleted: true });
+      window.location.href = '/home';
+    };
 
     const interval = setInterval(() => {
       checkReminders();
-    }, 60000); // Every minute
+    }, 60000);
+    
     return () => clearInterval(interval);
   }, []);
 
@@ -160,78 +239,101 @@ export default function App() {
   };
 
   return (
-    <BrowserRouter>
-      <ConfigWarning />
-      <Toaster 
-        position="top-center"
-        toastOptions={{
-          style: {
-            background: 'rgba(0, 0, 0, 0.8)',
-            color: '#fff',
-            backdropFilter: 'blur(10px)',
-            border: '1px solid rgba(255, 255, 255, 0.1)',
-            borderRadius: '16px',
-            fontSize: '14px',
-            fontWeight: 'bold',
-          },
-        }}
-      />
-      
-      <Routes>
-        <Route path="/" element={<SplashScreen />} />
-        <Route path="/auth" element={<Auth />} />
-        <Route path="/onboarding" element={<Onboarding />} />
+    <ErrorBoundary>
+      <BrowserRouter>
+        <ConfigWarning />
+        <Toaster 
+          position="top-center"
+          toastOptions={{
+            style: {
+              background: 'rgba(0, 0, 0, 0.8)',
+              color: '#fff',
+              backdropFilter: 'blur(10px)',
+              border: '1px solid rgba(255, 255, 255, 0.1)',
+              borderRadius: '16px',
+              fontSize: '14px',
+              fontWeight: 'bold',
+            },
+          }}
+        />
         
-        <Route path="/home" element={
-          <ProtectedRoute>
-            <Layout onPlusClick={() => { setPlusAction('main'); setIsPlusModalOpen(true); }}>
-              <Home onAddMoney={handleAddMoney} onWithdraw={handleWithdraw} />
-            </Layout>
-          </ProtectedRoute>
-        } />
-        
-        <Route path="/goals" element={
-          <ProtectedRoute>
-            <Layout onPlusClick={() => { setPlusAction('main'); setIsPlusModalOpen(true); }}>
-              <Goals onAddMoney={handleAddMoney} onWithdraw={handleWithdraw} />
-            </Layout>
-          </ProtectedRoute>
-        } />
-        
-        <Route path="/history" element={
-          <ProtectedRoute>
-            <Layout onPlusClick={() => { setPlusAction('main'); setIsPlusModalOpen(true); }}>
-              <History />
-            </Layout>
-          </ProtectedRoute>
-        } />
-        
-        <Route path="/profile" element={
-          <ProtectedRoute>
-            <Layout onPlusClick={() => { setPlusAction('main'); setIsPlusModalOpen(true); }}>
-              <Profile />
-            </Layout>
-          </ProtectedRoute>
-        } />
-      </Routes>
+        <Routes>
+          <Route path="/" element={<SplashScreen />} />
+          <Route path="/auth" element={<Auth />} />
+          
+          <Route path="/onboarding" element={
+            <ProtectedRoute>
+              <Onboarding />
+            </ProtectedRoute>
+          } />
+          <Route path="/avatar-selection" element={
+            <ProtectedRoute>
+              <AvatarSelection />
+            </ProtectedRoute>
+          } />
+          
+          <Route path="/home" element={
+            <ProtectedRoute>
+              <Layout onPlusClick={() => { setPlusAction('main'); setIsPlusModalOpen(true); }}>
+                <Home onAddMoney={handleAddMoney} onWithdraw={handleWithdraw} />
+              </Layout>
+            </ProtectedRoute>
+          } />
+          
+          <Route path="/goals" element={
+            <ProtectedRoute>
+              <Layout onPlusClick={() => { setPlusAction('main'); setIsPlusModalOpen(true); }}>
+                <Goals onAddMoney={handleAddMoney} onWithdraw={handleWithdraw} />
+              </Layout>
+            </ProtectedRoute>
+          } />
+          
+          <Route path="/history" element={
+            <ProtectedRoute>
+              <Layout onPlusClick={() => { setPlusAction('main'); setIsPlusModalOpen(true); }}>
+                <History />
+              </Layout>
+            </ProtectedRoute>
+          } />
+          
+          <Route path="/profile" element={
+            <ProtectedRoute>
+              <Layout onPlusClick={() => { setPlusAction('main'); setIsPlusModalOpen(true); }}>
+                <Profile />
+              </Layout>
+            </ProtectedRoute>
+          } />
 
-      <AnimatePresence>
-        {isPlusModalOpen && (
-          <PlusModal 
-            action={plusAction}
-            setAction={setPlusAction}
-            onClose={() => { setIsPlusModalOpen(false); setPlusAction('main'); setSelectedGoal(null); setInitialAmount(''); }}
-            selectedGoal={selectedGoal}
-            initialAmount={initialAmount}
-          />
-        )}
-      </AnimatePresence>
+          <Route path="/zettl" element={
+            <ProtectedRoute>
+              <Layout onPlusClick={() => { setPlusAction('main'); setIsPlusModalOpen(true); }}>
+                <Zettl />
+              </Layout>
+            </ProtectedRoute>
+          } />
 
-      <CelebrationModal 
-        {...celebration}
-        onClose={() => setCelebration(prev => ({ ...prev, isOpen: false }))}
-      />
-    </BrowserRouter>
+          {/* Fallback route to catch white screens on invalid paths */}
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+
+        <AnimatePresence>
+          {isPlusModalOpen && (
+            <PlusModal 
+              action={plusAction}
+              setAction={setPlusAction}
+              onClose={() => { setIsPlusModalOpen(false); setPlusAction('main'); setSelectedGoal(null); setInitialAmount(''); }}
+              selectedGoal={selectedGoal}
+              initialAmount={initialAmount}
+            />
+          )}
+        </AnimatePresence>
+
+        <CelebrationModal 
+          {...celebration}
+          onClose={() => setCelebration(prev => ({ ...prev, isOpen: false }))}
+        />
+      </BrowserRouter>
+    </ErrorBoundary>
   );
 }
 

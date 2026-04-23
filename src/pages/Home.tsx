@@ -7,11 +7,9 @@ import React, { useState, useMemo } from 'react';
 import { motion } from 'motion/react';
 import { useStore } from '../store/useStore';
 import { 
-  Sparkles, Target, Calculator, PieChart as PieIcon, 
-  MessageSquare, TrendingUp, Flame, Trophy, ChevronRight,
+  Sparkles, Target, Calculator, TrendingUp, Flame, Trophy, ChevronRight,
   Plus, Minus, Clock, Users
 } from 'lucide-react';
-import SalarySplitter from '../components/SalarySplitter';
 import GamingDashboard from '../components/GamingDashboard';
 import { formatCurrency, cn } from '../lib/utils';
 import { useNavigate } from 'react-router-dom';
@@ -26,7 +24,7 @@ export default function Home({ onAddMoney, onWithdraw }: {
     currentUser, soloGoals, groupGoals, emergencyGoals,
     streakData, weeklyChallenge, transactions 
   } = useStore();
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'gaming' | 'splitter'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'gaming'>('dashboard');
 
   const totalSavings = useMemo(() => {
     const soloTotal = soloGoals.reduce((sum, g) => sum + g.currentAmount, 0);
@@ -104,25 +102,6 @@ export default function Home({ onAddMoney, onWithdraw }: {
     );
   }
 
-  if (activeTab === 'splitter') {
-    return (
-      <div className="min-h-screen bg-background text-foreground p-6 lg:p-12 pb-32">
-        <div className="max-w-7xl mx-auto space-y-8">
-          <div className="flex items-center justify-between">
-            <h2 className="serif-heading text-4xl">Salary Splitter</h2>
-            <button 
-              onClick={() => setActiveTab('dashboard')}
-              className="px-6 py-2 clay text-xs font-bold hover:bg-foreground/5 transition-colors"
-            >
-              Back to Dashboard
-            </button>
-          </div>
-          <SalarySplitter />
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen bg-background text-foreground pb-32">
       <div className="max-w-md mx-auto space-y-8">
@@ -147,15 +126,6 @@ export default function Home({ onAddMoney, onWithdraw }: {
           >
             Gaming
             <Flame size={12} className={activeTab === 'gaming' ? "text-orange-500" : ""} />
-          </button>
-          <button 
-            onClick={() => setActiveTab('splitter')}
-            className={cn(
-              "flex-1 py-3 text-[10px] font-black rounded-xl transition-all uppercase tracking-widest",
-              activeTab === 'splitter' ? "bg-surface text-foreground shadow-xl" : "opacity-30"
-            )}
-          >
-            Splitter
           </button>
         </div>
 
@@ -411,10 +381,8 @@ export default function Home({ onAddMoney, onWithdraw }: {
         {/* Quick Tools */}
         <div className="grid grid-cols-2 gap-4">
           {[
-            { icon: Calculator, label: 'Splitter', color: '#FF6B6B', action: () => setActiveTab('splitter') },
-            { icon: PieIcon, label: 'Budget', color: '#4ECDC4' },
-            { icon: Target, label: 'Goals', color: '#E2B05E' },
-            { icon: MessageSquare, label: 'AI Chat', color: 'currentColor' },
+            { icon: Target, label: 'Goals', color: '#E2B05E', action: () => navigate('/goals') },
+            { icon: Clock, label: 'History', color: '#4ECDC4', action: () => navigate('/history') },
           ].map((tool, i) => (
             <button 
               key={i}
