@@ -220,36 +220,45 @@ export default function Auth() {
       }
 
       setLoading(true);
-      const signupWithRetry = async (retries = 3, delay = 1000): Promise<Response> => {
-        try {
-          const response = await fetchWithRetry('/api/auth/signup', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({ 
-              email,
-              password: formData.password
-            })
-          });
-          return response;
-        } catch (err: any) {
-          throw err;
-        }
-      };
+      console.log("EMAIL:", email);
+      console.log("PASSWORD:", formData.password);
 
       try {
-        const response = await signupWithRetry();
+        const { data, error } = await supabase.auth.signUp({
+          email,
+          password: formData.password,
+          options: {
+            data: {
+              email: email,
+              user_name: email.split('@')[0],
+              onboarding_completed: false
+            }
+          }
+        });
 
-        const contentType = response.headers.get('content-type');
-        if (!contentType || !contentType.includes('application/json')) {
-          throw new Error('Server returned an invalid response. Please try again later.');
+        console.log("SIGNUP RESPONSE:", data, error);
+
+        if (error) {
+          console.error("SIGNUP ERROR:", error.message);
+          // If it's a database error, it's likely a trigger or constraint issue in Supabase
+          if (error.message.includes('Database error saving new user')) {
+            toast.error('The server encountered a database error during signup. This usually means a profile could not be created automatically. Please try again or contact support.');
+          } else {
+            toast.error(error.message);
+          }
+          return;
         }
 
-        const result = await response.json();
-        if (!response.ok) throw new Error(result.error || 'Signup failed');
+        console.log("USER CREATED:", data.user);
         
-        if (result.session) {
-          await supabase.auth.setSession(result.session);
+        if (data.session) {
+          // Sync session to cookies for server side profile logic
+          await fetchWithRetry('/api/auth/session', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ session: data.session })
+          });
+          
           toast.success('Account created! Let\'s set up your profile.');
           setSignupStep('profile');
         } else {
@@ -257,10 +266,8 @@ export default function Auth() {
           setSignupStep('verify');
         }
       } catch (error: any) {
-        const message = error.message === 'Failed to fetch' 
-          ? 'Unable to connect to the server. Please check your internet connection or try again later.'
-          : error.message;
-        toast.error(message);
+        console.error("UNEXPECTED ERROR:", error);
+        toast.error(error.message || 'An unexpected error occurred during signup');
       } finally {
         setLoading(false);
       }
@@ -587,7 +594,12 @@ export default function Auth() {
                   disabled={loading}
                   className="w-full py-4 mt-6 clay-coral rounded-2xl font-bold flex items-center justify-center gap-2 shadow-xl text-white uppercase tracking-widest text-xs disabled:opacity-50"
                 >
-                  {loading ? <Loader2 className="animate-spin" size={18} /> : (
+                  {loading ? (
+                    <>
+                      <Loader2 className="animate-spin" size={18} />
+                      Creating...
+                    </>
+                  ) : (
                     <>
                       Create Account
                       <ArrowRight size={18} />
@@ -625,7 +637,12 @@ export default function Auth() {
                   disabled={loading}
                   className="w-full py-4 mt-6 clay-coral rounded-2xl font-bold text-white uppercase tracking-widest text-xs disabled:opacity-50"
                 >
-                  {loading ? <Loader2 className="animate-spin" size={18} /> : 'Verify Code'}
+                  {loading ? (
+                    <div className="flex items-center justify-center gap-2">
+                      <Loader2 className="animate-spin" size={18} />
+                      Verifying...
+                    </div>
+                  ) : 'Verify Code'}
                 </button>
                 <div className="pt-6">
                   <button 
@@ -700,7 +717,12 @@ export default function Auth() {
                   disabled={loading}
                   className="w-full py-4 mt-6 clay-coral rounded-2xl font-bold text-white uppercase tracking-widest text-xs disabled:opacity-50"
                 >
-                  {loading ? <Loader2 className="animate-spin" size={18} /> : 'Complete Setup'}
+                  {loading ? (
+                    <div className="flex items-center justify-center gap-2">
+                      <Loader2 className="animate-spin" size={18} />
+                      Completing...
+                    </div>
+                  ) : 'Complete Setup'}
                 </button>
                 <p className="text-[10px] opacity-30 text-center mt-6 leading-relaxed px-4">
                   We collect this information to personalize your experience. By completing setup, you agree to our{' '}
