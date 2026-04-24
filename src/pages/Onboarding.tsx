@@ -32,6 +32,13 @@ export default function Onboarding() {
   const navigate = useNavigate();
   const { currentUser, updateUser, resetWeeklyChallenge } = useStore();
 
+  React.useEffect(() => {
+    if (currentUser?.onboardingCompleted) {
+      console.log('[Onboarding] Already completed, redirecting home...');
+      navigate('/home', { replace: true });
+    }
+  }, [currentUser, navigate]);
+
   const [data, setData] = useState({
     avatar: AVATARS_50[0],
     interests: [] as string[],
@@ -60,8 +67,8 @@ export default function Onboarding() {
     resetWeeklyChallenge();
     toast.success('Onboarding complete!');
     
-    // Use navigate for soft-navigation to prevent state loss
-    console.log('[DEBUG] Navigating to /home from onboarding');
+    // Finalize state and redirect
+    toast.success('Onboarding complete!');
     navigate('/home', { replace: true });
   };
 
@@ -104,28 +111,40 @@ export default function Onboarding() {
                 <h2 className="text-3xl font-bold mb-2">Choose your avatar</h2>
                 <p className="opacity-40">Pick a character that represents you</p>
               </div>
-              <div className="grid grid-cols-4 gap-4 h-[400px] overflow-y-auto pr-2 custom-scrollbar pb-4">
+              <div id="avatar-grid" className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 gap-4 min-h-[400px] max-h-[600px] overflow-y-auto pr-4 custom-scrollbar pb-32 p-4 clay-inset rounded-3xl bg-foreground/5">
                 {AVATARS_50.map((avatar) => (
-                  <button
+                  <motion.button
+                    id={`avatar-${avatar.id}`}
                     key={avatar.id}
-                    onClick={() => setData({ ...data, avatar })}
+                    whileHover={{ scale: 1.1, zIndex: 10 }}
+                    whileTap={{ scale: 0.9 }}
+                    onClick={() => {
+                      setData({ ...data, avatar });
+                      console.log('[Onboarding] Avatar selected:', avatar.id);
+                    }}
                     className={cn(
-                      "relative aspect-square rounded-2xl overflow-hidden clay-card border-2 transition-all active:scale-95 flex items-center justify-center p-2",
-                      data.avatar.id === avatar.id ? "border-[#FF6B6B] scale-105 shadow-xl bg-surface" : "border-transparent"
+                      "relative aspect-square rounded-[1.5rem] transition-all flex items-center justify-center p-2",
+                      data.avatar.id === avatar.id 
+                        ? "clay-card bg-surface ring-4 ring-[#FF6B6B] shadow-2xl scale-110 z-10" 
+                        : "opacity-40 hover:opacity-100"
                     )}
                   >
                     <img 
                       src={avatar.url} 
                       alt={avatar.id} 
-                      className="w-full h-full object-contain drop-shadow-md" 
+                      className="w-full h-full object-contain drop-shadow-xl" 
                       referrerPolicy="no-referrer" 
                     />
                     {data.avatar.id === avatar.id && (
-                      <div className="absolute -top-1 -right-1 w-6 h-6 rounded-full bg-[#FF6B6B] flex items-center justify-center shadow-lg border-2 border-white z-10">
-                        <Check className="text-white" size={10} strokeWidth={4} />
-                      </div>
+                      <motion.div 
+                        initial={{ scale: 0 }}
+                        animate={{ scale: 1 }}
+                        className="absolute -top-1 -right-1 w-7 h-7 rounded-full bg-[#FF6B6B] flex items-center justify-center shadow-lg border-2 border-white z-20"
+                      >
+                        <Check className="text-white" size={12} strokeWidth={4} />
+                      </motion.div>
                     )}
-                  </button>
+                  </motion.button>
                 ))}
               </div>
             </motion.div>

@@ -7,9 +7,12 @@ export async function middleware(request: NextRequest) {
   })
 
   // 1. Create the Supabase client
+  const url = 'https://ivdkaccijoeitkrkmrkk.supabase.co';
+  const anonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml2ZGthY2Npam9laXRrcmttcmtrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU5ODMxMDIsImV4cCI6MjA5MTU1OTEwMn0.1vRwBZb3JInDYL5ee7fDiNCu5gXtKrmdLLFTTHwhRMU';
+
   const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.VITE_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY!,
+    url,
+    anonKey,
     {
       cookies: {
         getAll() {
@@ -47,7 +50,7 @@ export async function middleware(request: NextRequest) {
 
     const onboardingComplete = request.cookies.get('onboarding_complete')?.value
     if (onboardingComplete !== 'true') {
-      return NextResponse.redirect(new URL('/avatar-select', request.url))
+      return NextResponse.redirect(new URL('/onboarding', request.url))
     }
   }
 

@@ -34,7 +34,7 @@ export async function persistOnboardingToSupabase(
   console.log('[onboarding] writing to Supabase...', { userId, avatarId });
 
   const { error } = await supabase
-    .from('profiles')
+    .from('user_profiles')
     .update({
       avatar_id: avatarId,
       onboarding_completed: true,
@@ -48,7 +48,7 @@ export async function persistOnboardingToSupabase(
 
   // Read back to confirm propagation
   const { data, error: readError } = await supabase
-    .from('profiles')
+    .from('user_profiles')
     .select('onboarding_completed, avatar_id')
     .eq('id', userId)
     .single();
