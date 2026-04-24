@@ -68,12 +68,24 @@ export default function AvatarSelection() {
         onboardingCompleted: true,
       });
 
+      // 2. Verify update success before navigating
+      const freshUser = useStore.getState().currentUser;
+      console.log('[DEBUG] Store updated. onboardingCompleted:', freshUser?.onboardingCompleted);
+
+      if (!freshUser?.onboardingCompleted) {
+        console.error('[DEBUG] Update failed to stick in store!');
+        toast.error('Local sync issue. Retrying...');
+        await refreshData();
+      }
+
       toast.success('Your character is ready!');
       
       // Use navigate() for soft-navigation which preserves store state
       // Use replace: true to prevent back-button loops
-      console.log('[DEBUG] Redirecting to dashboard...');
-      navigate('/home', { replace: true });
+      console.log('[DEBUG] Redirecting to dashboard in 800ms...');
+      setTimeout(() => {
+        navigate('/home', { replace: true });
+      }, 800);
     } catch (err: any) {
       console.error('Save failed:', err);
       toast.error('Sync failed. Please try again.');

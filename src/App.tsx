@@ -39,7 +39,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   
   useEffect(() => {
     if (!isAuthLoading) {
-      console.log('[DEBUG] Route Guard State:', {
+      console.log('[GUARD] Route State:', {
         path: location.pathname,
         hasSession: !!session,
         hasUser: !!currentUser,
@@ -57,36 +57,38 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
             <Loader2 className="w-16 h-16 text-coral animate-spin relative z-10" />
           </div>
           <div className="space-y-1 text-center">
-            <p className="text-xs font-black opacity-40 uppercase tracking-[0.3em]">Authenticating</p>
-            <p className="text-[10px] opacity-20 italic">"Good things come to those who wait"</p>
+            <p className="text-xs font-black opacity-40 uppercase tracking-[0.3em]">Loading Session...</p>
           </div>
         </div>
       </div>
     );
   }
 
-  // No session? Go to auth
+  // 1. No session? Go to auth
   if (!session) {
+    if (location.pathname === '/auth') return <>{children}</>;
     console.log('[GUARD] No session, redirecting to /auth');
     return <Navigate to="/auth" state={{ from: location }} replace />;
   }
   
   const isSetupPage = location.pathname === '/onboarding' || location.pathname === '/avatar-selection';
 
-  // Session exists but no profile yet -> Go to onboarding
+  // 2. No profile yet? 
   if (!currentUser) {
     if (isSetupPage) return <>{children}</>;
-    console.log('[GUARD] No user profile, redirecting to /onboarding');
+    
+    // Check if we just signed in and profile is still being created/fetched
+    console.log('[GUARD] Session exists but no currentUser profile found. Redirecting to onboarding.');
     return <Navigate to="/onboarding" replace />;
   }
   
-  // Profile exists but onboarding not finished
+  // 3. Profile exists but onboarding not finished
   if (!currentUser.onboardingCompleted && !isSetupPage) {
-    console.log('[GUARD] Onboarding incomplete, redirecting to /onboarding');
+    console.log('[GUARD] Onboarding incomplete, forcing setup.');
     return <Navigate to="/onboarding" replace />;
   }
 
-  // Profile finished but still on setup pages
+  // 4. Profile finished but still on setup pages -> Go home
   if (currentUser.onboardingCompleted && isSetupPage) {
     console.log('[GUARD] Onboarding already complete, redirecting to /home');
     return <Navigate to="/home" replace />;

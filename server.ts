@@ -323,7 +323,8 @@ app.post('/api/auth/complete-profile', async (req, res) => {
     phone,
     location,
     avatar_url: `https://api.dicebear.com/7.x/lorelei/svg?seed=${username}`,
-    onboarding_completed: false
+    onboarding_completed: false,
+    created_at: new Date().toISOString()
   };
 
   console.log('Creating profile record for:', user.id);

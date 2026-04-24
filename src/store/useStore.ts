@@ -325,6 +325,9 @@ export const useStore = create<AppState>()(
               .eq('id', sbSession.user.id)
               .maybeSingle();
 
+            console.log('[AUTH] Raw Profile from DB:', profile);
+            console.log('[AUTH] Profile Error:', profileError);
+
             if (profileError) {
               console.error('[AUTH] Profile fetch error:', profileError.message);
               // Don't throw here, just set user to null so onboarding can happen
@@ -357,9 +360,9 @@ export const useStore = create<AppState>()(
                 }
               };
               set({ currentUser: mappedUser });
-              console.log('[AUTH] Profile loaded successfully. Onboarding completed:', mappedUser.onboardingCompleted);
+              console.log('[AUTH] User set in store. Onboarding completed:', mappedUser.onboardingCompleted);
             } else {
-              console.log('[AUTH] No profile found in DB, user needs onboarding.');
+              console.log('[AUTH] No profile found in DB for user ID:', sbSession.user.id);
               set({ currentUser: null });
             }
           } else {
@@ -444,10 +447,40 @@ export const useStore = create<AppState>()(
       
       updateUser: async (updates) => {
         const state = get();
-        if (!state.currentUser) return;
+        let baseUser = state.currentUser;
+        
+        if (!baseUser) {
+          if (state.session?.user) {
+            console.log('[STORE] No currentUser found, but session exists. Initializing skeleton user from session metadata.');
+            const u = state.session.user;
+            baseUser = {
+              id: u.id,
+              email: u.email || '',
+              fullName: u.user_metadata?.full_name || '',
+              username: u.user_metadata?.user_name || '',
+              avatar: u.user_metadata?.avatar_url || '',
+              avatarId: '',
+              onboardingCompleted: false,
+              xp: 0,
+              level: 1,
+              badges: [],
+              streak: 0,
+              interests: [],
+              createdAt: new Date().toISOString(),
+              preferences: {
+                currency: 'INR',
+                notificationsEnabled: true,
+                reminders: { enabled: true, time: '20:00', frequency: 'daily' }
+              }
+            } as any;
+          } else {
+            console.error('[STORE] Cannot update user: no currentUser in state and no session found');
+            return;
+          }
+        }
         
         console.log('[STORE] Updating user profile with:', updates);
-        const updatedUser = { ...state.currentUser, ...updates };
+        const updatedUser = { ...baseUser, ...updates };
         
         // Level up logic - every 500 XP
         let newLevel = updatedUser.level;
@@ -472,11 +505,13 @@ export const useStore = create<AppState>()(
           setOnboardingCookie(finalUser.avatarId || '1');
         }
 
+        console.log('[STORE] Setting local state for currentUser:', finalUser.onboardingCompleted);
         set({
           currentUser: finalUser,
           users: state.users.map(u => u.id === finalUser.id ? finalUser : u)
         });
 
+        console.log('[STORE] Calling remote updateProfile...');
         const { error } = await supabaseService.updateProfile(finalUser.id, {
           ...updates,
           updated_at: new Date()
@@ -486,8 +521,9 @@ export const useStore = create<AppState>()(
           console.error('[STORE] Remote sync failed, but local state preserved:', error);
         } else {
           // Re-fetch to ensure sync with server
-          console.log('[STORE] Profile updated on server, re-verifying...');
+          console.log('[STORE] Profile updated on server, re-verifying auth state...');
           await get().checkAuth();
+          console.log('[STORE] Auth state re-verified. Final completion state:', get().currentUser?.onboardingCompleted);
         }
       },
 

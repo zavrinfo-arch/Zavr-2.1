@@ -60,21 +60,31 @@ export default function Onboarding() {
     console.log('[Onboarding] Finishing onboarding flow...');
     
     try {
-      // Update local store AND DB (Await both for consistency)
-      await updateUser({
+      // 1. Prepare data
+      const updates = {
         avatar: data.avatar.url,
         avatarId: (data.avatar.id as any),
         interests: data.interests,
         onboardingCompleted: true,
-      });
+      };
+
+      console.log('[Onboarding] Calling updateUser with:', updates);
+
+      // 2. Update local store AND DB (Await both for consistency)
+      await updateUser(updates);
+
+      // 3. Double check the store flag
+      const freshUser = useStore.getState().currentUser;
+      console.log('[Onboarding] Store updated. onboardingCompleted:', freshUser?.onboardingCompleted);
 
       resetWeeklyChallenge();
       toast.success('Welcome to Zavr!', { icon: '✨' });
       
-      // Artificial delay to ensure DB propagation and state sync
+      // 4. Artificial delay to ensure DB propagation and state sync matches the redirect
+      console.log('[Onboarding] Navigating in 800ms...');
       setTimeout(() => {
         navigate('/home', { replace: true });
-      }, 500);
+      }, 800);
     } catch (err) {
       console.error('[Onboarding] Error during finish:', err);
       toast.error('Failed to complete onboarding. Please try again.');

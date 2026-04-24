@@ -45,7 +45,7 @@ export async function handleContinue(
   try {
     // ── Step 1: Write to Supabase and CONFIRM it succeeded ────────────────
     console.log('[handleContinue] Step 1 — writing to Supabase');
-    const dbSuccess = await persistOnboardingToSupabase(userId, avatarId);
+    const dbSuccess = await persistOnboardingToSupabase(userId, avatarId, previewUrl || undefined);
 
     if (!dbSuccess) {
       throw new Error('Supabase write or read-back failed');
@@ -58,15 +58,15 @@ export async function handleContinue(
 
     if (!cookieSuccess) {
       // Cookie failed but DB succeeded — use force param as fallback
-      console.warn('[handleContinue] Step 2 ✗ cookie failed — using force_dashboard');
-      window.location.href = '/dashboard?force_dashboard=1';
+      console.warn('[handleContinue] Step 2 ✗ cookie failed — using home');
+      window.location.href = '/home?force_dashboard=1';
       return;
     }
     console.log('[handleContinue] Step 2 ✓ cookie confirmed');
 
     // ── Step 3: Navigate — AFTER both DB and cookie are confirmed ─────────
     console.log('[handleContinue] Step 3 — navigating');
-    window.location.href = '/dashboard';
+    window.location.href = '/home';
 
   } catch (err) {
     console.error('[handleContinue] ERROR:', err);

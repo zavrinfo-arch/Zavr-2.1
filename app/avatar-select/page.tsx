@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
 const supabase = createClient();
 import { handleContinue } from './handleContinue';
-import { getOnboardingCookie } from '@/lib/onboarding';
+import { getOnboardingCookie, setOnboardingCookie } from '@/lib/onboarding';
 
 const AVATARS = [
   { id: 'avatar_1', src: '/avatars/1.png', alt: 'Avatar 1' },
@@ -26,14 +26,7 @@ export default function AvatarSelectPage() {
 
   useEffect(() => {
     async function init() {
-      // ── Already done? Skip the page entirely ────────────────────────────
-      if (getOnboardingCookie()) {
-        console.log('[AvatarSelectPage] cookie says done — skipping to home');
-        router.push('/home');
-        return;
-      }
-
-      // ── Get current user ─────────────────────────────────────────────────
+      // ── Get current user first ───────────────────────────────────────────
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         console.error('[AvatarSelectPage] No authenticated user');
@@ -41,7 +34,8 @@ export default function AvatarSelectPage() {
         return;
       }
 
-      // ── Check Supabase profile in case cookie is missing but DB is done ──
+      // ── Check Supabase profile (Primary Source of Truth) ─────────────────
+      console.log('[AvatarSelectPage] Checking profile in DB...');
       const { data: profile, error } = await supabase
         .from('user_profiles')
         .select('onboarding_completed, avatar_id')
@@ -53,17 +47,26 @@ export default function AvatarSelectPage() {
       }
 
       if (profile?.onboarding_completed) {
-        console.log('[AvatarSelectPage] DB says done — skipping to home');
+        console.log('[AvatarSelectPage] DB says onboarding complete — skipping to home');
+        // Ensure cookie is in sync if it was missing
+        setOnboardingCookie(profile.avatar_id || '1');
+        router.push('/home');
+        return;
+      }
+
+      // ── Check cookie as fallback/optimization ────────────────────────────
+      if (getOnboardingCookie()) {
+        console.log('[AvatarSelectPage] Cookie says done — skipping to home');
         router.push('/home');
         return;
       }
 
       setUserId(user.id);
-      console.log('[AvatarSelectPage] userId set:', user.id);
+      console.log('[AvatarSelectPage] User needs onboarding. userId set:', user.id);
     }
 
     init();
-  }, [router]); // Empty deps — runs once, never resets selection state
+  }, [router]);
 
   function selectAvatar(id: string, src: string) {
     avatarIdRef.current = id;   // ref — for navigation logic

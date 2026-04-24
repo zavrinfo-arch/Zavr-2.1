@@ -33,6 +33,7 @@ export const supabaseService = {
   // Profiles
   async updateProfile(userId: string, updates: Partial<User>) {
     await this.ensureSession();
+    console.log('[SUPABASE-SVC] Updating profile for:', userId, updates);
     // Map camelCase to snake_case for DB
     const dbUpdates: any = { id: userId };
     if (updates.fullName) dbUpdates.full_name = updates.fullName;
@@ -44,25 +45,33 @@ export const supabaseService = {
     if (updates.avatar) dbUpdates.avatar_url = updates.avatar;
     if (updates.avatarId) dbUpdates.avatar_id = updates.avatarId;
     if (updates.onboardingCompleted !== undefined) dbUpdates.onboarding_completed = updates.onboardingCompleted;
+    
+    // Always update the timestamp
+    dbUpdates.updated_at = new Date().toISOString();
 
     const { data, error } = await supabase
       .from('user_profiles')
-      .upsert(dbUpdates)
+      .upsert(dbUpdates, { onConflict: 'id' })
       .select()
       .maybeSingle();
 
+    if (error) console.error('[SUPABASE-SVC] Update profile error:', error);
     return { data, error };
   },
 
   async getProfile(userId: string) {
     await this.ensureSession();
+    console.log('[SUPABASE-SVC] Gathering profile for:', userId);
     const { data, error } = await supabase
       .from('user_profiles')
       .select('*')
       .eq('id', userId)
       .maybeSingle();
     
+    if (error) console.error('[SUPABASE-SVC] Get profile error:', error);
+    
     if (data) {
+      console.log('[SUPABASE-SVC] Profile data found:', data.onboarding_completed);
       // Map snake_case to camelCase for App
       const user: User = {
         id: data.id,

@@ -28,28 +28,34 @@ export function setOnboardingCookie(avatarId: string): boolean {
  *  Returns true only if the DB row was actually updated. */
 export async function persistOnboardingToSupabase(
   userId: string,
-  avatarId: string
+  avatarId: string,
+  avatarUrl?: string
 ): Promise<boolean> {
-  console.log('[onboarding] writing to Supabase...', { userId, avatarId });
+  console.log('[onboarding] writing to Supabase...', { userId, avatarId, avatarUrl });
+
+  const payload: any = {
+    avatar_id: avatarId,
+    onboarding_completed: true,
+    updated_at: new Date().toISOString()
+  };
+
+  if (avatarUrl) payload.avatar_url = avatarUrl;
 
   const { error } = await supabase
     .from('user_profiles')
-    .update({
-      avatar_id: avatarId,
-      onboarding_completed: true,
-      updated_at: new Date()
-    })
+    .update(payload)
     .eq('id', userId);
 
   if (error) {
-    console.error('[onboarding] Supabase write failed:', error.message);
+    console.error('[onboarding] Supabase update failed:', error.message);
     return false;
   }
 
   // Read back to confirm propagation
+  console.log('[onboarding] Re-fetching profile to confirm update...');
   const { data, error: readError } = await supabase
     .from('user_profiles')
-    .select('onboarding_completed, avatar_id')
+    .select('onboarding_completed, avatar_id, avatar_url')
     .eq('id', userId)
     .maybeSingle();
 
@@ -58,12 +64,14 @@ export async function persistOnboardingToSupabase(
     return false;
   }
 
+  console.log('[onboarding] Data read back:', data);
+
   if (!data?.onboarding_completed) {
     console.error('[onboarding] Supabase read-back failed: onboarding_completed is still false');
     return false;
   }
 
-  console.log('[onboarding] Supabase confirmed:', data);
+  console.log('[onboarding] Supabase write confirmed success');
   return true;
 }
 
