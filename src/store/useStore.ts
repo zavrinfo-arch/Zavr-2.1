@@ -159,14 +159,14 @@ export const useStore = create<AppState>()(
       fetchZettlData: async () => {
         try {
           const [friends, groups, zettls, dashboard] = await Promise.all([
-            fetchWithRetry('/api/friends/list', { credentials: 'include' }).then(r => r.json()),
-            fetchWithRetry('/api/zettl/groups/my', { credentials: 'include' }).then(r => r.json()),
-            fetchWithRetry('/api/zettl/personal/list', { credentials: 'include' }).then(r => r.json()),
-            fetchWithRetry('/api/zettl/dashboard', { credentials: 'include' }).then(r => r.json())
+            fetchWithRetry('/api/friends/list', { credentials: 'include' }).then(r => r.json()).catch(() => []),
+            fetchWithRetry('/api/zettl/groups/my', { credentials: 'include' }).then(r => r.json()).catch(() => []),
+            fetchWithRetry('/api/zettl/personal/list', { credentials: 'include' }).then(r => r.json()).catch(() => []),
+            fetchWithRetry('/api/zettl/dashboard', { credentials: 'include' }).then(r => r.json()).catch(() => ({}))
           ]);
           
           set({ 
-            zettlFriends: friends.map((f: any) => ({
+            zettlFriends: Array.isArray(friends) ? friends.map((f: any) => ({
               id: f.id,
               userId: f.user_id,
               friendId: f.friend_id,
@@ -176,18 +176,18 @@ export const useStore = create<AppState>()(
               status: f.status,
               createdAt: f.created_at,
               type: f.type
-            })),
-            zettlGroups: groups.map((g: any) => ({
+            })) : [],
+            zettlGroups: Array.isArray(groups) ? groups.map((g: any) => ({
               ...g,
               memberCount: g.members?.length || 0,
               myBalance: 0 // Will be calculated by summary if needed
-            })),
-            personalZettls: zettls.map((z: any) => ({
+            })) : [],
+            personalZettls: Array.isArray(zettls) ? zettls.map((z: any) => ({
               id: z.id,
               fromUserId: z.from_user_id,
               toUserId: z.to_user_id,
-              fromUsername: z.from_profile.username,
-              toUsername: z.to_profile.username,
+              fromUsername: z.from_profile?.username || 'Unknown',
+              toUsername: z.to_profile?.username || 'Unknown',
               amount: z.amount,
               currency: z.currency,
               note: z.note,
@@ -197,10 +197,12 @@ export const useStore = create<AppState>()(
               settledAt: z.settled_at,
               reminderLastSentAt: z.reminder_last_sent_at,
               reminderCount: z.reminder_count
-            }))
+            })) : []
           });
         } catch (err) {
           console.error('Fetch Zettl data failed:', err);
+          // Ensure state remains consistent even on partial failure
+          set({ zettlFriends: [], zettlGroups: [], personalZettls: [] });
         }
       },
 
