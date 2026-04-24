@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createClient } from '@/lib/supabase/client';
+const supabase = createClient();
 import { handleContinue } from './handleContinue';
 import { getOnboardingCookie } from '@/lib/onboarding';
 
@@ -12,8 +13,6 @@ const AVATARS = [
 ];
 
 export default function AvatarSelectPage() {
-  const supabase = createClientComponentClient();
-
   const [userId, setUserId]                     = useState<string | null>(null);
   const [selectedAvatarId, setSelectedAvatarId] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl]             = useState<string | null>(null);

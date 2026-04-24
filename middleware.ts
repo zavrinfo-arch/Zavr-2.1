@@ -1,32 +1,59 @@
-import { NextResponse } from 'next/server';
-import type { NextRequest } from 'next/server';
+import { createServerClient } from '@supabase/ssr'
+import { NextResponse, type NextRequest } from 'next/server'
 
-export function middleware(request: NextRequest) {
-  const { pathname, searchParams } = request.nextUrl;
+export async function middleware(request: NextRequest) {
+  let supabaseResponse = NextResponse.next({
+    request,
+  })
 
-  // Force escape hatch — set cookie and proceed
+  // 1. Create the Supabase client
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.VITE_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll()
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value, options }) => request.cookies.set(name, value))
+          supabaseResponse = NextResponse.next({
+            request,
+          })
+          cookiesToSet.forEach(({ name, value, options }) =>
+            supabaseResponse.cookies.set(name, value, options)
+          )
+        },
+      },
+    }
+  )
+
+  // 2. Resolve session
+  const { data: { user } } = await supabase.auth.getUser()
+
+  const { pathname, searchParams } = request.nextUrl
+
+  // Force escape hatch for development
   if (searchParams.get('force_dashboard') === '1') {
-    console.log('[middleware] force_dashboard — bypassing');
-    const res = NextResponse.next();
-    res.cookies.set('onboarding_complete', 'true', {
-      path: '/',
-      maxAge: 60 * 60 * 24 * 365,
-      sameSite: 'strict',
-    });
-    return res;
+    supabaseResponse.cookies.set('onboarding_complete', 'true', { path: '/' })
+    return supabaseResponse
   }
 
-  const onboardingComplete = request.cookies.get('onboarding_complete')?.value;
-  console.log('[middleware] /dashboard hit — cookie:', onboardingComplete);
+  // Protected routes
+  if (pathname.startsWith('/dashboard')) {
+    if (!user) {
+      return NextResponse.redirect(new URL('/login', request.url))
+    }
 
-  if (onboardingComplete !== 'true') {
-    console.log('[middleware] no cookie — redirecting to /avatar-select');
-    return NextResponse.redirect(new URL('/avatar-select', request.url));
+    const onboardingComplete = request.cookies.get('onboarding_complete')?.value
+    if (onboardingComplete !== 'true') {
+      return NextResponse.redirect(new URL('/avatar-select', request.url))
+    }
   }
 
-  return NextResponse.next();
+  return supabaseResponse
 }
 
 export const config = {
   matcher: ['/dashboard/:path*'],
-};
+}

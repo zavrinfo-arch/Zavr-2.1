@@ -3,7 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, Component } from 'react';
+import * as React from 'react';
+import { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { AnimatePresence, motion } from 'motion/react';
@@ -107,10 +108,10 @@ interface ErrorBoundaryState {
   error: Error | null;
 }
 
-class ErrorBoundary extends Component<any, any> {
+class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
   constructor(props: ErrorBoundaryProps) {
     super(props);
-    this.state = { hasError: false, error: null };
+    (this as any).state = { hasError: false, error: null };
   }
 
   static getDerivedStateFromError(error: Error): ErrorBoundaryState {
@@ -122,7 +123,8 @@ class ErrorBoundary extends Component<any, any> {
   }
 
   render() {
-    if (this.state.hasError) {
+    const { hasError, error } = (this as any).state;
+    if (hasError) {
       return (
         <div className="min-h-screen bg-background flex items-center justify-center p-8 text-center">
           <div className="max-w-md space-y-6">
@@ -135,7 +137,7 @@ class ErrorBoundary extends Component<any, any> {
             </p>
             <div className="p-4 bg-foreground/5 rounded-xl text-left overflow-auto max-h-40">
               <code className="text-[10px] whitespace-pre-wrap text-red-500">
-                {this.state.error?.message}
+                {error?.message}
               </code>
             </div>
             <button 
@@ -149,7 +151,7 @@ class ErrorBoundary extends Component<any, any> {
       );
     }
 
-    return this.props.children;
+    return (this as any).props.children;
   }
 }
 

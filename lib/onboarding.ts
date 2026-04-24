@@ -1,4 +1,4 @@
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createClient } from './supabase/client';
 
 export const ONBOARDING_COOKIE = 'onboarding_complete';
 export const AVATAR_COOKIE     = 'selected_avatar';
@@ -30,14 +30,13 @@ export async function persistOnboardingToSupabase(
   userId: string,
   avatarId: string
 ): Promise<boolean> {
-  const supabase = createClientComponentClient();
-
+  const supabase = createClient();
   console.log('[onboarding] writing to Supabase...', { userId, avatarId });
 
   const { error } = await supabase
     .from('profiles')
     .update({
-      avatar_id: avatarId,           // ← actual column name, not hardcoded to 1
+      avatar_id: avatarId,
       onboarding_completed: true,
     })
     .eq('id', userId);
@@ -47,7 +46,7 @@ export async function persistOnboardingToSupabase(
     return false;
   }
 
-  // Read back to confirm propagation — don't trust the write alone
+  // Read back to confirm propagation
   const { data, error: readError } = await supabase
     .from('profiles')
     .select('onboarding_completed, avatar_id')
@@ -64,5 +63,5 @@ export async function persistOnboardingToSupabase(
 }
 
 export function getOnboardingCookie(): boolean {
-  return document.cookie.includes(`${ONBOARDING_COOKIE}=true`);
+  return typeof document !== 'undefined' && document.cookie.includes(`${ONBOARDING_COOKIE}=true`);
 }

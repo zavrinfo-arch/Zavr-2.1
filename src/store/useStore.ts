@@ -13,7 +13,8 @@ import {
 } from '../types';
 import { isSameDay, differenceInHours, parseISO, startOfWeek, isAfter, format } from 'date-fns';
 import { supabaseService } from '../services/supabaseService';
-import { supabase, isConfigured } from '../lib/supabase';
+import { createClient, isConfigured } from '../../lib/supabase/client';
+const supabase = createClient();
 import { fetchWithRetry } from '../lib/utils';
 import { setOnboardingCookie } from '../../lib/onboarding';
 
@@ -489,19 +490,24 @@ export const useStore = create<AppState>()(
 
       addEmergencyGoal: async (goal) => {
         set((state) => ({ emergencyGoals: [...state.emergencyGoals, goal] }));
-        // await supabaseService.saveEmergencyGoal(goal); // Add this to service later if needed
+        await supabaseService.saveEmergencyGoal(goal);
       },
 
       updateEmergencyGoal: async (id, updates) => {
         set((state) => ({
           emergencyGoals: state.emergencyGoals.map(g => g.id === id ? { ...g, ...updates } : g)
         }));
+        const updatedGoal = get().emergencyGoals.find(g => g.id === id);
+        if (updatedGoal) {
+          await supabaseService.saveEmergencyGoal(updatedGoal);
+        }
       },
 
       deleteEmergencyGoal: async (id) => {
         set((state) => ({
           emergencyGoals: state.emergencyGoals.filter(g => g.id !== id)
         }));
+        await supabaseService.deleteEmergencyGoal(id);
       },
 
       addGroupGoal: async (goal) => {
@@ -988,12 +994,14 @@ export const useStore = create<AppState>()(
             { data: profile },
             { data: soloGoals },
             { data: groupGoals },
+            { data: emergencyGoals },
             { data: notifications },
             { data: transactions }
           ] = await Promise.all([
             supabaseService.getProfile(state.currentUser.id).catch(e => { console.warn('Profile fetch failed:', e); return { data: null }; }),
             supabaseService.getSoloGoals(state.currentUser.id).catch(e => { console.warn('Solo goals fetch failed:', e); return { data: null }; }),
             supabaseService.getGroupGoals().catch(e => { console.warn('Group goals fetch failed:', e); return { data: null }; }),
+            supabaseService.getEmergencyGoals(state.currentUser.id).catch(e => { console.warn('Emergency goals fetch failed:', e); return { data: null }; }),
             supabaseService.getNotifications(state.currentUser.id).catch(e => { console.warn('Notifications fetch failed:', e); return { data: null }; }),
             supabaseService.getTransactions(state.currentUser.id).catch(e => { console.warn('Transactions fetch failed:', e); return { data: null }; })
           ]);
@@ -1002,6 +1010,7 @@ export const useStore = create<AppState>()(
             currentUser: profile ? { ...state.currentUser, ...profile } : state.currentUser,
             soloGoals: soloGoals || state.soloGoals,
             groupGoals: groupGoals || state.groupGoals,
+            emergencyGoals: emergencyGoals || state.emergencyGoals,
             notifications: notifications || state.notifications,
             transactions: transactions || state.transactions
           });

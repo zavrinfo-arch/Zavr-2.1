@@ -1,4 +1,5 @@
-import { supabase } from '../lib/supabase';
+import { createClient } from '../../lib/supabase/client';
+const supabase = createClient();
 import { User, SoloGoal, GroupGoal, Transaction, Notification, StreakData } from '../types';
 
 export const supabaseService = {
@@ -97,6 +98,31 @@ export const supabaseService = {
     return { data, error };
   },
 
+  // Emergency Goals
+  async getEmergencyGoals(userId: string) {
+    await this.ensureSession();
+    const { data, error } = await supabase
+      .from('emergency_goals')
+      .select('*')
+      .eq('user_id', userId);
+    
+    if (data) {
+      const mapped = data.map((g: any) => ({
+        id: g.id,
+        userId: g.user_id,
+        name: g.name,
+        currentAmount: g.current_amount,
+        frequency: g.frequency,
+        routineAmount: g.routine_amount,
+        createdAt: g.created_at,
+        completed: g.completed,
+        completedAt: g.completed_at
+      }));
+      return { data: mapped, error };
+    }
+    return { data, error };
+  },
+
   async saveSoloGoal(goal: SoloGoal) {
     await this.ensureSession();
     const dbGoal: any = {
@@ -150,6 +176,15 @@ export const supabaseService = {
     await this.ensureSession();
     const { error } = await supabase
       .from('solo_goals')
+      .delete()
+      .eq('id', goalId);
+    return { error };
+  },
+
+  async deleteEmergencyGoal(goalId: string) {
+    await this.ensureSession();
+    const { error } = await supabase
+      .from('emergency_goals') 
       .delete()
       .eq('id', goalId);
     return { error };

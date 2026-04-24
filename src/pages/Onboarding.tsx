@@ -110,16 +110,19 @@ export default function Onboarding() {
                     key={avatar.id}
                     onClick={() => setData({ ...data, avatar })}
                     className={cn(
-                      "relative aspect-square rounded-2xl overflow-hidden clay-card border-2 transition-all active:scale-95",
-                      data.avatar.id === avatar.id ? "border-[#FF6B6B] scale-105 shadow-xl" : "border-transparent"
+                      "relative aspect-square rounded-2xl overflow-hidden clay-card border-2 transition-all active:scale-95 flex items-center justify-center p-2",
+                      data.avatar.id === avatar.id ? "border-[#FF6B6B] scale-105 shadow-xl bg-surface" : "border-transparent"
                     )}
                   >
-                    <img src={avatar.url} alt={avatar.id} className="w-full h-full object-cover p-2" referrerPolicy="no-referrer" />
+                    <img 
+                      src={avatar.url} 
+                      alt={avatar.id} 
+                      className="w-full h-full object-contain drop-shadow-md" 
+                      referrerPolicy="no-referrer" 
+                    />
                     {data.avatar.id === avatar.id && (
-                      <div className="absolute inset-0 bg-[#FF6B6B]/10 flex items-center justify-center backdrop-blur-[1px]">
-                        <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center">
-                          <Check className="text-[#FF6B6B]" size={16} strokeWidth={4} />
-                        </div>
+                      <div className="absolute -top-1 -right-1 w-6 h-6 rounded-full bg-[#FF6B6B] flex items-center justify-center shadow-lg border-2 border-white z-10">
+                        <Check className="text-white" size={10} strokeWidth={4} />
                       </div>
                     )}
                   </button>

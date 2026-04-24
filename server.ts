@@ -470,7 +470,7 @@ app.get('/api/auth/me', async (req, res) => {
       dob: profile.dob,
       location: profile.location,
       avatar: profile.avatar_url || `https://api.dicebear.com/7.x/lorelei/svg?seed=${profile.username}`,
-      avatarId: profile.avatar_id || 1,
+      avatarId: profile.avatar_id || 'genz_1',
       streak: profile.streak || 0,
       onboardingCompleted: profile.onboarding_completed,
       interests: profile.interests || [],

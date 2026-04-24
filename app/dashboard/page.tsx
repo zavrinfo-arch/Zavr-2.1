@@ -1,6 +1,6 @@
-import { cookies } from 'next/headers';
+import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
-import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
+import { cookies } from 'next/headers';
 
 export default async function DashboardPage({
   searchParams,
@@ -8,14 +8,13 @@ export default async function DashboardPage({
   searchParams: Promise<{ force_dashboard?: string }>;
 }) {
   const params = await searchParams;
+  const cookieStore = await cookies();
 
   if (params.force_dashboard !== '1') {
-    const cookieStore = await cookies();
-    const onboardingComplete = cookieStore.get('onboarding_complete')?.value;
+    const onboardingComplete = cookieStore.get('onboarding_complete')?.value === 'true';
 
-    if (onboardingComplete !== 'true') {
-      // Last resort: check Supabase directly in case cookie is missing
-      const supabase = createServerComponentClient({ cookies });
+    if (!onboardingComplete) {
+      const supabase = await createClient();
       const { data: { user } } = await supabase.auth.getUser();
 
       if (user) {
@@ -26,8 +25,8 @@ export default async function DashboardPage({
           .single();
 
         if (profile?.onboarding_completed) {
-          // DB says done but cookie is missing — proceed and let client fix cookie
-          console.log('[dashboard] DB says done, cookie missing — allowing entry');
+          // DB says done - proceed
+          console.log('[dashboard] DB says done, allowing entry');
         } else {
           redirect('/avatar-select');
         }

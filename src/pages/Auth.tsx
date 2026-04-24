@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
 import { useStore } from '../store/useStore';
-import { supabase, isConfigured } from '../lib/supabase';
+import { createClient, isConfigured } from '../../lib/supabase/client';
+const supabase = createClient();
 import { cn, fetchWithRetry } from '../lib/utils';
 import { 
   Mail, Lock, User, Phone, Calendar, MapPin,

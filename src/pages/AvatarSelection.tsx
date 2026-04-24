@@ -130,74 +130,51 @@ export default function AvatarSelection() {
         })}
       </div>
 
-      {/* List Model Grid */}
+      {/* Avatar Grid (Icons View) */}
       <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
-        <div className="space-y-4 pb-32">
+        <div className="grid grid-cols-3 sm:grid-cols-4 gap-4 pb-32">
           <AnimatePresence mode="popLayout">
             {filteredAvatars.map((avatar, index) => (
               <motion.button
                 key={avatar.id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: index * 0.05 }}
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ delay: index * 0.03 }}
                 onClick={() => setSelectedId(avatar.id)}
                 className={cn(
-                  "w-full flex items-center gap-6 p-4 rounded-[2rem] transition-all relative group",
+                  "relative aspect-square rounded-[2rem] transition-all group overflow-visible",
                   selectedId === avatar.id 
-                    ? "clay-inset bg-surface border-2 border-coral shadow-2xl" 
-                    : "clay-card hover:bg-foreground/5 hover:translate-x-2"
+                    ? "clay-inset bg-surface border-2 border-coral shadow-2xl scale-110 z-10" 
+                    : "clay-card hover:bg-foreground/5 hover:scale-105"
                 )}
               >
                 {/* Avatar Preview */}
-                <div className="relative">
-                  <div className={cn(
-                    "w-20 h-20 rounded-3xl overflow-hidden clay-inset p-1 transition-transform group-hover:scale-110",
-                    selectedId === avatar.id ? "ring-4 ring-coral/20" : ""
-                  )}>
-                    <img 
-                      src={avatar.url} 
-                      alt={avatar.id} 
-                      className="w-full h-full object-cover"
-                      referrerPolicy="no-referrer"
-                    />
-                  </div>
+                <div className="w-full h-full p-2 relative flex items-center justify-center">
+                  <img 
+                    src={avatar.url} 
+                    alt={avatar.id} 
+                    className="w-full h-full object-contain drop-shadow-lg"
+                    referrerPolicy="no-referrer"
+                  />
+                  
                   {selectedId === avatar.id && (
-                    <div className="absolute -top-2 -right-2 w-8 h-8 rounded-full bg-coral shadow-lg flex items-center justify-center border-2 border-white">
-                      <Check className="text-white" size={14} strokeWidth={4} />
-                    </div>
+                    <motion.div 
+                      layoutId="check"
+                      className="absolute -top-1 -right-1 w-6 h-6 rounded-full bg-coral shadow-lg flex items-center justify-center border-2 border-white z-20"
+                    >
+                      <Check className="text-white" size={10} strokeWidth={4} />
+                    </motion.div>
                   )}
                 </div>
 
-                {/* Info */}
-                <div className="text-left flex-1">
-                  <div className="flex items-center gap-2 mb-1">
-                    <h4 className={cn(
-                      "font-black text-base tracking-tight",
-                      selectedId === avatar.id ? "text-coral" : "opacity-80"
-                    )}>
-                      {avatar.id.replace(/_/g, ' ').toUpperCase()}
-                    </h4>
-                    {index === 0 && <span className="text-[8px] font-black bg-coral/10 text-coral px-2 py-0.5 rounded-full uppercase">Hero</span>}
-                  </div>
-                  <p className="text-[10px] font-bold opacity-30 uppercase tracking-widest mb-2">
-                    {STYLE_LABELS[activeTab].label} Series
-                  </p>
-                  
-                  {/* Stats Placeholder for "Better" gaming look */}
-                  <div className="flex gap-4">
-                    <div className="flex items-center gap-1">
-                      <Zap size={10} className="text-amber-500" />
-                      <span className="text-[10px] font-black opacity-30">Power Lv.{10 + (index % 5)}</span>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <ShieldCheck size={10} className="text-emerald-500" />
-                      <span className="text-[10px] font-black opacity-30">V.Rare</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="opacity-0 group-hover:opacity-100 transition-opacity pr-4">
-                  <ArrowRight size={20} className="text-coral" />
+                {/* Micro Label */}
+                <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 whitespace-nowrap">
+                   <p className={cn(
+                     "text-[7px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full transition-colors",
+                     selectedId === avatar.id ? "bg-coral text-white" : "bg-foreground/5 opacity-40"
+                   )}>
+                     {avatar.id.split('_').pop()?.toUpperCase()}
+                   </p>
                 </div>
               </motion.button>
             ))}
