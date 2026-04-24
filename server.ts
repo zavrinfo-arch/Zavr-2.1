@@ -458,7 +458,7 @@ app.get('/api/auth/me', async (req, res) => {
       .from('user_profiles')
       .select('*')
       .eq('id', user.id)
-      .single();
+      .maybeSingle();
 
     // Map snake_case from DB to camelCase for App
     const mappedProfile = profile ? {
@@ -650,7 +650,7 @@ app.post('/api/zettl/personal', async (req, res) => {
         currency: 'INR'
       })
       .select()
-      .single();
+      .maybeSingle();
     
     if (error) throw error;
     res.json(data);
@@ -728,7 +728,7 @@ app.post('/api/zettl/personal/:zettlId/remind', async (req, res) => {
       .from('personal_zettls')
       .select('*, from_user_id, to_user_id, reminder_last_sent_at, reminder_count')
       .eq('id', req.params.zettlId)
-      .single();
+      .maybeSingle();
 
     if (!zettl) return res.status(404).json({ error: 'Zettl not found' });
     if (zettl.to_user_id !== user.id) return res.status(403).json({ error: 'Only the payee can remind' });
@@ -795,7 +795,7 @@ app.delete('/api/zettl/personal/:zettlId', async (req, res) => {
       .from('personal_zettls')
       .select('is_settled, from_user_id, to_user_id')
       .eq('id', req.params.zettlId)
-      .single();
+      .maybeSingle();
 
     if (!zettl) return res.status(404).json({ error: 'Not found' });
     if (zettl.is_settled) return res.status(400).json({ error: 'Cannot delete settled Zettl' });
@@ -826,7 +826,7 @@ app.post('/api/zettl/groups', async (req, res) => {
       .from('zettl_groups')
       .insert({ name, avatar_url: avatarUrl, created_by_user_id: user.id })
       .select()
-      .single();
+      .maybeSingle();
     
     if (error) throw error;
 
@@ -950,7 +950,7 @@ app.post('/api/zettl/groups/:groupId/expense', async (req, res) => {
         description
       })
       .select()
-      .single();
+      .maybeSingle();
     
     if (error) throw error;
 
@@ -1095,7 +1095,7 @@ app.get('/api/zettl/settings/reminders', async (req, res) => {
       .from('user_profiles')
       .select('preferences')
       .eq('id', user.id)
-      .single();
+      .maybeSingle();
     
     res.json(data?.preferences?.reminders || { enabled: false, time: '20:00', frequency: 'daily' });
   } catch (err) {
@@ -1114,7 +1114,7 @@ app.put('/api/zettl/settings/reminders', async (req, res) => {
       .from('user_profiles')
       .select('preferences')
       .eq('id', user.id)
-      .single();
+      .maybeSingle();
 
     const newPrefs = {
       ...(profile?.preferences || {}),

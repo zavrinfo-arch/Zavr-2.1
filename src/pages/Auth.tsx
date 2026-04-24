@@ -2,8 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
 import { useStore } from '../store/useStore';
-import { createClient, isConfigured } from '../../lib/supabase/client';
-const supabase = createClient();
+import { supabase, isConfigured } from '../lib/supabaseClient';
 import { cn, fetchWithRetry } from '../lib/utils';
 import { 
   Mail, Lock, User, Phone, Calendar, MapPin,
@@ -28,18 +27,12 @@ export default function Auth() {
   const { currentUser, session, checkAuth, isAuthLoading } = useStore();
 
   useEffect(() => {
-    // Redirect logic:
-    // 1. If we have both session and user, go home or onboarding
-    // 2. If we have session but NO user yet (after loading), go to onboarding
-    if (session && !isAuthLoading) {
-      if (currentUser) {
-        if (!currentUser.onboardingCompleted) {
-          navigate('/onboarding');
-        } else {
-          navigate('/home');
-        }
+    if (session && !isAuthLoading && currentUser) {
+      console.log('[AUTH] Current User State:', { id: currentUser.id, onboarding: currentUser.onboardingCompleted });
+      
+      if (currentUser.onboardingCompleted) {
+        navigate('/home', { replace: true });
       } else {
-        // Session exists but no profile found in DB - force onboarding flow
         navigate('/onboarding', { replace: true });
       }
     }

@@ -1,4 +1,4 @@
-import { createClient } from './supabase/client';
+import { supabase } from '../src/lib/supabaseClient';
 
 export const ONBOARDING_COOKIE = 'onboarding_complete';
 export const AVATAR_COOKIE     = 'selected_avatar';
@@ -30,7 +30,6 @@ export async function persistOnboardingToSupabase(
   userId: string,
   avatarId: string
 ): Promise<boolean> {
-  const supabase = createClient();
   console.log('[onboarding] writing to Supabase...', { userId, avatarId });
 
   const { error } = await supabase
@@ -38,6 +37,7 @@ export async function persistOnboardingToSupabase(
     .update({
       avatar_id: avatarId,
       onboarding_completed: true,
+      updated_at: new Date()
     })
     .eq('id', userId);
 
@@ -51,10 +51,15 @@ export async function persistOnboardingToSupabase(
     .from('user_profiles')
     .select('onboarding_completed, avatar_id')
     .eq('id', userId)
-    .single();
+    .maybeSingle();
 
-  if (readError || !data?.onboarding_completed) {
-    console.error('[onboarding] Supabase read-back failed or value not propagated:', readError);
+  if (readError) {
+    console.error('[onboarding] Supabase read-back error:', readError);
+    return false;
+  }
+
+  if (!data?.onboarding_completed) {
+    console.error('[onboarding] Supabase read-back failed: onboarding_completed is still false');
     return false;
   }
 

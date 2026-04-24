@@ -13,8 +13,7 @@ import {
 } from '../types';
 import { isSameDay, differenceInHours, parseISO, startOfWeek, isAfter, format } from 'date-fns';
 import { supabaseService } from '../services/supabaseService';
-import { createClient, isConfigured } from '../../lib/supabase/client';
-const supabase = createClient();
+import { supabase, isConfigured } from '../lib/supabaseClient';
 import { fetchWithRetry } from '../lib/utils';
 import { setOnboardingCookie } from '../../lib/onboarding';
 
@@ -294,52 +293,85 @@ export const useStore = create<AppState>()(
       setSession: (session) => {
         set({ session });
       },
-      
-      checkAuth: async (isInitial = false) => {
-        // Prevent multiple simultaneous auth checks unless it's the initial call
-        if (get().isAuthLoading && !isInitial) return;
-        
+         checkAuth: async (isInitial = false) => {
+        // Debounce concurrent calls
+        if ((window as any).__authCheckInProgress) {
+          console.log('[AUTH] Auth check already in progress, skipping concurrent call.');
+          return;
+        }
+        (window as any).__authCheckInProgress = true;
+
+        // Prevent clearing loading state too early if another check is in progress
         set({ isAuthLoading: true });
-        console.log('Checking authentication status...');
+        console.log('[AUTH] Checking authentication status...');
         
         try {
-          const response = await fetchWithRetry('/api/auth/me', { 
-            credentials: 'include',
-            headers: {
-              'Accept': 'application/json',
-              'Cache-Control': 'no-cache'
-            }
-          }, 2, 800); // Fewer retries, faster delay for auth check
+          // 1. Get session directly from Supabase client for highest accuracy
+          const { data: { session: sbSession }, error: sessionError } = await supabase.auth.getSession();
           
-          if (response.ok) {
-            const data = await response.json();
-            const { profile, session } = data;
-            
-            if (profile) {
-              set({ currentUser: profile });
-            }
-            
-            // Sync session from cookies to client SDK
-            if (session && session.access_token) {
-              const currentSession = get().session;
-              if (!currentSession || currentSession.access_token !== session.access_token) {
-                console.log('[AUTH] Syncing session to Supabase client...');
-                await supabase.auth.setSession(session);
-                set({ session });
-              }
-            } else if (!session && get().session) {
-              // Server says no session but we thought we had one
-              console.warn('[AUTH] Session lost on server, clearing client state.');
-              await supabase.auth.signOut();
-              set({ currentUser: null, session: null });
+          if (sessionError) {
+            console.error('[AUTH] Session error:', sessionError.message);
+            throw sessionError;
+          }
+          
+          if (sbSession) {
+            console.log('[AUTH] Session found for user:', sbSession.user.id);
+            set({ session: sbSession });
+
+            // 2. Fetch profile from user_profiles table - use maybeSingle() to avoid throwing on empty
+            const { data: profile, error: profileError } = await supabase
+              .from('user_profiles')
+              .select('*')
+              .eq('id', sbSession.user.id)
+              .maybeSingle();
+
+            if (profileError) {
+              console.error('[AUTH] Profile fetch error:', profileError.message);
+              // Don't throw here, just set user to null so onboarding can happen
+              set({ currentUser: null });
+            } else if (profile) {
+              // Map snake_case to camelCase
+              const mappedUser: User = {
+                id: profile.id,
+                fullName: profile.full_name,
+                username: profile.username,
+                email: profile.email || sbSession.user.email || '',
+                phone: profile.phone,
+                dob: profile.dob,
+                location: profile.location,
+                avatar: profile.avatar_url,
+                avatarId: profile.avatar_id,
+                onboardingCompleted: profile.onboarding_completed,
+                interests: profile.interests || [],
+                xp: profile.xp || 0,
+                level: profile.level || 1,
+                badges: profile.badges || [],
+                streak: profile.streak || 0,
+                createdAt: profile.created_at,
+                lastLoginDate: profile.last_login_date,
+                streakFreezeCount: profile.streak_freeze_count || 0,
+                preferences: profile.preferences || {
+                  currency: 'INR',
+                  notificationsEnabled: true,
+                  reminders: { enabled: true, time: '20:00', frequency: 'daily' }
+                }
+              };
+              set({ currentUser: mappedUser });
+              console.log('[AUTH] Profile loaded successfully. Onboarding completed:', mappedUser.onboardingCompleted);
+            } else {
+              console.log('[AUTH] No profile found in DB, user needs onboarding.');
+              set({ currentUser: null });
             }
           } else {
-            set({ currentUser: null });
+            console.log('[AUTH] No session found.');
+            set({ currentUser: null, session: null });
           }
         } catch (error: any) {
-          console.error('Auth check error:', error);
-          set({ currentUser: null });
+          console.error('[AUTH] Critical auth check failure:', error);
+          set({ currentUser: null, session: null });
         } finally {
+          console.log('[AUTH] Auth verification complete.');
+          (window as any).__authCheckInProgress = false;
           set({ isAuthLoading: false });
         }
       },
@@ -356,55 +388,53 @@ export const useStore = create<AppState>()(
         }
       },
       
-      initializeAuth: async () => {
+      initializeAuth: () => {
         if (!isConfigured) {
+          console.log('[AUTH] Supabase not configured, skipping initializeAuth');
           set({ isAuthLoading: false });
           return;
         }
 
-        // REQUIREMENT 5: SINGLE global guard variable (lock mechanism)
-        if ((window as any).__supabaseInitialAuthHandled) return;
+        if ((window as any).__supabaseInitialAuthHandled) {
+          console.log('[AUTH] initializeAuth already handled, skipping');
+          return;
+        }
         (window as any).__supabaseInitialAuthHandled = true;
 
-        try {
-          // REQUIREMENT 4: getSession() called only ONCE on app startup
-          const { data: { session } } = await supabase.auth.getSession();
-          
-          if (session) {
-            set({ session });
-            // Load user profile
-            await get().checkAuth(true);
-          } else {
-            // Even without session, check if cookies might have one
-            await get().checkAuth(true);
-          }
-        } catch (err) {
-          console.error('Initial auth setup failed:', err);
+        console.log('[AUTH] Initializing global auth monitoring...');
+        
+        // Initial check - ensure it runs and clears loading state
+        get().checkAuth(true).catch(err => {
+          console.error('[AUTH] Initial check failed:', err);
           set({ isAuthLoading: false });
-        }
+        });
 
-        // REQUIREMENT 3: Implement a SINGLE global auth state listener
-        // Guarded by the __supabaseInitialAuthHandled check above
+        // Set up listener
         supabase.auth.onAuthStateChange(async (event, session) => {
-          console.log(`[AUTH] Global Update: ${event}`, session?.user?.id);
-          
-          // Only update session in store if it has specifically changed
-          const currentSession = get().session;
-          if (session?.access_token !== currentSession?.access_token) {
-            set({ session });
-          }
+          console.log(`[AUTH] Global Security Event: ${event}`, session?.user?.id || 'No User');
           
           if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
             if (session) {
-              // Only fetch profile if we don't have it, or it's a critical change
-              if (!get().currentUser || event === 'SIGNED_IN') {
+              // Only re-trigger full check if session changed or was missing
+              const currentSession = get().session;
+              if (!currentSession || currentSession.access_token !== session.access_token || event === 'SIGNED_IN') {
+                set({ session });
                 await get().checkAuth();
               }
             }
           } else if (event === 'SIGNED_OUT') {
+            console.log('[AUTH] User signed out, clearing state.');
             set({ currentUser: null, session: null, isAuthLoading: false });
           }
         });
+
+        // Safety timeout: If still loading after 8 seconds, clear it to prevent perpetual splash
+        setTimeout(() => {
+          if (get().isAuthLoading) {
+            console.warn('[AUTH] Safety timeout triggered: clearing hang loading state.');
+            set({ isAuthLoading: false });
+          }
+        }, 8000);
       },
 
       addUser: async (user) => {
@@ -447,9 +477,17 @@ export const useStore = create<AppState>()(
           users: state.users.map(u => u.id === finalUser.id ? finalUser : u)
         });
 
-        const { error } = await supabaseService.updateProfile(finalUser.id, finalUser);
+        const { error } = await supabaseService.updateProfile(finalUser.id, {
+          ...updates,
+          updated_at: new Date()
+        } as any);
+
         if (error) {
           console.error('[STORE] Remote sync failed, but local state preserved:', error);
+        } else {
+          // Re-fetch to ensure sync with server
+          console.log('[STORE] Profile updated on server, re-verifying...');
+          await get().checkAuth();
         }
       },
 

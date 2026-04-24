@@ -29,6 +29,7 @@ const CATEGORIES = [
 
 export default function Onboarding() {
   const [step, setStep] = useState(1);
+  const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const { currentUser, updateUser, resetWeeklyChallenge } = useStore();
 
@@ -54,22 +55,32 @@ export default function Onboarding() {
   };
 
   const handleFinish = async () => {
-    console.log('[DEBUG] Completing onboarding flow...');
+    if (loading) return;
+    setLoading(true);
+    console.log('[Onboarding] Finishing onboarding flow...');
     
-    // Update local store AND DB (Await both for consistency)
-    await updateUser({
-      avatar: data.avatar.url,
-      avatarId: data.avatar.id,
-      interests: data.interests,
-      onboardingCompleted: true,
-    });
+    try {
+      // Update local store AND DB (Await both for consistency)
+      await updateUser({
+        avatar: data.avatar.url,
+        avatarId: (data.avatar.id as any),
+        interests: data.interests,
+        onboardingCompleted: true,
+      });
 
-    resetWeeklyChallenge();
-    toast.success('Onboarding complete!');
-    
-    // Finalize state and redirect
-    toast.success('Onboarding complete!');
-    navigate('/home', { replace: true });
+      resetWeeklyChallenge();
+      toast.success('Welcome to Zavr!', { icon: '✨' });
+      
+      // Artificial delay to ensure DB propagation and state sync
+      setTimeout(() => {
+        navigate('/home', { replace: true });
+      }, 500);
+    } catch (err) {
+      console.error('[Onboarding] Error during finish:', err);
+      toast.error('Failed to complete onboarding. Please try again.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const toggleInterest = (id: string) => {
@@ -111,7 +122,7 @@ export default function Onboarding() {
                 <h2 className="text-3xl font-bold mb-2">Choose your avatar</h2>
                 <p className="opacity-40">Pick a character that represents you</p>
               </div>
-              <div id="avatar-grid" className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 gap-4 min-h-[400px] max-h-[600px] overflow-y-auto pr-4 custom-scrollbar pb-32 p-4 clay-inset rounded-3xl bg-foreground/5">
+              <div id="avatar-grid" className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 gap-6 max-h-[650px] overflow-y-auto pr-2 custom-scrollbar pb-24 p-6 clay-inset rounded-3xl bg-foreground/5">
                 {AVATARS_50.map((avatar) => (
                   <motion.button
                     id={`avatar-${avatar.id}`}

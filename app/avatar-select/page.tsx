@@ -12,7 +12,10 @@ const AVATARS = [
   { id: 'avatar_3', src: '/avatars/3.png', alt: 'Avatar 3' },
 ];
 
+import { useRouter } from 'next/navigation';
+
 export default function AvatarSelectPage() {
+  const router = useRouter();
   const [userId, setUserId]                     = useState<string | null>(null);
   const [selectedAvatarId, setSelectedAvatarId] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl]             = useState<string | null>(null);
@@ -25,8 +28,8 @@ export default function AvatarSelectPage() {
     async function init() {
       // ── Already done? Skip the page entirely ────────────────────────────
       if (getOnboardingCookie()) {
-        console.log('[AvatarSelectPage] cookie says done — skipping to dashboard');
-        window.location.href = '/dashboard';
+        console.log('[AvatarSelectPage] cookie says done — skipping to home');
+        router.push('/home');
         return;
       }
 
@@ -34,20 +37,24 @@ export default function AvatarSelectPage() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         console.error('[AvatarSelectPage] No authenticated user');
-        window.location.href = '/login';
+        router.push('/login');
         return;
       }
 
       // ── Check Supabase profile in case cookie is missing but DB is done ──
-      const { data: profile } = await supabase
-        .from('profiles')
+      const { data: profile, error } = await supabase
+        .from('user_profiles')
         .select('onboarding_completed, avatar_id')
         .eq('id', user.id)
-        .single();
+        .maybeSingle();
+
+      if (error) {
+        console.error('[AvatarSelectPage] Profile fetch error:', error);
+      }
 
       if (profile?.onboarding_completed) {
-        console.log('[AvatarSelectPage] DB says done — skipping to dashboard');
-        window.location.href = '/dashboard';
+        console.log('[AvatarSelectPage] DB says done — skipping to home');
+        router.push('/home');
         return;
       }
 
@@ -56,7 +63,7 @@ export default function AvatarSelectPage() {
     }
 
     init();
-  }, []); // Empty deps — runs once, never resets selection state
+  }, [router]); // Empty deps — runs once, never resets selection state
 
   function selectAvatar(id: string, src: string) {
     avatarIdRef.current = id;   // ref — for navigation logic
@@ -66,9 +73,13 @@ export default function AvatarSelectPage() {
   }
 
   function onClickContinue() {
+    if (!userId) {
+      console.error('[AvatarSelectPage] Cannot continue: userId is null');
+      return;
+    }
     const avatarId = avatarIdRef.current ?? selectedAvatarId;
     console.log('[AvatarSelectPage] Continue clicked — avatarId:', avatarId, 'userId:', userId);
-    handleContinue(userId!, avatarId, previewUrl, setButtonDisabled);
+    handleContinue(userId, avatarId, previewUrl, setButtonDisabled);
   }
 
   return (

@@ -18,11 +18,15 @@ export default async function DashboardPage({
       const { data: { user } } = await supabase.auth.getUser();
 
       if (user) {
-        const { data: profile } = await supabase
-          .from('profiles')
+        const { data: profile, error } = await supabase
+          .from('user_profiles')
           .select('onboarding_completed')
           .eq('id', user.id)
-          .single();
+          .maybeSingle();
+
+        if (error) {
+          console.error('[dashboard] Profile fetch error:', error);
+        }
 
         if (profile?.onboarding_completed) {
           // DB says done - proceed

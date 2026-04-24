@@ -10,21 +10,32 @@ import { useStore } from '../store/useStore';
 
 export default function SplashScreen() {
   const navigate = useNavigate();
-  const { currentUser, isAuthLoading } = useStore();
+  const { currentUser, session, isAuthLoading } = useStore();
 
   useEffect(() => {
     // We only navigate once auth loading is definitely finished
     if (isAuthLoading) return;
 
     const timer = setTimeout(() => {
-      if (!currentUser) {
+      // 1. Check if we even have a session
+      if (!session) {
+        console.log('[SPLASH] No session, navigating to auth');
         navigate('/auth');
+        return;
+      }
+
+      // 2. We have a session, now check the profile
+      if (!currentUser) {
+        console.log('[SPLASH] Session exists but no profile, navigating to onboarding');
+        navigate('/onboarding');
       } else if (!currentUser.onboardingCompleted) {
+        console.log('[SPLASH] Profile exists but onboarding incomplete, navigating to onboarding');
         navigate('/onboarding');
       } else {
+        console.log('[SPLASH] Profile complete, navigating to home');
         navigate('/home');
       }
-    }, 1000); // Reduced delay for better feel
+    }, 1000);
 
     return () => clearTimeout(timer);
   }, [currentUser, isAuthLoading, navigate]);

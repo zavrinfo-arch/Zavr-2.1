@@ -11,7 +11,7 @@ import { AVATARS_50 } from '../constants/avatars';
 import { cn } from '../lib/utils';
 import { Check, ArrowRight, ArrowLeft, Loader2, Sparkles, User, Palette, Camera, ShieldCheck, Zap } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { supabase } from '../lib/supabase';
+import { supabase } from '../lib/supabaseClient';
 
 const STYLE_LABELS = {
   'gen-z': { label: 'Gen-Z Modern', icon: Sparkles, color: 'text-purple-500' },
@@ -23,33 +23,40 @@ const STYLE_LABELS = {
 export default function AvatarSelection() {
   const navigate = useNavigate();
   const { currentUser, updateUser, refreshData, signOut } = useStore();
+  const [userId, setUserId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(currentUser?.avatarId?.toString() || null);
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<'gen-z' | 'classic' | 'bw' | 'minimal'>('gen-z');
 
   useEffect(() => {
+    const init = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        setUserId(user.id);
+        console.log('[AvatarSelection] userId set:', user.id);
+      }
+    };
+    init();
+
     if (currentUser?.avatarId) {
       setSelectedId(currentUser.avatarId.toString());
     }
   }, [currentUser]);
 
   const saveAvatar = async () => {
+    if (!userId) {
+      toast.error('Authentication required');
+      return;
+    }
+
     if (!selectedId) {
       toast.error('Please select an avatar');
       return;
     }
 
     setLoading(true);
-    console.log('[DEBUG] Saving avatar session check...');
+    console.log('[DEBUG] Saving avatar for user:', userId);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        toast.error('Session expired. Please log in again.');
-        signOut();
-        navigate('/auth');
-        return;
-      }
-
       const selectedAvatar = AVATARS_50.find(a => a.id === selectedId);
       if (!selectedAvatar) throw new Error('Invalid avatar selection');
 

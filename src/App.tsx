@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 
 import { useStore } from './store/useStore';
-import { supabase, isConfigured } from './lib/supabase';
+import { supabase, isConfigured } from './lib/supabaseClient';
 import { Layout } from './components/Layout';
 import SplashScreen from './pages/SplashScreen';
 import Auth from './pages/Auth';
@@ -38,50 +38,57 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const location = useLocation();
   
   useEffect(() => {
-    console.log('[DEBUG] Route Guard Check:', {
-      path: location.pathname,
-      isAuthLoading,
-      hasSession: !!session,
-      hasUser: !!currentUser,
-      onboardingCompleted: currentUser?.onboardingCompleted
-    });
+    if (!isAuthLoading) {
+      console.log('[DEBUG] Route Guard State:', {
+        path: location.pathname,
+        hasSession: !!session,
+        hasUser: !!currentUser,
+        onboardingCompleted: currentUser?.onboardingCompleted
+      });
+    }
   }, [location.pathname, isAuthLoading, session, currentUser]);
   
   if (isAuthLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="flex flex-col items-center gap-4">
-          <Loader2 className="w-12 h-12 text-coral animate-spin" />
-          <p className="text-sm font-bold opacity-40 uppercase tracking-widest">Verifying Session...</p>
+        <div className="flex flex-col items-center gap-6">
+          <div className="relative w-16 h-16">
+            <div className="absolute inset-0 bg-coral/20 blur-xl rounded-full animate-pulse" />
+            <Loader2 className="w-16 h-16 text-coral animate-spin relative z-10" />
+          </div>
+          <div className="space-y-1 text-center">
+            <p className="text-xs font-black opacity-40 uppercase tracking-[0.3em]">Authenticating</p>
+            <p className="text-[10px] opacity-20 italic">"Good things come to those who wait"</p>
+          </div>
         </div>
       </div>
     );
   }
 
-  // Use session for first-pass check
+  // No session? Go to auth
   if (!session) {
-    console.log('[DEBUG] No session, redirecting to /auth');
+    console.log('[GUARD] No session, redirecting to /auth');
     return <Navigate to="/auth" state={{ from: location }} replace />;
   }
   
   const isSetupPage = location.pathname === '/onboarding' || location.pathname === '/avatar-selection';
 
-  // If we have a session but no profile yet, they MUST be on onboarding to create one
-  // or we need to wait for checkAuth to finish (which is handled by isAuthLoading above)
+  // Session exists but no profile yet -> Go to onboarding
   if (!currentUser) {
     if (isSetupPage) return <>{children}</>;
-    console.log('[DEBUG] No user profile, redirecting to /onboarding');
+    console.log('[GUARD] No user profile, redirecting to /onboarding');
     return <Navigate to="/onboarding" replace />;
   }
   
-  // Handled onboarding completion transfers
+  // Profile exists but onboarding not finished
   if (!currentUser.onboardingCompleted && !isSetupPage) {
-    console.log('[DEBUG] Onboarding not completed, redirecting to /onboarding');
+    console.log('[GUARD] Onboarding incomplete, redirecting to /onboarding');
     return <Navigate to="/onboarding" replace />;
   }
 
+  // Profile finished but still on setup pages
   if (currentUser.onboardingCompleted && isSetupPage) {
-    console.log('[DEBUG] Onboarding already done, redirecting to /home');
+    console.log('[GUARD] Onboarding already complete, redirecting to /home');
     return <Navigate to="/home" replace />;
   }
 

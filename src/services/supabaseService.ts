@@ -1,10 +1,29 @@
-import { createClient } from '../../lib/supabase/client';
-const supabase = createClient();
+import { supabase } from '../lib/supabaseClient';
 import { User, SoloGoal, GroupGoal, Transaction, Notification, StreakData } from '../types';
 
 export const supabaseService = {
   // Helpers
   async ensureSession() {
+    // Attempt to get session from store first to avoid unnecessary gotrue calls
+    // which can trigger "Lock stolen" errors in some environments
+    try {
+      // Use dynamic import to avoid potential circular dependencies
+      const { useStore } = await import('../store/useStore');
+      const state = useStore.getState();
+      const storeSession = state.session;
+      
+      // Check if session exists and is not expired (buffer of 60 seconds)
+      if (storeSession && storeSession.expires_at) {
+        const now = Math.floor(Date.now() / 1000);
+        const isExpired = storeSession.expires_at <= (now + 60);
+        if (!isExpired) {
+          return storeSession;
+        }
+      }
+    } catch (e) {
+      console.warn('[SUPABASE-SVC] Store session fetch failed, falling back to auth.getSession()', e);
+    }
+
     const { data: { session }, error } = await supabase.auth.getSession();
     if (error) throw error;
     if (!session) throw new Error('Invalid session: Please log in again.');
@@ -30,7 +49,7 @@ export const supabaseService = {
       .from('user_profiles')
       .upsert(dbUpdates)
       .select()
-      .single();
+      .maybeSingle();
 
     return { data, error };
   },
@@ -41,7 +60,7 @@ export const supabaseService = {
       .from('user_profiles')
       .select('*')
       .eq('id', userId)
-      .single();
+      .maybeSingle();
     
     if (data) {
       // Map snake_case to camelCase for App
@@ -143,7 +162,7 @@ export const supabaseService = {
       .from('solo_goals')
       .upsert(dbGoal)
       .select()
-      .single();
+      .maybeSingle();
     return { data, error };
   },
 
@@ -168,7 +187,7 @@ export const supabaseService = {
       .from('emergency_goals') 
       .upsert(dbGoal)
       .select()
-      .single();
+      .maybeSingle();
     return { data, error };
   },
 
@@ -242,7 +261,7 @@ export const supabaseService = {
       .from('group_goals')
       .upsert(dbGoal)
       .select()
-      .single();
+      .maybeSingle();
     return { data, error };
   },
 
@@ -289,7 +308,7 @@ export const supabaseService = {
       .from('transactions')
       .insert(dbTransaction)
       .select()
-      .single();
+      .maybeSingle();
     return { data, error };
   },
 
@@ -305,7 +324,7 @@ export const supabaseService = {
   async leaveGroup(goalId: string, userId: string) {
     await this.ensureSession();
     // 1. Fetch current goal state
-    const { data: goal } = await supabase.from('group_goals').select('*').eq('id', goalId).single();
+    const { data: goal } = await supabase.from('group_goals').select('*').eq('id', goalId).maybeSingle();
     if (!goal) throw new Error('Goal not found');
 
     // 2. Update members array (JSONB)
@@ -333,7 +352,7 @@ export const supabaseService = {
   async deleteTransaction(transactionId: string) {
     await this.ensureSession();
     // 1. Get info
-    const { data: tx } = await supabase.from('transactions').select('*').eq('id', transactionId).single();
+    const { data: tx } = await supabase.from('transactions').select('*').eq('id', transactionId).maybeSingle();
     if (!tx) throw new Error('Transaction not found');
 
     const { amount, type, goal_id, goal_type } = tx;
@@ -342,7 +361,7 @@ export const supabaseService = {
     const table = goal_type === 'solo' ? 'solo_goals' : goal_type === 'group' ? 'group_goals' : 'emergency_goals';
     const field = goal_type === 'group' ? 'total_collected' : 'current_amount';
 
-    const { data: goal } = await supabase.from(table).select(field).eq('id', goal_id).single();
+    const { data: goal } = await supabase.from(table).select(field).eq('id', goal_id).maybeSingle();
     if (goal) {
       const adjustment = type === 'deposit' ? -amount : amount;
       await supabase.from(table).update({ [field]: goal[field] + adjustment }).eq('id', goal_id);
@@ -410,7 +429,7 @@ export const supabaseService = {
       .from('notifications')
       .insert(dbNotification)
       .select()
-      .single();
+      .maybeSingle();
     return { data, error };
   },
 
