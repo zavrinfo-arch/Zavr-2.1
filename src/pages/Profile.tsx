@@ -6,6 +6,7 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useStore } from '../store/useStore';
+import { supabase } from '../lib/supabaseClient';
 import { AVATARS_50 } from '../constants/avatars';
 import { formatCurrency, cn } from '../lib/utils';
 import { 
@@ -43,18 +44,71 @@ export default function Profile() {
     location: currentUser?.location || '',
   });
 
-  const handleSaveProfile = () => {
+  const handleSaveProfile = async () => {
     if (!editData.fullName || !editData.username) {
       toast.error('Please fill all fields');
       return;
     }
-    updateUser({
-      fullName: editData.fullName,
-      username: editData.username,
-      location: editData.location,
-    });
-    setIsEditing(false);
-    toast.success('Profile updated!');
+
+    try {
+      // Get logged in user
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      const { data: { session } } = await supabase.auth.getSession();
+      const finalUser = user || session?.user;
+
+      console.log("USER:", finalUser);
+      if (userError) console.log("USER ERROR:", userError);
+
+      // If no user, stop execution
+      if (!finalUser) {
+        console.error("No authenticated user");
+        return;
+      }
+
+      // Map values as per requirement 6
+      const fullName = editData.fullName;
+      const username = editData.username;
+      const phone = currentUser?.phone || '';
+      const birthDate = currentUser?.dob || '';
+      const gender = (currentUser as any)?.gender || '';
+      const avatarUrl = currentUser?.avatar || '';
+
+      // Save using UPSERT (not insert) as per requirement 2
+      const { error } = await supabase
+        .from('profiles')
+        .upsert({
+          id: finalUser.id,
+          full_name: fullName || null,
+          username: username || null,
+          phone: phone || null,
+          birth_date: birthDate || null,
+          gender: gender || null,
+          avatar_url: avatarUrl || null,
+          location: editData.location,
+          updated_at: new Date().toISOString()
+        });
+
+      if (error) {
+        console.error("SAVE ERROR:", error);
+        alert("Failed to save personal details");
+        return;
+      }
+
+      console.log("Saved successfully");
+
+      // Update store state
+      await updateUser({
+        fullName: editData.fullName,
+        username: editData.username,
+        location: editData.location,
+      });
+
+      setIsEditing(false);
+      toast.success('Profile updated!');
+    } catch (err) {
+      console.error('[Profile] Unexpected error:', err);
+      toast.error('An unexpected error occurred.');
+    }
   };
 
   const stats = {

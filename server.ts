@@ -44,11 +44,21 @@ if (!isSupabaseConfigured) {
   console.error('CRITICAL: Supabase environment variables are missing or invalid!');
 }
 
-// Supabase Client (using ANON key to respect RLS as requested)
-// We still call it supabaseAdmin in some places but it now uses the anon key
+// Supabase Client (using SERVICE_ROLE key for administrative tasks if available)
+const rawServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY;
+const hasServiceKey = rawServiceKey && rawServiceKey.length > 40; // Some keys might be slightly shorter but still valid
+const supabaseServiceKey = hasServiceKey ? rawServiceKey.trim() : supabaseAnonKey;
+
+console.log('[SUPABASE] Initialization Info:');
+console.log(`- URL: ${supabaseUrl}`);
+console.log(`- Using Service Role Key: ${hasServiceKey}`);
+if (!hasServiceKey) {
+  console.warn('[SUPABASE] WARNING: SUPABASE_SERVICE_ROLE_KEY is not set. Falling back to ANON key. Administrative queries will likely fail due to RLS or schema permissions.');
+}
+
 const supabaseAdmin = createClient(
   supabaseUrl,
-  supabaseAnonKey,
+  supabaseServiceKey,
   {
     auth: {
       autoRefreshToken: false,
@@ -56,6 +66,28 @@ const supabaseAdmin = createClient(
     }
   }
 );
+
+// --- Schema Check ---
+(async () => {
+  console.log('[SUPABASE] Running schema check...');
+  try {
+    const { data, error } = await supabaseAdmin.from('profiles').select('id').limit(1);
+    if (error) {
+      console.error('[SUPABASE] Schema check failed:', error.message);
+      if (error.message.includes('permission denied for schema public')) {
+        console.error('[SUPABASE] CRITICAL: The role used does not have USAGE on schema public.');
+        console.error('[SUPABASE] Possible Fixes:');
+        console.error('1. Ensure SUPABASE_SERVICE_ROLE_KEY is correctly set in AI Studio Secrets.');
+        console.error('2. Run this SQL in your Supabase Dashboard: GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;');
+        console.error('3. Check if the "profiles" table was created in a different schema.');
+      }
+    } else {
+      console.log('[SUPABASE] Schema check successful: profiles table is accessible.');
+    }
+  } catch (err: any) {
+    console.error('[SUPABASE] Schema check exception:', err.message);
+  }
+})();
 
 // Alias for semantic clarity in auth routes
 const supabaseAuth = supabaseAdmin;
@@ -459,12 +491,12 @@ app.get('/api/auth/me', async (req, res) => {
       username: profile.username,
       email: profile.email || user.email,
       phone: profile.phone,
-      dob: profile.dob,
+      dob: profile.birth_date || profile.dob,
       location: profile.location,
       avatar: profile.avatar_url || `https://api.dicebear.com/7.x/lorelei/svg?seed=${profile.username}`,
       avatarId: profile.avatar_id || 'genz_1',
       streak: profile.streak || 0,
-      onboardingCompleted: profile.onboarding_completed,
+      onboardingCompleted: profile.onboarding_completed || (!!profile.username && !!profile.full_name),
       interests: profile.interests || [],
       badges: profile.badges || [],
       createdAt: profile.created_at,
@@ -503,16 +535,120 @@ app.get('/api/users/search', async (req, res) => {
   if (!query) return res.json([]);
 
   try {
-    const { data } = await supabaseAdmin
+    const safeQuery = (query || '').trim();
+    if (!safeQuery) return res.json([]);
+
+    // Replace spaces with wildcards for flexible matching across columns
+    const wildcard = `%${safeQuery.replace(/\s+/g, '%')}%`;
+
+    console.log(`[SERVER] Searching profiles for: ${wildcard}`);
+
+    // Determine which client to use for search
+    let searchClient = supabaseAdmin;
+    const token = req.cookies['sb-access-token'];
+    
+    // If we don't have a service key, we MUST use a client with the user's token
+    // to benefit from the user's permissions, or at least bypass 'anon' restrictions.
+    if (!hasServiceKey && token) {
+      console.log('[SERVER] Service role missing, creating user-context client for search');
+      searchClient = createClient(supabaseUrl, supabaseAnonKey, {
+        auth: {
+          persistSession: false,
+          autoRefreshToken: false,
+          detectSessionInUrl: false
+        },
+        global: { 
+          headers: { 
+            Authorization: `Bearer ${token}` 
+          } 
+        }
+      });
+    } else if (!hasServiceKey) {
+      console.warn('[SERVER] Both Service Role and Token missing. Search will likely fail or return limited results.');
+    }
+
+    // Using .or with PostgREST. Note: values with spaces or special characters
+    // in an .or() string MUST be double-quoted.
+    const orCondition = `username.ilike."${wildcard}",full_name.ilike."${wildcard}"`;
+    
+    const { data, error } = await searchClient
       .from('profiles')
       .select('id, username, full_name, avatar_url')
-      .ilike('username', `%${query}%`)
+      .or(orCondition)
       .neq('id', user.id)
-      .limit(10);
+      .limit(20);
+    
+    if (error) {
+      console.error('[SERVER] Primary Search failed:', error.message);
+      console.error(`[SERVER] Context: URL=${supabaseUrl}, Role=${hasServiceKey ? 'service_role' : (token ? 'authenticated' : 'anon')}`);
+      
+      // Fallback: search only by username which is simpler
+      const { data: fallbackData, error: fbError } = await searchClient
+        .from('profiles')
+        .select('id, username, full_name, avatar_url')
+        .ilike('username', wildcard)
+        .neq('id', user.id)
+        .limit(20);
+
+      if (fbError) {
+        console.error('[SERVER] Fallback Search failed:', fbError.message);
+        return res.status(500).json({ error: 'Search failed', message: fbError.message });
+      }
+      return res.json(fallbackData || []);
+    }
     
     res.json(data || []);
-  } catch (err) {
-    res.status(500).json({ error: 'Search failed' });
+  } catch (err: any) {
+    console.error('[SERVER] Search Exception:', err);
+    res.status(500).json({ error: 'Search failed', message: err.message });
+  }
+});
+
+app.post('/api/friends/request-by-username', async (req, res) => {
+  const user = await getAuthenticatedUser(req, res);
+  if (!user) return res.status(401).json({ error: 'Not authenticated' });
+
+  const { username: rawUsername } = req.body;
+  if (!rawUsername) return res.status(400).json({ error: 'Username is required' });
+  const username = rawUsername.trim();
+
+  try {
+    // 1. Find user by username (case-insensitive)
+    const { data: targetUser, error: findError } = await supabaseAdmin
+      .from('profiles')
+      .select('id, username')
+      .ilike('username', username)
+      .maybeSingle();
+    
+    if (findError) throw findError;
+    if (!targetUser) return res.status(404).json({ error: 'User not found' });
+    if (targetUser.id === user.id) return res.status(400).json({ error: 'You cannot add yourself' });
+
+    // 2. Check if relationship already exists in either direction
+    const { data: existing, error: checkError } = await supabaseAdmin
+      .from('friends')
+      .select('id, status, user_id, friend_id')
+      .or(`and(user_id.eq.${user.id},friend_id.eq.${targetUser.id}),and(user_id.eq.${targetUser.id},friend_id.eq.${user.id})`)
+      .maybeSingle();
+    
+    if (checkError) throw checkError;
+    if (existing) {
+      if (existing.status === 'accepted') return res.status(400).json({ error: 'You are already friends' });
+      const direction = existing.user_id === user.id ? 'sent' : 'received';
+      return res.status(400).json({ error: `You already have a ${direction} request with this user` });
+    }
+
+    // 3. Insert friend request
+    const { error: insertError } = await supabaseAdmin
+      .from('friends')
+      .insert({ user_id: user.id, friend_id: targetUser.id, status: 'pending' });
+    
+    if (insertError) throw insertError;
+
+    res.json({ success: true, friendId: targetUser.id, friendUsername: targetUser.username });
+  } catch (err: any) {
+    console.error('Friend request by username failed:', err);
+    res.status(500).json({ error: err.message || 'Friend request failed' });
   }
 });
 
@@ -524,17 +660,28 @@ app.post('/api/friends/request', async (req, res) => {
   if (!friendId) return res.status(400).json({ error: 'friendId is required' });
 
   try {
+    // Check if relationship already exists
+    const { data: existing, error: checkError } = await supabaseAdmin
+      .from('friends')
+      .select('id, status, user_id, friend_id')
+      .or(`and(user_id.eq.${user.id},friend_id.eq.${friendId}),and(user_id.eq.${friendId},friend_id.eq.${user.id})`)
+      .maybeSingle();
+    
+    if (checkError) throw checkError;
+    if (existing) {
+      if (existing.status === 'accepted') return res.status(400).json({ error: 'You are already friends' });
+      return res.status(400).json({ error: 'Relationship already exists' });
+    }
+
     const { error } = await supabaseAdmin
       .from('friends')
       .insert({ user_id: user.id, friend_id: friendId, status: 'pending' });
     
-    if (error) {
-      if (error.code === '23505') return res.status(400).json({ error: 'Relationship already exists' });
-      throw error;
-    }
+    if (error) throw error;
     res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: 'Friend request failed' });
+  } catch (err: any) {
+    console.error('Friend request failed:', err);
+    res.status(500).json({ error: err.message || 'Friend request failed' });
   }
 });
 
@@ -580,32 +727,36 @@ app.get('/api/friends/list', async (req, res) => {
 
   try {
     // Relationships where I initiated
-    const { data: initiated } = await supabaseAdmin
+    const { data: initiated, error: initiatedError } = await supabaseAdmin
       .from('friends')
       .select(`
         id, status, created_at, friend_id,
-        profiles!friends_friend_id_fkey(id, username, full_name, avatar_url)
+        friend:profiles!friend_id(id, username, full_name, avatar_url)
       `)
       .eq('user_id', user.id);
     
+    if (initiatedError) throw initiatedError;
+    
     // Relationships where I am the recipient
-    const { data: received } = await supabaseAdmin
+    const { data: received, error: receivedError } = await supabaseAdmin
       .from('friends')
       .select(`
         id, status, created_at, user_id,
-        profiles!friends_user_id_fkey(id, username, full_name, avatar_url)
+        sender:profiles!user_id(id, username, full_name, avatar_url)
       `)
       .eq('friend_id', user.id);
+
+    if (receivedError) throw receivedError;
 
     const friendsList = [
       ...(initiated || []).map(f => ({
         ...f,
-        friend: (f as any).profiles,
+        friend: (f as any).friend,
         type: 'outgoing'
       })),
       ...(received || []).map(f => ({
         ...f,
-        friend: (f as any).profiles,
+        friend: (f as any).sender,
         friend_id: f.user_id,
         type: 'incoming'
       }))

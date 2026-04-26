@@ -43,6 +43,7 @@ interface AppState {
   fetchZettlData: () => Promise<void>;
   searchZettlUsers: (query: string) => Promise<User[]>;
   sendFriendRequest: (friendId: string) => Promise<void>;
+  sendFriendRequestByUsername: (username: string) => Promise<void>;
   respondToFriendRequest: (requestId: string, status: 'accepted' | 'declined') => Promise<void>;
   createZettlGroup: (name: string, memberIds: string[]) => Promise<void>;
   createPersonalZettl: (data: { friendId: string, amount: number, note: string, dueDate?: string, direction: 'lent' | 'borrowed' }) => Promise<void>;
@@ -208,20 +209,44 @@ export const useStore = create<AppState>()(
 
       searchZettlUsers: async (query) => {
         try {
-          const res = await fetchWithRetry(`/api/users/search?q=${query}`, { credentials: 'include' });
+          const res = await fetchWithRetry(`/api/users/search?q=${encodeURIComponent(query)}`, { credentials: 'include' });
+          if (!res.ok) {
+            const errData = await res.json();
+            console.error('[STORE] Search API error:', errData);
+            return [];
+          }
           return await res.json();
         } catch (err) {
+          console.error('[STORE] Search failed:', err);
           return [];
         }
       },
 
       sendFriendRequest: async (friendId) => {
-        await fetchWithRetry('/api/friends/request', {
+        const res = await fetchWithRetry('/api/friends/request', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ friendId }),
           credentials: 'include'
         });
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error || 'Failed to send request');
+        }
+        await get().fetchZettlData();
+      },
+
+      sendFriendRequestByUsername: async (username) => {
+        const res = await fetchWithRetry('/api/friends/request-by-username', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username }),
+          credentials: 'include'
+        });
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error || 'Failed to send request');
+        }
         await get().fetchZettlData();
       },
 
@@ -342,11 +367,11 @@ export const useStore = create<AppState>()(
                 username: profile.username,
                 email: profile.email || sbSession.user.email || '',
                 phone: profile.phone,
-                dob: profile.dob,
+                dob: profile.birth_date || profile.dob,
                 location: profile.location,
                 avatar: profile.avatar_url,
                 avatarId: profile.avatar_id,
-                onboardingCompleted: profile.onboarding_completed,
+                onboardingCompleted: profile.onboarding_completed || (!!profile.username && !!profile.full_name),
                 interests: profile.interests || [],
                 xp: profile.xp || 0,
                 level: profile.level || 1,
@@ -1389,6 +1414,21 @@ export const useStore = create<AppState>()(
     }),
     {
       name: 'zavr-storage',
+      partialize: (state) => ({
+        soloGoals: state.soloGoals,
+        groupGoals: state.groupGoals,
+        emergencyGoals: state.emergencyGoals,
+        transactions: state.transactions,
+        notifications: state.notifications,
+        streakData: state.streakData,
+        theme: state.theme,
+        weeklyChallenge: state.weeklyChallenge,
+        dailyQuests: state.dailyQuests,
+        weeklyQuests: state.weeklyQuests,
+        zettlFriends: state.zettlFriends,
+        zettlGroups: state.zettlGroups,
+        personalZettls: state.personalZettls,
+      }),
     }
   )
 );

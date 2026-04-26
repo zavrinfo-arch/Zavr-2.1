@@ -34,30 +34,52 @@ export const supabaseService = {
   async updateProfile(userId: string, updates: Partial<User>) {
     await this.ensureSession();
     console.log('[SUPABASE-SVC] Updating profile for:', userId, updates);
-    // Map camelCase to snake_case for DB
-    const dbUpdates: any = { id: userId };
-    if (updates.fullName) dbUpdates.full_name = updates.fullName;
-    if (updates.username) dbUpdates.username = updates.username;
-    if (updates.email) dbUpdates.email = updates.email;
-    if (updates.phone) dbUpdates.phone = updates.phone;
-    if (updates.dob) dbUpdates.dob = updates.dob;
-    if (updates.location) dbUpdates.location = updates.location;
-    if (updates.avatar) dbUpdates.avatar_url = updates.avatar;
-    if (updates.avatarId) dbUpdates.avatar_id = updates.avatarId;
-    if (updates.onboardingCompleted !== undefined) dbUpdates.onboarding_completed = updates.onboardingCompleted;
     
-    // Always update the timestamp
-    dbUpdates.updated_at = new Date().toISOString();
+    try {
+      // Get logged in user
+      const { data: { user } } = await supabase.auth.getUser();
 
-    const { data, error } = await supabase
-      .from('profiles')
-      .update(dbUpdates)
-      .eq('id', userId)
-      .select()
-      .maybeSingle();
+      // If no user, stop execution
+      if (!user) {
+        throw new Error('No authenticated user found');
+      }
 
-    if (error) console.error('[SUPABASE-SVC] Update profile error:', error);
-    return { data, error };
+      // Map camelCase to snake_case for DB as per requirement 6
+      const dbUpdates: any = { 
+        id: userId,
+        updated_at: new Date().toISOString()
+      };
+      
+      if (updates.fullName) dbUpdates.full_name = updates.fullName;
+      if (updates.username) dbUpdates.username = updates.username;
+      if (updates.phone) dbUpdates.phone = updates.phone;
+      if (updates.dob) dbUpdates.birth_date = updates.dob; // birthDate -> birth_date mapping
+      if (updates.gender) dbUpdates.gender = updates.gender;
+      if (updates.avatar) dbUpdates.avatar_url = updates.avatar;
+      
+      // Preserve other fields that might not be in the "Personal Details" structure
+      if (updates.location) dbUpdates.location = updates.location;
+      if (updates.avatarId) dbUpdates.avatar_id = updates.avatarId;
+      if (updates.onboardingCompleted !== undefined) dbUpdates.onboarding_completed = updates.onboardingCompleted;
+
+      // Save using UPSERT (not insert) as per requirement 2
+      const { data, error } = await supabase
+        .from('profiles')
+        .upsert(dbUpdates)
+        .select()
+        .maybeSingle();
+
+      if (error) {
+        console.error('[SUPABASE-SVC] Upsert profile error:', error);
+      } else {
+        console.log('[SUPABASE-SVC] Profile upsert successful');
+      }
+      
+      return { data, error };
+    } catch (err: any) {
+      console.error('[SUPABASE-SVC] Unexpected error in updateProfile:', err);
+      return { data: null, error: err };
+    }
   },
 
   async getProfile(userId: string) {
@@ -80,7 +102,7 @@ export const supabaseService = {
         username: data.username,
         email: data.email || '',
         phone: data.phone,
-        dob: data.dob,
+        dob: data.birth_date || data.dob,
         location: data.location,
         avatar: data.avatar_url || `https://api.dicebear.com/7.x/lorelei/svg?seed=${data.username}`,
         avatarId: data.avatar_id,

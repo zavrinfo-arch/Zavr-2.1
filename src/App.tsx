@@ -71,7 +71,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
     return <Navigate to="/auth" state={{ from: location }} replace />;
   }
   
-  const isSetupPage = location.pathname === '/onboarding' || location.pathname === '/avatar-selection';
+  const isSetupPage = location.pathname === '/onboarding' || location.pathname === '/avatar-selection' || location.pathname === '/auth';
 
   // 2. No profile yet? 
   if (!currentUser) {

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useStore } from '../store/useStore';
+import { supabase } from '../lib/supabaseClient';
 import { formatCurrency, cn } from '../lib/utils';
 import { 
   Plus, Users, User, ArrowRight, ArrowLeft, 
@@ -19,23 +20,45 @@ export default function Zettl() {
   const { 
     currentUser, zettlFriends, zettlGroups, 
     personalZettls, fetchZettlData, searchZettlUsers,
-    sendFriendRequest, respondToFriendRequest, createZettlGroup,
+    sendFriendRequest, sendFriendRequestByUsername, respondToFriendRequest, createZettlGroup,
     createPersonalZettl, settleZettl, remindZettl,
     addGroupExpense
   } = useStore();
 
-  const [activeTab, setActiveTab] = useState<'personal' | 'groups' | 'activity'>('personal');
+  const [activeTab, setActiveTab] = useState<'personal' | 'groups' | 'friends' | 'activity'>('personal');
   const [isNewZettlOpen, setIsNewZettlOpen] = useState(false);
   const [isNewGroupOpen, setIsNewGroupOpen] = useState(false);
   const [selectedGroupForExpense, setSelectedGroupForExpense] = useState<any>(null);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [isRequestsOpen, setIsRequestsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
 
   useEffect(() => {
     fetchZettlData();
+
+    // Subscribe to friends changes for real-time updates
+    const channel = supabase
+      .channel('friends_changes')
+      .on('postgres_changes', { 
+        event: '*', 
+        schema: 'public', 
+        table: 'friends' 
+      }, () => {
+        console.log('[ZETTL] Friends table changed, refreshing data...');
+        fetchZettlData();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
+
+  const pendingIncoming = zettlFriends.filter(f => f.status === 'pending' && f.type === 'incoming');
+  const pendingOutgoing = zettlFriends.filter(f => f.status === 'pending' && f.type === 'outgoing');
+  const confirmedFriends = zettlFriends.filter(f => f.status === 'accepted');
 
   const totalOwedToMe = personalZettls
     .filter(z => !z.isSettled && z.toUserId === currentUser?.id)
@@ -47,16 +70,28 @@ export default function Zettl() {
 
   const netBalance = totalOwedToMe - totalIOwe;
 
+  const searchTimeout = React.useRef<NodeJS.Timeout | null>(null);
+
   const handleSearch = async (val: string) => {
     setSearchQuery(val);
-    if (val.length < 2) {
+    if (val.length < 1) {
       setSearchResults([]);
       return;
     }
-    setIsSearching(true);
-    const results = await searchZettlUsers(val);
-    setSearchResults(results);
-    setIsSearching(false);
+
+    if (searchTimeout.current) clearTimeout(searchTimeout.current);
+
+    searchTimeout.current = setTimeout(async () => {
+      setIsSearching(true);
+      try {
+        const results = await searchZettlUsers(val);
+        setSearchResults(results);
+      } catch (err) {
+        console.error('Search failed:', err);
+      } finally {
+        setIsSearching(false);
+      }
+    }, 400);
   };
 
   return (
@@ -68,6 +103,16 @@ export default function Zettl() {
           <p className="text-[10px] font-bold uppercase tracking-[0.2em] opacity-30 mt-1">Settle up with friends</p>
         </div>
         <div className="flex items-center gap-3">
+          <motion.button
+            whileTap={{ scale: 0.9 }}
+            onClick={() => setIsRequestsOpen(true)}
+            className="w-10 h-10 clay-inset flex items-center justify-center text-foreground/40 relative"
+          >
+            <Bell size={20} />
+            {pendingIncoming.length > 0 && (
+              <span className="absolute top-2 right-2 w-2 h-2 bg-[#FF6B6B] rounded-full animate-pulse" />
+            )}
+          </motion.button>
           <motion.button
             whileTap={{ scale: 0.9 }}
             onClick={() => setIsSearchOpen(true)}
@@ -129,10 +174,11 @@ export default function Zettl() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-2 p-1 clay-inset bg-foreground/5 rounded-2xl">
+      <div className="flex gap-2 p-1 clay-inset bg-foreground/5 rounded-2xl overflow-x-auto no-scrollbar">
         {[
           { id: 'personal', label: 'Personal', icon: User },
           { id: 'groups', label: 'Groups', icon: Users },
+          { id: 'friends', label: 'Friends', icon: UserPlus },
           { id: 'activity', label: 'Activity', icon: RefreshCw },
         ].map(tab => (
           <button
@@ -216,6 +262,56 @@ export default function Zettl() {
             </motion.div>
           )}
 
+          {activeTab === 'friends' && (
+            <motion.div 
+              key="friends"
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 20 }}
+              className="space-y-4"
+            >
+              <div className="flex items-center justify-between px-2">
+                <h3 className="text-xs font-black uppercase tracking-widest opacity-40">Your Squad</h3>
+                <button 
+                  onClick={() => setIsSearchOpen(true)}
+                  className="px-3 py-1.5 clay-card rounded-lg flex items-center gap-2 text-[10px] font-black uppercase"
+                >
+                  <Plus size={14} />
+                  Find Friends
+                </button>
+              </div>
+
+              {confirmedFriends.length === 0 ? (
+                <div className="clay-card p-12 text-center opacity-30 mt-4">
+                  <UserPlus size={48} className="mx-auto mb-4" />
+                  <p className="text-xs font-bold uppercase tracking-widest leading-relaxed">No friends yet.<br/>Start by inviting someone!</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-3">
+                  {confirmedFriends.map(friend => (
+                    <motion.div
+                      key={friend.id}
+                      whileTap={{ scale: 0.95 }}
+                      className="clay-card p-4 flex flex-col items-center gap-3"
+                    >
+                      <div className="w-16 h-16 clay-inset p-0.5 rounded-2xl border-2 border-foreground/5">
+                        <img 
+                          src={friend.friendAvatar} 
+                          alt="" 
+                          className="w-full h-full object-cover rounded-xl shadow-inner"
+                        />
+                      </div>
+                      <div className="text-center">
+                        <p className="text-xs font-black italic">@{friend.friendUsername}</p>
+                        <p className="text-[8px] font-bold opacity-30 uppercase tracking-widest mt-0.5">{friend.friendFullName}</p>
+                      </div>
+                    </motion.div>
+                  ))}
+                </div>
+              )}
+            </motion.div>
+          )}
+
           {activeTab === 'activity' && (
             <motion.div 
               key="activity"
@@ -233,15 +329,25 @@ export default function Zettl() {
         </AnimatePresence>
       </div>
 
-      {/* Modals will go here */}
+      {/* Modals */}
       <SearchModal 
         isOpen={isSearchOpen} 
         onClose={() => setIsSearchOpen(false)} 
         onSearch={handleSearch}
+        query={searchQuery}
         results={searchResults}
         loading={isSearching}
         onSendRequest={sendFriendRequest}
+        onInviteByUsername={sendFriendRequestByUsername}
         friends={zettlFriends}
+      />
+
+      <RequestsModal
+        isOpen={isRequestsOpen}
+        onClose={() => setIsRequestsOpen(false)}
+        incoming={pendingIncoming}
+        outgoing={pendingOutgoing}
+        onRespond={respondToFriendRequest}
       />
 
       <NewZettlModal 
@@ -249,6 +355,7 @@ export default function Zettl() {
         onClose={() => setIsNewZettlOpen(false)}
         friends={zettlFriends.filter(f => f.status === 'accepted')}
         onCreate={createPersonalZettl}
+        onOpenSearch={() => { setIsNewZettlOpen(false); setIsSearchOpen(true); }}
       />
 
       <NewGroupModal 
@@ -256,6 +363,7 @@ export default function Zettl() {
         onClose={() => setIsNewGroupOpen(false)}
         friends={zettlFriends.filter(f => f.status === 'accepted')}
         onCreate={createZettlGroup}
+        onOpenSearch={() => { setIsNewGroupOpen(false); setIsSearchOpen(true); }}
       />
 
       {selectedGroupForExpense && (
@@ -413,8 +521,22 @@ function ChevronIcon({ direction }: { direction: 'right' | 'left' }) {
   );
 }
 
-function SearchModal({ isOpen, onClose, onSearch, results, loading, onSendRequest, friends }: any) {
+function SearchModal({ isOpen, onClose, onSearch, query, results, loading, onSendRequest, onInviteByUsername, friends }: any) {
+  const [requestLoading, setRequestLoading] = useState<string | null>(null);
+
   if (!isOpen) return null;
+
+  const handleSendRequest = async (userId: string, username: string) => {
+    setRequestLoading(userId);
+    try {
+      await onSendRequest(userId);
+      toast.success(`Request sent to @${username}!`);
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setRequestLoading(null);
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center px-6">
@@ -441,18 +563,24 @@ function SearchModal({ isOpen, onClose, onSearch, results, loading, onSendReques
             autoFocus
             onChange={(e) => onSearch(e.target.value)}
             placeholder="Search by username..."
-            className="w-full clay-inset bg-foreground/5 p-4 pl-12 text-sm font-bold uppercase tracking-widest outline-none focus:ring-2 focus:ring-[#FF6B6B]/20"
+            className="w-full clay-inset bg-foreground/5 p-4 pl-12 text-sm font-bold tracking-widest outline-none focus:ring-2 focus:ring-[#FF6B6B]/20"
           />
         </div>
+
+        <InviteByUsernameSection onInvite={onInviteByUsername} />
 
         <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
           {loading ? (
             <div className="py-12 text-center opacity-30"><Loader2 className="animate-spin mx-auto" /></div>
+          ) : query && results.length === 0 ? (
+            <div className="py-12 text-center opacity-30 text-[10px] font-black uppercase tracking-widest">No users found</div>
           ) : results.length === 0 ? (
             <div className="py-12 text-center opacity-30 text-[10px] font-black uppercase tracking-widest">Type to search for friends</div>
           ) : (
             results.map(user => {
               const friendStatus = friends.find((f: any) => f.friendId === user.id)?.status;
+              const isProcessing = requestLoading === user.id;
+
               return (
                 <div key={user.id} className="clay-card p-3 flex items-center justify-between">
                   <div className="flex items-center gap-3">
@@ -470,10 +598,11 @@ function SearchModal({ isOpen, onClose, onSearch, results, loading, onSendReques
                      <p className="text-[8px] font-black uppercase tracking-widest opacity-30">Pending</p>
                   ) : (
                     <button 
-                      onClick={() => onSendRequest(user.id)}
-                      className="w-8 h-8 clay-coral rounded-lg flex items-center justify-center text-white"
+                      onClick={() => handleSendRequest(user.id, user.username)}
+                      disabled={isProcessing}
+                      className="w-8 h-8 clay-coral rounded-lg flex items-center justify-center text-white disabled:opacity-50"
                     >
-                      <UserPlus size={16} />
+                      {isProcessing ? <Loader2 size={14} className="animate-spin" /> : <UserPlus size={16} />}
                     </button>
                   )}
                 </div>
@@ -486,7 +615,128 @@ function SearchModal({ isOpen, onClose, onSearch, results, loading, onSendReques
   );
 }
 
-function NewZettlModal({ isOpen, onClose, friends, onCreate }: any) {
+function InviteByUsernameSection({ onInvite }: any) {
+  const [inviteName, setInviteName] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleInvite = async () => {
+    if (!inviteName) return;
+    setLoading(true);
+    try {
+      await onInvite(inviteName);
+      toast.success(`Request sent to @${inviteName}!`);
+      setInviteName('');
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="mb-6 p-4 clay-inset bg-foreground/5 rounded-2xl">
+      <p className="text-[9px] font-black uppercase tracking-widest opacity-40 mb-3">Or invite by exact username</p>
+      <div className="flex gap-2">
+        <input 
+          value={inviteName}
+          onChange={(e) => setInviteName(e.target.value)}
+          placeholder="Enter username..."
+          className="flex-1 bg-transparent px-2 text-xs font-bold outline-none border-b-2 border-foreground/5 focus:border-[#FF6B6B]/20 transition-colors"
+        />
+        <motion.button
+          whileTap={{ scale: 0.9 }}
+          onClick={handleInvite}
+          disabled={loading || !inviteName}
+          className="w-10 h-10 clay-coral rounded-xl flex items-center justify-center text-white disabled:opacity-50"
+          title="Send friend request"
+        >
+          {loading ? <Loader2 size={16} className="animate-spin" /> : <UserPlus size={18} />}
+        </motion.button>
+      </div>
+    </div>
+  );
+}
+
+function RequestsModal({ isOpen, onClose, incoming, outgoing, onRespond }: any) {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-6">
+      <motion.div 
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        onClick={onClose}
+        className="absolute inset-0 bg-background/80 backdrop-blur-md"
+      />
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.9, y: 20 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        className="w-full max-w-sm clay-card p-6 relative z-10"
+      >
+        <div className="flex justify-between items-center mb-6">
+          <h3 className="text-lg font-black italic">Friend Requests</h3>
+          <button onClick={onClose} className="opacity-20 hover:opacity-100 transition-opacity"><XCircle size={24} /></button>
+        </div>
+
+        <div className="space-y-6 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+          {/* Incoming */}
+          <div className="space-y-3">
+            <h4 className="text-[10px] font-black uppercase tracking-widest opacity-40">Incoming</h4>
+            {incoming.length === 0 ? (
+              <p className="text-[9px] font-bold opacity-30 py-4 text-center">No pending invites</p>
+            ) : (
+              incoming.map((req: any) => (
+                <div key={req.id} className="clay-card p-3 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <img src={req.friendAvatar} alt="" className="w-8 h-8 rounded-lg" />
+                    <div>
+                      <p className="text-xs font-black italic">@{req.friendUsername}</p>
+                    </div>
+                  </div>
+                  <div className="flex gap-1">
+                    <button 
+                      onClick={() => onRespond(req.id, 'accepted')}
+                      className="w-8 h-8 clay-card bg-emerald-500/10 text-emerald-500 flex items-center justify-center rounded-lg"
+                    >
+                      <Check size={16} />
+                    </button>
+                    <button 
+                      onClick={() => onRespond(req.id, 'declined')}
+                      className="w-8 h-8 clay-card bg-red-500/10 text-red-500 flex items-center justify-center rounded-lg"
+                    >
+                      <XCircle size={16} />
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+
+          {/* Outgoing */}
+          <div className="space-y-3">
+            <h4 className="text-[10px] font-black uppercase tracking-widest opacity-40">Sent by You</h4>
+            {outgoing.length === 0 ? (
+              <p className="text-[9px] font-bold opacity-30 py-4 text-center">No sent invites</p>
+            ) : (
+              outgoing.map((req: any) => (
+                <div key={req.id} className="clay-card p-3 flex items-center justify-between opacity-60">
+                  <div className="flex items-center gap-3">
+                    <img src={req.friendAvatar} alt="" className="w-8 h-8 rounded-lg" />
+                    <p className="text-xs font-black italic">@{req.friendUsername}</p>
+                  </div>
+                  <p className="text-[8px] font-black uppercase tracking-widest">Pending</p>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
+function NewZettlModal({ isOpen, onClose, friends, onCreate, onOpenSearch }: any) {
   const [selectedFriend, setSelectedFriend] = useState<any>(null);
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
@@ -544,7 +794,17 @@ function NewZettlModal({ isOpen, onClose, friends, onCreate }: any) {
             <p className="text-[10px] font-black uppercase tracking-widest opacity-40 ml-1">Select Friend</p>
             <div className="flex gap-2 overflow-x-auto pb-2 custom-scrollbar">
               {friends.length === 0 ? (
-                <p className="text-[9px] font-bold opacity-30 p-4">Add friends to start zettling!</p>
+                <div className="flex flex-col items-center gap-2 p-4">
+                  <p className="text-[9px] font-bold opacity-30">Add friends to start zettling!</p>
+                  <button 
+                    type="button"
+                    onClick={onOpenSearch}
+                    className="px-3 py-1.5 clay-card rounded-lg flex items-center gap-1 text-[8px] font-black uppercase text-[#FF6B6B]"
+                  >
+                    <UserPlus size={10} />
+                    Find Friends
+                  </button>
+                </div>
               ) : (
                 friends.map((f: any) => (
                   <button
@@ -602,7 +862,7 @@ function NewZettlModal({ isOpen, onClose, friends, onCreate }: any) {
              value={note}
              onChange={e => setNote(e.target.value)}
              placeholder="What's this for? (e.g. Lunch, Movie)"
-             className="w-full clay-inset bg-foreground/5 p-4 text-xs font-bold uppercase tracking-widest outline-none focus:ring-2 focus:ring-[#FF6B6B]/20"
+             className="w-full clay-inset bg-foreground/5 p-4 text-xs font-bold tracking-widest outline-none focus:ring-2 focus:ring-[#FF6B6B]/20"
           />
 
           <div className="relative">
@@ -611,7 +871,7 @@ function NewZettlModal({ isOpen, onClose, friends, onCreate }: any) {
                type="date"
                value={dueDate}
                onChange={e => setDueDate(e.target.value)}
-               className="w-full clay-inset bg-foreground/5 p-4 pl-12 text-[10px] font-black uppercase tracking-widest outline-none focus:ring-2 focus:ring-[#FF6B6B]/20"
+               className="w-full clay-inset bg-foreground/5 p-4 pl-12 text-[10px] font-black tracking-widest outline-none focus:ring-2 focus:ring-[#FF6B6B]/20"
              />
           </div>
 
@@ -628,7 +888,7 @@ function NewZettlModal({ isOpen, onClose, friends, onCreate }: any) {
   );
 }
 
-function NewGroupModal({ isOpen, onClose, friends, onCreate }: any) {
+function NewGroupModal({ isOpen, onClose, friends, onCreate, onOpenSearch }: any) {
   const [name, setName] = useState('');
   const [selectedFriends, setSelectedFriends] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
@@ -683,7 +943,7 @@ function NewGroupModal({ isOpen, onClose, friends, onCreate }: any) {
              value={name}
              onChange={e => setName(e.target.value)}
              placeholder="Group Name (e.g. Lunch Crew)"
-             className="w-full clay-inset bg-foreground/5 p-4 text-sm font-bold uppercase tracking-widest outline-none focus:ring-2 focus:ring-[#FF6B6B]/20"
+             className="w-full clay-inset bg-foreground/5 p-4 text-sm font-bold tracking-widest outline-none focus:ring-2 focus:ring-[#FF6B6B]/20"
           />
 
           <div className="space-y-3">
@@ -706,7 +966,19 @@ function NewGroupModal({ isOpen, onClose, friends, onCreate }: any) {
                   </button>
                 ))}
              </div>
-             {friends.length === 0 && <p className="text-[9px] font-bold opacity-30 p-4">Add friends to create a circle!</p>}
+             {friends.length === 0 && (
+               <div className="flex flex-col items-center gap-2 p-4">
+                 <p className="text-[9px] font-bold opacity-30">Add friends to create a circle!</p>
+                 <button 
+                   type="button"
+                   onClick={onOpenSearch}
+                   className="px-3 py-1.5 clay-card rounded-lg flex items-center gap-1 text-[8px] font-black uppercase text-[#FF6B6B]"
+                 >
+                   <UserPlus size={10} />
+                   Find Friends
+                 </button>
+               </div>
+             )}
           </div>
 
           <button 
@@ -794,7 +1066,7 @@ function NewExpenseModal({ isOpen, onClose, group, onCreate, currentUser }: any)
              value={description}
              onChange={e => setDescription(e.target.value)}
              placeholder="Description (e.g. Pizza, Uber)"
-             className="w-full clay-inset bg-foreground/5 p-4 text-xs font-bold uppercase tracking-widest outline-none focus:ring-2 focus:ring-[#FF6B6B]/20"
+             className="w-full clay-inset bg-foreground/5 p-4 text-xs font-bold tracking-widest outline-none focus:ring-2 focus:ring-[#FF6B6B]/20"
           />
 
           <div className="p-4 clay-inset bg-foreground/5 rounded-2xl">

@@ -183,6 +183,7 @@ export interface Friend {
   friendFullName: string;
   friendAvatar: string;
   status: 'pending' | 'accepted' | 'blocked';
+  type: 'incoming' | 'outgoing';
   createdAt: string;
 }
 

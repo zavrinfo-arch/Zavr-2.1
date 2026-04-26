@@ -164,29 +164,64 @@ export default function Onboarding() {
     setLoading(true);
     
     try {
-      const updates = {
-        fullName: data.fullName,
-        username: data.username,
-        phone: `${data.countryCode}${data.phone}`,
-        dob: data.dob,
-        gender: data.gender as any,
-        genderOther: data.genderOther,
-        avatar: data.avatar.url,
-        avatarId: (data.avatar.id as any),
-        interests: data.interests,
-        onboardingCompleted: true,
-      };
+      // Get logged in user
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      const { data: { session } } = await supabase.auth.getSession();
+      const finalUser = user || session?.user;
 
-      await updateUser(updates);
+      console.log("USER:", finalUser);
+      if (userError) console.log("USER ERROR:", userError);
+
+      // If no user, stop execution
+      if (!finalUser) {
+        console.error("No authenticated user");
+        setLoading(false);
+        return;
+      }
+
+      // Map values as per requirement 180
+      const fullName = data.fullName;
+      const username = data.username;
+      const phone = `${data.countryCode}${data.phone}`;
+      const birthDate = data.dob; // YYYY-MM-DD from input[type="date"]
+      const gender = data.gender === 'Other' ? data.genderOther : data.gender;
+      const avatarUrl = data.avatar.url;
+
+      // Save using UPSERT (not insert) as per requirement 2
+      const { error } = await supabase
+        .from('profiles')
+        .upsert({
+          id: finalUser.id,
+          full_name: fullName || null,
+          username: username || null,
+          phone: phone || null,
+          birth_date: birthDate || null,
+          gender: gender || null,
+          avatar_url: avatarUrl || null,
+          updated_at: new Date().toISOString()
+        });
+
+      if (error) {
+        console.error("SAVE ERROR:", error);
+        alert("Failed to save personal details");
+        setLoading(false);
+        return;
+      }
+
+      console.log("Saved successfully");
+
+      // Update store state and reset weekly challenge
+      await updateUser({ onboardingCompleted: true });
       resetWeeklyChallenge();
+      
       toast.success('Profile completed!', { icon: '✨' });
       
       setTimeout(() => {
         navigate('/home', { replace: true });
       }, 800);
     } catch (err) {
-      console.error('[Onboarding] Error during finish:', err);
-      toast.error('Failed to complete onboarding.');
+      console.error('[Onboarding] Unexpected error:', err);
+      toast.error('An unexpected error occurred.');
     } finally {
       setLoading(false);
     }

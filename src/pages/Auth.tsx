@@ -269,6 +269,9 @@ export default function Auth() {
         console.log("USER CREATED:", data.user);
         
         if (data.session) {
+          // Explicitly set the session in the client to ensure it's available for subsequent calls
+          await supabase.auth.setSession(data.session);
+          
           // Sync session to cookies for server side profile logic
           await fetchWithRetry('/api/auth/session', {
             method: 'POST',
@@ -346,36 +349,57 @@ export default function Auth() {
 
       setLoading(true);
       try {
-        const response = await fetchWithRetry('/api/auth/complete-profile', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({
-            username: formData.username,
-            fullName: formData.fullName,
-            dob: formData.dob,
-            phone: formData.phone,
-            location: formData.location,
-            password: formData.password,
-            avatarId: formData.avatarId
-          })
-        })
+      // Get logged in user
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      const { data: { session } } = await supabase.auth.getSession();
+      const finalUser = user || session?.user;
 
-        const contentType = response.headers.get('content-type');
-        if (!contentType || !contentType.includes('application/json')) {
-          throw new Error('Server returned an invalid response. Please try again later.');
+      console.log("USER:", finalUser);
+      if (userError) console.log("USER ERROR:", userError);
+
+      // If no user, stop execution
+      if (!finalUser) {
+        console.error("No authenticated user");
+        setLoading(false);
+        return;
+      }
+
+      // Map values as per requirement 6
+      const fullName = formData.fullName;
+      const username = formData.username;
+      const phone = formData.phone;
+      const birthDate = formData.dob;
+      const gender = (formData as any).gender || '';
+      const avatarUrl = `https://api.dicebear.com/7.x/lorelei/svg?seed=${username}`;
+
+      // Save using UPSERT (not insert) as per requirement 2
+      const { error } = await supabase
+        .from('profiles')
+        .upsert({
+          id: finalUser.id,
+          full_name: fullName || null,
+          username: username || null,
+          phone: phone || null,
+          birth_date: birthDate || null,
+          gender: gender || null,
+          avatar_url: avatarUrl || null,
+          updated_at: new Date().toISOString()
+        });
+
+        if (error) {
+          console.error("SAVE ERROR:", error);
+          alert("Failed to save personal details");
+          setLoading(false);
+          return;
         }
 
-        const result = await response.json();
-        if (!response.ok) throw new Error(result.error || 'Profile completion failed');
+        console.log("Saved successfully");
 
         await checkAuth();
         setShowWelcome(true);
       } catch (error: any) {
-        const message = error.message === 'Failed to fetch' 
-          ? 'Unable to connect to the server. Please check your internet connection or try again later.'
-          : error.message;
-        toast.error(message);
+        console.error('[Auth] Unexpected error:', error);
+        toast.error(error.message || 'An unexpected error occurred during profile setup');
       } finally {
         setLoading(false);
       }
