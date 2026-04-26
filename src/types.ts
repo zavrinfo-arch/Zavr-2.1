@@ -21,6 +21,8 @@ export interface User {
   passwordHash?: string;
   phone: string;
   dob: string;
+  gender?: 'Male' | 'Female' | 'Non-binary' | 'Prefer not to say' | 'Other';
+  genderOther?: string;
   location: string;
   avatar: string;
   avatarId: string;

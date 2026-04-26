@@ -42,7 +42,7 @@ export async function persistOnboardingToSupabase(
   if (avatarUrl) payload.avatar_url = avatarUrl;
 
   const { error } = await supabase
-    .from('user_profiles')
+    .from('profiles')
     .update(payload)
     .eq('id', userId);
 
@@ -54,7 +54,7 @@ export async function persistOnboardingToSupabase(
   // Read back to confirm propagation
   console.log('[onboarding] Re-fetching profile to confirm update...');
   const { data, error: readError } = await supabase
-    .from('user_profiles')
+    .from('profiles')
     .select('onboarding_completed, avatar_id, avatar_url')
     .eq('id', userId)
     .maybeSingle();

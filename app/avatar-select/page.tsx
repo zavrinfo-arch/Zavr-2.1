@@ -37,7 +37,7 @@ export default function AvatarSelectPage() {
       // ── Check Supabase profile (Primary Source of Truth) ─────────────────
       console.log('[AvatarSelectPage] Checking profile in DB...');
       const { data: profile, error } = await supabase
-        .from('user_profiles')
+        .from('profiles')
         .select('onboarding_completed, avatar_id')
         .eq('id', user.id)
         .maybeSingle();

@@ -26,7 +26,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       if (user == null) return;
 
       final data = await Supabase.instance.client
-          .from('user_profiles')
+          .from('profiles')
           .select()
           .eq('id', user.id)
           .single();

@@ -320,9 +320,9 @@ export const useStore = create<AppState>()(
             console.log('[AUTH] Session found for user:', sbSession.user.id);
             set({ session: sbSession });
 
-            // 2. Fetch profile from user_profiles table - use maybeSingle() to avoid throwing on empty
+            // 2. Fetch profile from profiles table - use maybeSingle() to avoid throwing on empty
             const { data: profile, error: profileError } = await supabase
-              .from('user_profiles')
+              .from('profiles')
               .select('*')
               .eq('id', sbSession.user.id)
               .maybeSingle();
@@ -459,7 +459,7 @@ export const useStore = create<AppState>()(
               id: u.id,
               email: u.email || '',
               fullName: u.user_metadata?.full_name || '',
-              username: u.user_metadata?.user_name || '',
+              username: u.user_metadata?.username || u.user_metadata?.user_name || '',
               avatar: u.user_metadata?.avatar_url || '',
               avatarId: '',
               onboardingCompleted: false,

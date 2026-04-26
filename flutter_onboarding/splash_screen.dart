@@ -35,7 +35,7 @@ class _SplashScreenState extends State<SplashScreen> {
 
       // 3. Database Check
       final profile = await SupabaseConfig.client
-          .from('user_profiles')
+          .from('profiles')
           .select()
           .eq('id', session.user.id)
           .maybeSingle();

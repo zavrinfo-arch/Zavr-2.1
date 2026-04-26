@@ -50,8 +50,9 @@ export const supabaseService = {
     dbUpdates.updated_at = new Date().toISOString();
 
     const { data, error } = await supabase
-      .from('user_profiles')
-      .upsert(dbUpdates, { onConflict: 'id' })
+      .from('profiles')
+      .update(dbUpdates)
+      .eq('id', userId)
       .select()
       .maybeSingle();
 
@@ -63,7 +64,7 @@ export const supabaseService = {
     await this.ensureSession();
     console.log('[SUPABASE-SVC] Gathering profile for:', userId);
     const { data, error } = await supabase
-      .from('user_profiles')
+      .from('profiles')
       .select('*')
       .eq('id', userId)
       .maybeSingle();

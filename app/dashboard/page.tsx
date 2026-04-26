@@ -19,7 +19,7 @@ export default async function DashboardPage({
 
       if (user) {
         const { data: profile, error } = await supabase
-          .from('user_profiles')
+          .from('profiles')
           .select('onboarding_completed')
           .eq('id', user.id)
           .maybeSingle();

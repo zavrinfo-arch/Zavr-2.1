@@ -57,17 +57,8 @@ const supabaseAdmin = createClient(
   }
 );
 
-// Supabase Auth Client (for regular auth operations like signin)
-const supabaseAuth = createClient(
-  supabaseUrl,
-  supabaseAnonKey,
-  {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false
-    }
-  }
-);
+// Alias for semantic clarity in auth routes
+const supabaseAuth = supabaseAdmin;
 
 // Rate Limiters
 const signinLimiter = rateLimit({
@@ -306,7 +297,7 @@ app.post('/api/auth/complete-profile', async (req, res) => {
   }
 
   const { data: existingUser } = await supabaseAdmin
-    .from('user_profiles')
+    .from('profiles')
     .select('username')
     .eq('username', username)
     .maybeSingle();
@@ -330,7 +321,7 @@ app.post('/api/auth/complete-profile', async (req, res) => {
   console.log('Creating profile record for:', user.id);
 
   const { error: profileError } = await supabaseAdmin
-    .from('user_profiles')
+    .from('profiles')
     .upsert(profileData);
 
   if (profileError) {
@@ -456,7 +447,7 @@ app.get('/api/auth/me', async (req, res) => {
 
   try {
     const { data: profile } = await supabaseAdmin
-      .from('user_profiles')
+      .from('profiles')
       .select('*')
       .eq('id', user.id)
       .maybeSingle();
@@ -513,7 +504,7 @@ app.get('/api/users/search', async (req, res) => {
 
   try {
     const { data } = await supabaseAdmin
-      .from('user_profiles')
+      .from('profiles')
       .select('id, username, full_name, avatar_url')
       .ilike('username', `%${query}%`)
       .neq('id', user.id)
@@ -593,7 +584,7 @@ app.get('/api/friends/list', async (req, res) => {
       .from('friends')
       .select(`
         id, status, created_at, friend_id,
-        user_profiles!friends_friend_id_fkey(id, username, full_name, avatar_url)
+        profiles!friends_friend_id_fkey(id, username, full_name, avatar_url)
       `)
       .eq('user_id', user.id);
     
@@ -602,19 +593,19 @@ app.get('/api/friends/list', async (req, res) => {
       .from('friends')
       .select(`
         id, status, created_at, user_id,
-        user_profiles!friends_user_id_fkey(id, username, full_name, avatar_url)
+        profiles!friends_user_id_fkey(id, username, full_name, avatar_url)
       `)
       .eq('friend_id', user.id);
 
     const friendsList = [
       ...(initiated || []).map(f => ({
         ...f,
-        friend: (f as any).user_profiles,
+        friend: (f as any).profiles,
         type: 'outgoing'
       })),
       ...(received || []).map(f => ({
         ...f,
-        friend: (f as any).user_profiles,
+        friend: (f as any).profiles,
         friend_id: f.user_id,
         type: 'incoming'
       }))
@@ -669,8 +660,8 @@ app.get('/api/zettl/personal/list', async (req, res) => {
       .from('personal_zettls')
       .select(`
         *,
-        from_profile:user_profiles!personal_zettls_from_user_id_fkey(username, full_name, avatar_url),
-        to_profile:user_profiles!personal_zettls_to_user_id_fkey(username, full_name, avatar_url)
+        from_profile:profiles!personal_zettls_from_user_id_fkey(username, full_name, avatar_url),
+        to_profile:profiles!personal_zettls_to_user_id_fkey(username, full_name, avatar_url)
       `)
       .or(`from_user_id.eq.${user.id},to_user_id.eq.${user.id}`)
       .order('created_at', { ascending: false });
@@ -867,7 +858,7 @@ app.get('/api/zettl/groups/my', async (req, res) => {
         *,
         members:zettl_group_members(
           id, user_id, joined_at,
-          user_profiles(username, full_name, avatar_url)
+          profiles(username, full_name, avatar_url)
         )
       `)
       .in('id', groupIds);
@@ -978,10 +969,10 @@ app.get('/api/zettl/groups/:groupId/expenses', async (req, res) => {
       .from('zettl_group_expenses')
       .select(`
         *,
-        paid_by_profile:user_profiles!zettl_group_expenses_paid_by_user_id_fkey(username, full_name, avatar_url),
+        paid_by_profile:profiles!zettl_group_expenses_paid_by_user_id_fkey(username, full_name, avatar_url),
         splits:zettl_expense_splits(
           id, user_id, amount_owed, is_settled, settled_at,
-          user_profile:user_profiles(username, full_name, avatar_url)
+          user_profile:profiles(username, full_name, avatar_url)
         )
       `)
       .eq('group_id', req.params.groupId)
@@ -1068,8 +1059,8 @@ app.get('/api/zettl/dashboard', async (req, res) => {
       .from('personal_zettls')
       .select(`
         *,
-        from_profile:user_profiles!personal_zettls_from_user_id_fkey(username, full_name, avatar_url),
-        to_profile:user_profiles!personal_zettls_to_user_id_fkey(username, full_name, avatar_url)
+        from_profile:profiles!personal_zettls_from_user_id_fkey(username, full_name, avatar_url),
+        to_profile:profiles!personal_zettls_to_user_id_fkey(username, full_name, avatar_url)
       `)
       .or(`from_user_id.eq.${user.id},to_user_id.eq.${user.id}`)
       .limit(5)
@@ -1093,7 +1084,7 @@ app.get('/api/zettl/settings/reminders', async (req, res) => {
 
   try {
     const { data } = await supabaseAdmin
-      .from('user_profiles')
+      .from('profiles')
       .select('preferences')
       .eq('id', user.id)
       .maybeSingle();
@@ -1112,7 +1103,7 @@ app.put('/api/zettl/settings/reminders', async (req, res) => {
 
   try {
     const { data: profile } = await supabaseAdmin
-      .from('user_profiles')
+      .from('profiles')
       .select('preferences')
       .eq('id', user.id)
       .maybeSingle();
@@ -1123,7 +1114,7 @@ app.put('/api/zettl/settings/reminders', async (req, res) => {
     };
 
     await supabaseAdmin
-      .from('user_profiles')
+      .from('profiles')
       .update({ preferences: newPrefs })
       .eq('id', user.id);
     

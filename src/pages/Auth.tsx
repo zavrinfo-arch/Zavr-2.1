@@ -16,8 +16,12 @@ import { AVATARS } from '../constants';
 type SignupStep = 'email' | 'verify' | 'password' | 'profile';
 
 export default function Auth() {
-  const [isLogin, setIsLogin] = useState(true);
-  const [signupStep, setSignupStep] = useState<SignupStep>('email');
+  const [isLogin, setIsLogin] = useState(() => {
+    return sessionStorage.getItem('auth_is_login') === 'false' ? false : true;
+  });
+  const [signupStep, setSignupStep] = useState<SignupStep>(() => {
+    return (sessionStorage.getItem('auth_signup_step') as SignupStep) || 'email';
+  });
   const [showPassword, setShowPassword] = useState(false);
   const [verificationCode, setVerificationCode] = useState('');
   const [showWelcome, setShowWelcome] = useState(false);
@@ -25,6 +29,11 @@ export default function Auth() {
   
   const navigate = useNavigate();
   const { currentUser, session, checkAuth, isAuthLoading } = useStore();
+
+  useEffect(() => {
+    sessionStorage.setItem('auth_is_login', isLogin.toString());
+    sessionStorage.setItem('auth_signup_step', signupStep);
+  }, [isLogin, signupStep]);
 
   useEffect(() => {
     if (session && !isAuthLoading && currentUser) {
@@ -40,7 +49,7 @@ export default function Auth() {
 
   const [formData, setFormData] = useState({
     fullName: '',
-    email: '',
+    email: sessionStorage.getItem('auth_email') || '',
     username: '',
     phone: '',
     dob: '',
@@ -50,6 +59,12 @@ export default function Auth() {
     rememberMe: false,
     avatarId: 1
   });
+
+  useEffect(() => {
+    if (formData.email) {
+      sessionStorage.setItem('auth_email', formData.email);
+    }
+  }, [formData.email]);
 
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -230,7 +245,9 @@ export default function Auth() {
           options: {
             data: {
               email: email,
+              username: email.split('@')[0],
               user_name: email.split('@')[0],
+              full_name: '',
               onboarding_completed: false
             }
           }
@@ -259,6 +276,8 @@ export default function Auth() {
             body: JSON.stringify({ session: data.session })
           });
           
+          sessionStorage.removeItem('auth_signup_step');
+          sessionStorage.removeItem('auth_email');
           toast.success('Account created! Let\'s set up your profile.');
           setSignupStep('profile');
         } else {
@@ -298,6 +317,8 @@ export default function Auth() {
           await supabase.auth.setSession(result.session);
         }
 
+        sessionStorage.removeItem('auth_signup_step');
+        sessionStorage.removeItem('auth_email');
         toast.success('Email verified!');
         setSignupStep('profile');
       } catch (error: any) {

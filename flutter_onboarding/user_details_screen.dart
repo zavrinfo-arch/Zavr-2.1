@@ -43,7 +43,7 @@ class _UserDetailsScreenState extends State<UserDetailsScreen> {
       if (user == null) throw Exception("Session expired. Please log in again.");
 
       // 2. Await Database Upsert
-      await SupabaseConfig.client.from('user_profiles').upsert({
+      await SupabaseConfig.client.from('profiles').upsert({
         'id': user.id,
         'full_name': _nameController.text.trim(),
         'username': _usernameController.text.trim().toLowerCase(),
