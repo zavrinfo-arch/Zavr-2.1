@@ -5,9 +5,21 @@
 
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import { format, parseISO, isValid } from 'date-fns';
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
+}
+
+export function formatDateSafely(dateStr: string | null | undefined, formatStr: string = 'dd/MM/yyyy'): string {
+  if (!dateStr) return '';
+  try {
+    const parsed = parseISO(dateStr);
+    if (isValid(parsed)) {
+      return format(parsed, formatStr);
+    }
+  } catch (e) {}
+  return '';
 }
 
 export function formatCurrency(amount: number, currency: string = 'INR') {
@@ -22,22 +34,26 @@ export function formatCurrency(amount: number, currency: string = 'INR') {
 export async function fetchWithRetry(
   url: string, 
   options: RequestInit = {}, 
-  retries: number = 3, 
-  delay: number = 1000
+  retries: number = 3,
+  attempt: number = 0
 ): Promise<Response> {
+  const delays = [1000, 2000, 3000];
   try {
     const response = await fetch(url, options);
     return response;
   } catch (error: any) {
-    const isNetworkError = error.message === 'Failed to fetch' || 
-                         error.name === 'TypeError' ||
-                         error.message.includes('NetworkError') ||
-                         error.message.includes('network');
+    const isNetworkError = 
+      error?.message === 'Failed to fetch' || 
+      error?.name === 'TypeError' ||
+      error?.message?.includes('NetworkError') ||
+      error?.message?.includes('network') ||
+      error?.message?.includes('api.supabase.com');
     
-    if (retries > 0 && isNetworkError) {
-      console.warn(`Fetch failed (${error.message}), retrying in ${delay}ms... (${retries} left)`);
-      await new Promise(resolve => setTimeout(resolve, delay));
-      return fetchWithRetry(url, options, retries - 1, delay * 1.5);
+    if (attempt < retries && isNetworkError) {
+      const waitTime = delays[attempt] || 3000;
+      console.warn(`[RETRY] Fetch failed (${error.message}). Retrying attempt ${attempt + 1}/${retries} in ${waitTime}ms...`);
+      await new Promise(resolve => setTimeout(resolve, waitTime));
+      return fetchWithRetry(url, options, retries, attempt + 1);
     }
     throw error;
   }

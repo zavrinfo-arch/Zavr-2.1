@@ -7,7 +7,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
 import { useStore } from '../store/useStore';
-import { cn } from '../lib/utils';
+import { cn, formatDateSafely } from '../lib/utils';
 import { 
   Check, ArrowRight, ArrowLeft, Target, 
   Sparkles, Bell, ShieldCheck, Zap, User as UserIcon,
@@ -351,6 +351,11 @@ export default function Onboarding() {
                         onChange={e => setData({ ...data, dob: e.target.value })}
                       />
                     </div>
+                    {data.dob && (
+                      <p className="text-[10px] text-[#FF6B6B] font-black uppercase tracking-widest ml-4">
+                        Date: {formatDateSafely(data.dob)}
+                      </p>
+                    )}
                     {errors.dob && <p className="text-[10px] text-[#FF6B6B] font-bold ml-4">{errors.dob}</p>}
                   </div>
                 </div>

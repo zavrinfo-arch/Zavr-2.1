@@ -33,7 +33,43 @@ export const getSupabaseClient = () => {
         } 
       },
       global: {
-        headers: { 'x-application-name': 'zavr-app' }
+        headers: { 'x-application-name': 'zavr-app' },
+        fetch: async (url, options = {}) => {
+          const controller = new AbortController();
+          
+          // Auth operations like signup involve external SMTP, password hashing, and user triggers
+          // that are notoriously slow. Let's allow 15 seconds for auth endpoints to prevent AbortError
+          // and rate-limiting, and keep a fast 3 seconds for all other queries.
+          const urlStr = typeof url === 'string' ? url : '';
+          const isAuthEndpoint = urlStr.includes('/auth/v1/');
+          const timeoutLimit = isAuthEndpoint ? 15000 : 3000;
+
+          const timeoutId = setTimeout(() => controller.abort(), timeoutLimit);
+
+          try {
+            const response = await fetch(url, {
+              ...options,
+              signal: controller.signal
+            });
+            return response;
+          } catch (error: any) {
+            if (error?.name === 'AbortError') {
+              console.error(`[SUPABASE CLIENT] Request timed out after ${timeoutLimit / 1000} seconds: ${url}`);
+              throw new Error('Request timed out');
+            }
+            throw error;
+          } finally {
+            clearTimeout(timeoutId);
+          }
+        }
+      },
+      realtime: {
+        timeout: 40000,
+        heartbeatIntervalMs: 30000,
+        reconnectAfterMs: (retries) => {
+          const delay = Math.min(1000 * Math.pow(2, retries), 30000);
+          return delay;
+        }
       }
     });
   }

@@ -7,6 +7,7 @@ import cors from 'cors';
 import rateLimit from 'express-rate-limit';
 import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
+import fs from 'fs';
 
 dotenv.config();
 
@@ -68,6 +69,56 @@ const supabaseAdmin = createClient(
 );
 
 // --- Schema Check ---
+let hasFriendsStatusColumn = true;
+let useZettlFallback = false;
+
+// --- ZETTL LOCAL FALLBACK DATABASE ---
+const FALLBACK_DB_PATH = path.resolve('./zettl_fallback_db.json');
+
+function readLocalZettlDB(): {
+  personal_zettls: any[];
+  zettl_groups: any[];
+  zettl_group_members: any[];
+  zettl_group_expenses: any[];
+  zettl_expense_splits: any[];
+  friends?: any[];
+} {
+  try {
+    if (!fs.existsSync(FALLBACK_DB_PATH)) {
+      const initial = {
+        personal_zettls: [],
+        zettl_groups: [],
+        zettl_group_members: [],
+        zettl_group_expenses: [],
+        zettl_expense_splits: [],
+        friends: []
+      };
+      fs.writeFileSync(FALLBACK_DB_PATH, JSON.stringify(initial, null, 2));
+      return initial;
+    }
+    const content = fs.readFileSync(FALLBACK_DB_PATH, 'utf-8');
+    return JSON.parse(content);
+  } catch (err) {
+    console.error('[LOCAL DB] Failed to read or initialize fallback DB:', err);
+    return {
+      personal_zettls: [],
+      zettl_groups: [],
+      zettl_group_members: [],
+      zettl_group_expenses: [],
+      zettl_expense_splits: [],
+      friends: []
+    };
+  }
+}
+
+function writeLocalZettlDB(data: any) {
+  try {
+    fs.writeFileSync(FALLBACK_DB_PATH, JSON.stringify(data, null, 2));
+  } catch (err) {
+    console.error('[LOCAL DB] Failed to save fallback DB:', err);
+  }
+}
+
 (async () => {
   console.log('[SUPABASE] Running schema check...');
   try {
@@ -83,6 +134,28 @@ const supabaseAdmin = createClient(
       }
     } else {
       console.log('[SUPABASE] Schema check successful: profiles table is accessible.');
+    }
+
+    // Check if personal_zettls is accessible, if not activate local JSON fallback
+    const { error: zettlCheckError } = await supabaseAdmin.from('personal_zettls').select('id').limit(1);
+    if (zettlCheckError && (
+      zettlCheckError.message.includes('relation') || 
+      zettlCheckError.message.includes('cache') || 
+      zettlCheckError.message.includes('not find the table')
+    )) {
+      useZettlFallback = true;
+      console.warn('[SUPABASE] WARNING: personal_zettls table is not accessible in Supabase. Enabling local filesystem JSON-based fallback for Zettl features!');
+    } else {
+      console.log('[SUPABASE] Zettl tables presence check passed.');
+    }
+
+    // Dynamic Friends Status Column Check
+    const { error: friendsError } = await supabaseAdmin.from('friends').select('status').limit(1);
+    if (friendsError && (friendsError.message.includes('column') || friendsError.message.includes('status') || friendsError.code === '42703')) {
+      hasFriendsStatusColumn = false;
+      console.warn('[SUPABASE] WARNING: Caught column error for friends.status. friends table does not have a "status" column. Enabling seamless dynamic fallback mode.');
+    } else {
+      console.log('[SUPABASE] friends table capacity check passed. "status" column is present.');
     }
   } catch (err: any) {
     console.error('[SUPABASE] Schema check exception:', err.message);
@@ -116,6 +189,9 @@ const otpLimiter = rateLimit({
 });
 
 // --- Auth Middleware ---
+// Keep track of ongoing refresh attempts to prevent concurrent rotation conflicts
+const pendingRefreshes = new Map<string, Promise<any>>();
+
 async function getAuthenticatedUser(req: express.Request, res: express.Response) {
   if (!isSupabaseConfigured) {
     console.warn('Auth check skipped: Supabase not configured.');
@@ -131,54 +207,71 @@ async function getAuthenticatedUser(req: express.Request, res: express.Response)
     const { data: userData, error: userError } = await supabaseAdmin.auth.getUser(token);
     let user = userData?.user;
 
+    // attempt refresh if user is missing or token is expired
     if ((userError || !user) && refreshToken && refreshToken !== 'undefined' && refreshToken !== 'null') {
-      console.log('Token expired or invalid, attempting refresh using cookie...');
-      try {
-        const { data: refreshData, error: refreshError } = await supabaseAdmin.auth.refreshSession({ refresh_token: refreshToken });
-        
-        if (!refreshError && refreshData.session) {
-          user = refreshData.user;
-          // Update cookies with new session
-          const session = refreshData.session;
-          res.cookie('sb-access-token', session.access_token, {
-            httpOnly: true,
-            secure: true,
-            sameSite: 'none',
-            maxAge: session.expires_in * 1000
-          });
-          if (session.refresh_token) {
-            res.cookie('sb-refresh-token', session.refresh_token, {
+      const refreshKey = refreshToken;
+      
+      // If there's already a refresh in progress for this token, wait for it
+      if (pendingRefreshes.has(refreshKey)) {
+        console.log('[AUTH] Waiting for already active refresh for token...');
+        const result = await pendingRefreshes.get(refreshKey);
+        if (result?.user) {
+          return result.user;
+        }
+      }
+
+      console.log('[AUTH] Token expired or invalid, attempting refresh using cookie...');
+      const refreshPromise = supabaseAdmin.auth.refreshSession({ refresh_token: refreshToken })
+        .then(async ({ data: refreshData, error: refreshError }) => {
+          if (!refreshError && refreshData.session) {
+            const session = refreshData.session;
+            res.cookie('sb-access-token', session.access_token, {
               httpOnly: true,
               secure: true,
               sameSite: 'none',
-              maxAge: 60 * 60 * 24 * 7 * 1000
+              maxAge: session.expires_in * 1000
             });
+            if (session.refresh_token) {
+              res.cookie('sb-refresh-token', session.refresh_token, {
+                httpOnly: true,
+                secure: true,
+                sameSite: 'none',
+                maxAge: 60 * 60 * 24 * 7 * 1000
+              });
+            }
+            (req as any).freshSession = session;
+            return { user: refreshData.user, session };
+          } else {
+            console.warn('[AUTH] Refresh failed:', refreshError?.message);
+            // "Refresh Token Not Found" usually means it was already used/rotated
+            if (refreshError?.message?.includes('Refresh Token Not Found')) {
+               // Try one last time to get user with current token, maybe it just refreshed in another request?
+               const { data: retryData } = await supabaseAdmin.auth.getUser(token);
+               if (retryData?.user) return { user: retryData.user };
+            }
+            res.clearCookie('sb-access-token', { path: '/', secure: true, sameSite: 'none' });
+            res.clearCookie('sb-refresh-token', { path: '/', secure: true, sameSite: 'none' });
+            return null;
           }
-          // Attach the fresh tokens to the request object so handlers can access them
-          (req as any).freshSession = session;
-          return user;
-        } else {
-          console.warn('Refresh failed, clearing auth cookies:', refreshError?.message);
-          res.clearCookie('sb-access-token', { path: '/', secure: true, sameSite: 'none' });
-          res.clearCookie('sb-refresh-token', { path: '/', secure: true, sameSite: 'none' });
-          return null;
-        }
-      } catch (refreshErr) {
-        console.error('Refresh throw error:', refreshErr);
-        res.clearCookie('sb-access-token', { path: '/', secure: true, sameSite: 'none' });
-        res.clearCookie('sb-refresh-token', { path: '/', secure: true, sameSite: 'none' });
-        return null;
-      }
+        })
+        .finally(() => {
+          pendingRefreshes.delete(refreshKey);
+        });
+
+      pendingRefreshes.set(refreshKey, refreshPromise);
+      const refreshResult = await refreshPromise;
+      return refreshResult?.user || null;
     }
 
     if (userError || !user) {
+      if (userError) console.error('[AUTH] getUser Error:', userError.message);
       res.clearCookie('sb-access-token', { path: '/', secure: true, sameSite: 'none' });
       return null;
     }
     
     return user;
-  } catch (err) {
-    console.error('Auth middleware catch error:', err);
+  } catch (err: any) {
+    console.error('Auth middleware catch error:', err.message || err);
     return null;
   }
 }
@@ -431,6 +524,34 @@ app.post('/api/auth/signin', signinLimiter, async (req, res) => {
   }
 });
 
+// Client synchronization point: Get current session from server cookies
+app.get('/api/auth/session', async (req, res) => {
+  const user = await getAuthenticatedUser(req, res);
+  if (!user) return res.status(401).json({ session: null });
+
+  // If getAuthenticatedUser refreshed the session, it attached it to req
+  const freshSession = (req as any).freshSession;
+  if (freshSession) {
+    return res.json({ session: freshSession, user });
+  }
+
+  // Otherwise, we have a valid token in cookie but no full session object easily available without more work.
+  // We can construct a minimal session or just return the user and let client handle it.
+  // Actually, standard practice for this sync is to return enough to use setSession() on client.
+  const accessToken = req.cookies['sb-access-token'];
+  const refreshToken = req.cookies['sb-refresh-token'];
+  
+  return res.json({
+    session: {
+      access_token: accessToken,
+      refresh_token: refreshToken,
+      user: user,
+      expires_in: 3600 // approximated if unknown
+    },
+    user
+  });
+});
+
 app.post('/api/auth/session', async (req, res) => {
   const { session } = req.body;
   
@@ -545,7 +666,8 @@ app.get('/api/users/search', async (req, res) => {
 
     // Determine which client to use for search
     let searchClient = supabaseAdmin;
-    const token = req.cookies['sb-access-token'];
+    const freshSession = (req as any).freshSession;
+    const token = freshSession?.access_token || req.cookies['sb-access-token'];
     
     // If we don't have a service key, we MUST use a client with the user's token
     // to benefit from the user's permissions, or at least bypass 'anon' restrictions.
@@ -625,23 +747,30 @@ app.post('/api/friends/request-by-username', async (req, res) => {
     if (targetUser.id === user.id) return res.status(400).json({ error: 'You cannot add yourself' });
 
     // 2. Check if relationship already exists in either direction
-    const { data: existing, error: checkError } = await supabaseAdmin
+    const selectFields = hasFriendsStatusColumn ? 'id, status, user_id, friend_id' : 'id, user_id, friend_id';
+    const { data: existing, error: checkError } = await (supabaseAdmin
       .from('friends')
-      .select('id, status, user_id, friend_id')
+      .select(selectFields) as any)
       .or(`and(user_id.eq.${user.id},friend_id.eq.${targetUser.id}),and(user_id.eq.${targetUser.id},friend_id.eq.${user.id})`)
       .maybeSingle();
     
     if (checkError) throw checkError;
     if (existing) {
-      if (existing.status === 'accepted') return res.status(400).json({ error: 'You are already friends' });
+      if (!hasFriendsStatusColumn || existing.status === 'accepted') {
+        return res.status(400).json({ error: 'You are already friends' });
+      }
       const direction = existing.user_id === user.id ? 'sent' : 'received';
       return res.status(400).json({ error: `You already have a ${direction} request with this user` });
     }
 
     // 3. Insert friend request
+    const insertObj = hasFriendsStatusColumn
+      ? { user_id: user.id, friend_id: targetUser.id, status: 'pending' }
+      : { user_id: user.id, friend_id: targetUser.id };
+
     const { error: insertError } = await supabaseAdmin
       .from('friends')
-      .insert({ user_id: user.id, friend_id: targetUser.id, status: 'pending' });
+      .insert(insertObj);
     
     if (insertError) throw insertError;
 
@@ -661,21 +790,28 @@ app.post('/api/friends/request', async (req, res) => {
 
   try {
     // Check if relationship already exists
-    const { data: existing, error: checkError } = await supabaseAdmin
+    const selectFields = hasFriendsStatusColumn ? 'id, status, user_id, friend_id' : 'id, user_id, friend_id';
+    const { data: existing, error: checkError } = await (supabaseAdmin
       .from('friends')
-      .select('id, status, user_id, friend_id')
+      .select(selectFields) as any)
       .or(`and(user_id.eq.${user.id},friend_id.eq.${friendId}),and(user_id.eq.${friendId},friend_id.eq.${user.id})`)
       .maybeSingle();
     
     if (checkError) throw checkError;
     if (existing) {
-      if (existing.status === 'accepted') return res.status(400).json({ error: 'You are already friends' });
+      if (!hasFriendsStatusColumn || existing.status === 'accepted') {
+        return res.status(400).json({ error: 'You are already friends' });
+      }
       return res.status(400).json({ error: 'Relationship already exists' });
     }
 
+    const insertObj = hasFriendsStatusColumn
+      ? { user_id: user.id, friend_id: friendId, status: 'pending' }
+      : { user_id: user.id, friend_id: friendId };
+
     const { error } = await supabaseAdmin
       .from('friends')
-      .insert({ user_id: user.id, friend_id: friendId, status: 'pending' });
+      .insert(insertObj);
     
     if (error) throw error;
     res.json({ success: true });
@@ -689,17 +825,37 @@ app.post('/api/friends/accept/:requestId', async (req, res) => {
   const user = await getAuthenticatedUser(req, res);
   if (!user) return res.status(401).json({ error: 'Not authenticated' });
 
+  if (!hasFriendsStatusColumn) {
+    // If friends table doesn't support status, friendship is implicitly active immediately
+    return res.json({ success: true });
+  }
+
   try {
+    // Robustly find friendship row and verify either user is part of it before accepting
+    const { data: friendship, error: findError } = await supabaseAdmin
+      .from('friends')
+      .select('id, user_id, friend_id')
+      .eq('id', req.params.requestId)
+      .maybeSingle();
+
+    if (findError) throw findError;
+    if (!friendship) return res.status(404).json({ error: 'Friend request not found' });
+
+    // Allow user to accept as long as they are part of the transaction
+    if (friendship.friend_id !== user.id && friendship.user_id !== user.id) {
+      return res.status(403).json({ error: 'Unauthorized to respond to this request' });
+    }
+
     const { error } = await supabaseAdmin
       .from('friends')
       .update({ status: 'accepted' })
-      .eq('id', req.params.requestId)
-      .eq('friend_id', user.id); // Only the recipient can accept
+      .eq('id', req.params.requestId);
     
     if (error) throw error;
     res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: 'Accept failed' });
+  } catch (err: any) {
+    console.error('[FRIENDS] Accept failed:', err);
+    res.status(500).json({ error: 'Accept failed', message: err.message });
   }
 });
 
@@ -708,16 +864,30 @@ app.post('/api/friends/decline/:requestId', async (req, res) => {
   if (!user) return res.status(401).json({ error: 'Not authenticated' });
 
   try {
+    // Robustly find friendship row and verify user belongs to it
+    const { data: friendship, error: findError } = await supabaseAdmin
+      .from('friends')
+      .select('id, user_id, friend_id')
+      .eq('id', req.params.requestId)
+      .maybeSingle();
+
+    if (findError) throw findError;
+    if (!friendship) return res.status(404).json({ error: 'Friend request not found' });
+
+    if (friendship.friend_id !== user.id && friendship.user_id !== user.id) {
+      return res.status(403).json({ error: 'Unauthorized to decline this request' });
+    }
+
     const { error } = await supabaseAdmin
       .from('friends')
       .delete()
-      .eq('id', req.params.requestId)
-      .eq('friend_id', user.id);
+      .eq('id', req.params.requestId);
     
     if (error) throw error;
     res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: 'Decline failed' });
+  } catch (err: any) {
+    console.error('[FRIENDS] Decline failed:', err);
+    res.status(500).json({ error: 'Decline failed', message: err.message });
   }
 });
 
@@ -726,45 +896,79 @@ app.get('/api/friends/list', async (req, res) => {
   if (!user) return res.status(401).json({ error: 'Not authenticated' });
 
   try {
-    // Relationships where I initiated
-    const { data: initiated, error: initiatedError } = await supabaseAdmin
-      .from('friends')
-      .select(`
-        id, status, created_at, friend_id,
-        friend:profiles!friend_id(id, username, full_name, avatar_url)
-      `)
-      .eq('user_id', user.id);
-    
-    if (initiatedError) throw initiatedError;
-    
-    // Relationships where I am the recipient
-    const { data: received, error: receivedError } = await supabaseAdmin
-      .from('friends')
-      .select(`
-        id, status, created_at, user_id,
-        sender:profiles!user_id(id, username, full_name, avatar_url)
-      `)
-      .eq('friend_id', user.id);
+    const fields = hasFriendsStatusColumn 
+      ? 'id, status, created_at, friend_id, user_id'
+      : 'id, created_at, friend_id, user_id';
 
-    if (receivedError) throw receivedError;
+    // 1. Fetch raw relationships without relying on PostgREST joins (resilient to missing foreign constraints)
+    const { data: friendships, error: friendsError } = await (supabaseAdmin
+      .from('friends')
+      .select(fields) as any)
+      .or(`user_id.eq.${user.id},friend_id.eq.${user.id}`);
+    
+    if (friendsError) throw friendsError;
+
+    const rawFriendships = (friendships || []) as any[];
+
+    // Filter into initiated (outgoing) vs received (incoming) from current user's perspective
+    const initiatedList = rawFriendships.filter(f => f.user_id === user.id);
+    const receivedList = rawFriendships.filter(f => f.friend_id === user.id);
+
+    // Collect all involved friend IDs to fetch their profiles efficiently in a single roundtrip
+    const friendIds = [
+      ...initiatedList.map(f => f.friend_id),
+      ...receivedList.map(f => f.user_id)
+    ];
+
+    const profilesMap = new Map();
+    if (friendIds.length > 0) {
+      const { data: profiles, error: profilesError } = await supabaseAdmin
+        .from('profiles')
+        .select('id, username, full_name, avatar_url')
+        .in('id', friendIds);
+      
+      if (!profilesError && profiles) {
+        profiles.forEach(p => {
+          profilesMap.set(p.id, p);
+        });
+      }
+    }
 
     const friendsList = [
-      ...(initiated || []).map(f => ({
-        ...f,
-        friend: (f as any).friend,
+      ...initiatedList.map(f => ({
+        id: f.id,
+        user_id: f.user_id,
+        friend_id: f.friend_id,
+        created_at: f.created_at,
+        status: hasFriendsStatusColumn ? f.status : 'accepted',
+        friend: profilesMap.get(f.friend_id) || {
+          id: f.friend_id,
+          username: 'user',
+          full_name: 'Zettl Friend',
+          avatar_url: `https://api.dicebear.com/7.x/lorelei/svg?seed=${f.friend_id}`
+        },
         type: 'outgoing'
       })),
-      ...(received || []).map(f => ({
-        ...f,
-        friend: (f as any).sender,
-        friend_id: f.user_id,
+      ...receivedList.map(f => ({
+        id: f.id,
+        user_id: f.user_id,
+        friend_id: f.user_id, // Map friend_id as the sender's user_id so storefront has correct reference
+        created_at: f.created_at,
+        status: hasFriendsStatusColumn ? f.status : 'accepted',
+        friend: profilesMap.get(f.user_id) || {
+          id: f.user_id,
+          username: 'user',
+          full_name: 'Zettl Friend',
+          avatar_url: `https://api.dicebear.com/7.x/lorelei/svg?seed=${f.user_id}`
+        },
         type: 'incoming'
       }))
     ];
 
     res.json(friendsList);
-  } catch (err) {
-    res.status(500).json({ error: 'Fetch friends failed' });
+  } catch (err: any) {
+    console.error('[FRIENDS] Custom retrieval failed:', err);
+    res.status(500).json({ error: 'Fetch friends failed', message: err.message });
   }
 });
 
@@ -780,6 +984,32 @@ app.post('/api/zettl/personal', async (req, res) => {
 
   const fromUserId = direction === 'lent' ? friendId : user.id;
   const toUserId = direction === 'lent' ? user.id : friendId;
+
+  if (useZettlFallback) {
+    try {
+      const db = readLocalZettlDB();
+      const newZettl = {
+        id: 'fallback-' + Math.random().toString(36).substring(2, 15) + '-' + Date.now(),
+        from_user_id: fromUserId,
+        to_user_id: toUserId,
+        amount: parseInt(amount, 10),
+        note: note || '',
+        due_date: dueDate || null,
+        currency: 'INR',
+        is_settled: false,
+        settled_at: null,
+        reminder_last_sent_at: null,
+        reminder_count: 0,
+        created_at: new Date().toISOString()
+      };
+      db.personal_zettls.push(newZettl);
+      writeLocalZettlDB(db);
+      return res.json(newZettl);
+    } catch (err: any) {
+      console.error('[LOCAL DB] Personal creation failed:', err);
+      return res.status(500).json({ error: 'Creation failed' });
+    }
+  }
 
   try {
     const { data, error } = await supabaseAdmin
@@ -806,6 +1036,46 @@ app.get('/api/zettl/personal/list', async (req, res) => {
   const user = await getAuthenticatedUser(req, res);
   if (!user) return res.status(401).json({ error: 'Not authenticated' });
 
+  if (useZettlFallback) {
+    try {
+      const db = readLocalZettlDB();
+      const rawZettls = db.personal_zettls.filter(
+        (z: any) => z.from_user_id === user.id || z.to_user_id === user.id
+      );
+
+      rawZettls.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+      if (rawZettls.length === 0) {
+        return res.json([]);
+      }
+
+      const userIds = Array.from(new Set([
+        ...rawZettls.map((z: any) => z.from_user_id),
+        ...rawZettls.map((z: any) => z.to_user_id)
+      ])).filter(Boolean);
+
+      const { data: profiles, error: profilesError } = await supabaseAdmin
+        .from('profiles')
+        .select('id, username, full_name, avatar_url')
+        .in('id', userIds);
+
+      if (profilesError) throw profilesError;
+
+      const profileMap = new Map(profiles?.map((p: any) => [p.id, p]) || []);
+
+      const enrichedZettls = rawZettls.map((z: any) => ({
+        ...z,
+        from_profile: profileMap.get(z.from_user_id) || { username: 'Unknown', full_name: 'Unknown User', avatar_url: '' },
+        to_profile: profileMap.get(z.to_user_id) || { username: 'Unknown', full_name: 'Unknown User', avatar_url: '' }
+      }));
+
+      return res.json(enrichedZettls);
+    } catch (err: any) {
+      console.error('[LOCAL DB] Retrieve personal list failed:', err);
+      return res.status(500).json({ error: 'Fetch failed', message: err.message });
+    }
+  }
+
   try {
     const { data, error } = await supabaseAdmin
       .from('personal_zettls')
@@ -817,10 +1087,47 @@ app.get('/api/zettl/personal/list', async (req, res) => {
       .or(`from_user_id.eq.${user.id},to_user_id.eq.${user.id}`)
       .order('created_at', { ascending: false });
     
-    if (error) throw error;
-    res.json(data || []);
-  } catch (err) {
-    res.status(500).json({ error: 'Fetch failed' });
+    if (!error) {
+      return res.json(data || []);
+    }
+
+    console.warn('[SERVER] Primary fetch with fkey select failed on /api/zettl/personal/list, falling back to manual profiles join:', error.message);
+    
+    const { data: rawZettls, error: rawError } = await supabaseAdmin
+      .from('personal_zettls')
+      .select('*')
+      .or(`from_user_id.eq.${user.id},to_user_id.eq.${user.id}`)
+      .order('created_at', { ascending: false });
+      
+    if (rawError) throw rawError;
+    if (!rawZettls || rawZettls.length === 0) {
+      return res.json([]);
+    }
+    
+    const userIds = Array.from(new Set([
+      ...rawZettls.map((z: any) => z.from_user_id),
+      ...rawZettls.map((z: any) => z.to_user_id)
+    ])).filter(Boolean);
+    
+    const { data: profiles, error: profilesError } = await supabaseAdmin
+      .from('profiles')
+      .select('id, username, full_name, avatar_url')
+      .in('id', userIds);
+      
+    if (profilesError) throw profilesError;
+    
+    const profileMap = new Map(profiles?.map((p: any) => [p.id, p]) || []);
+    
+    const enrichedZettls = rawZettls.map((z: any) => ({
+      ...z,
+      from_profile: profileMap.get(z.from_user_id) || { username: 'Unknown', full_name: 'Unknown User', avatar_url: '' },
+      to_profile: profileMap.get(z.to_user_id) || { username: 'Unknown', full_name: 'Unknown User', avatar_url: '' }
+    }));
+    
+    res.json(enrichedZettls);
+  } catch (err: any) {
+    console.error('[SERVER] Retrieve personal list failed:', err);
+    res.status(500).json({ error: 'Fetch failed', message: err.message });
   }
 });
 
@@ -829,6 +1136,32 @@ app.get('/api/zettl/personal/balance/:friendId', async (req, res) => {
   if (!user) return res.status(401).json({ error: 'Not authenticated' });
 
   const friendId = req.params.friendId;
+
+  if (useZettlFallback) {
+    try {
+      const db = readLocalZettlDB();
+      const owedToMe = db.personal_zettls.filter(
+        (z: any) => z.from_user_id === friendId && z.to_user_id === user.id && !z.is_settled
+      );
+      const iOwe = db.personal_zettls.filter(
+        (z: any) => z.from_user_id === user.id && z.to_user_id === friendId && !z.is_settled
+      );
+
+      const totalOwedToMe = owedToMe.reduce((acc, curr) => acc + curr.amount, 0);
+      const totalIOwe = iOwe.reduce((acc, curr) => acc + curr.amount, 0);
+      const net = totalOwedToMe - totalIOwe;
+
+      return res.json({
+        owed_to_me: totalOwedToMe,
+        i_owe: totalIOwe,
+        net,
+        friend_id: friendId
+      });
+    } catch (err) {
+      console.error('[LOCAL DB] Balance check failed:', err);
+      return res.status(500).json({ error: 'Balance check failed' });
+    }
+  }
 
   try {
     // Owed to me by this friend
@@ -865,6 +1198,38 @@ app.get('/api/zettl/personal/balance/:friendId', async (req, res) => {
 app.post('/api/zettl/personal/:zettlId/remind', async (req, res) => {
   const user = await getAuthenticatedUser(req, res);
   if (!user) return res.status(401).json({ error: 'Not authenticated' });
+
+  if (useZettlFallback) {
+    try {
+      const db = readLocalZettlDB();
+      const zettlIndex = db.personal_zettls.findIndex((z: any) => z.id === req.params.zettlId);
+      if (zettlIndex === -1) return res.status(404).json({ error: 'Zettl not found' });
+      const zettl = db.personal_zettls[zettlIndex];
+      if (zettl.to_user_id !== user.id) return res.status(403).json({ error: 'Only the payee can remind' });
+
+      const oneDayAgo = new Date();
+      oneDayAgo.setDate(oneDayAgo.getDate() - 1);
+
+      if (zettl.reminder_last_sent_at && new Date(zettl.reminder_last_sent_at) > oneDayAgo) {
+        return res.status(429).json({ error: 'Reminder sent recently. Please wait 24 hours.' });
+      }
+      if (zettl.reminder_count >= 10) {
+        return res.status(400).json({ error: 'Maximum reminders reached for this Zettl' });
+      }
+
+      db.personal_zettls[zettlIndex] = {
+        ...zettl,
+        reminder_last_sent_at: new Date().toISOString(),
+        reminder_count: (zettl.reminder_count || 0) + 1
+      };
+      
+      writeLocalZettlDB(db);
+      return res.json({ success: true, message: 'Reminder sent!' });
+    } catch (err) {
+      console.error('[LOCAL DB] Reminder failed:', err);
+      return res.status(500).json({ error: 'Reminder failed' });
+    }
+  }
 
   try {
     const { data: zettl } = await supabaseAdmin
@@ -913,6 +1278,28 @@ app.put('/api/zettl/personal/:zettlId/settle', async (req, res) => {
   const user = await getAuthenticatedUser(req, res);
   if (!user) return res.status(401).json({ error: 'Not authenticated' });
 
+  if (useZettlFallback) {
+    try {
+      const db = readLocalZettlDB();
+      const zettlIndex = db.personal_zettls.findIndex(
+        (z: any) => z.id === req.params.zettlId && (z.from_user_id === user.id || z.to_user_id === user.id)
+      );
+      if (zettlIndex === -1) return res.status(404).json({ error: 'Zettl not found or unauthorized' });
+
+      db.personal_zettls[zettlIndex] = {
+        ...db.personal_zettls[zettlIndex],
+        is_settled: true,
+        settled_at: new Date().toISOString()
+      };
+
+      writeLocalZettlDB(db);
+      return res.json({ success: true });
+    } catch (err) {
+      console.error('[LOCAL DB] Settlement failed:', err);
+      return res.status(500).json({ error: 'Settlement failed' });
+    }
+  }
+
   try {
     // Both parties can mark as settled or confirm? Let's say only payee can confirm standard settlement
     // or both for peer-to-peer trust
@@ -932,6 +1319,25 @@ app.put('/api/zettl/personal/:zettlId/settle', async (req, res) => {
 app.delete('/api/zettl/personal/:zettlId', async (req, res) => {
   const user = await getAuthenticatedUser(req, res);
   if (!user) return res.status(401).json({ error: 'Not authenticated' });
+
+  if (useZettlFallback) {
+    try {
+      const db = readLocalZettlDB();
+      const zettlIndex = db.personal_zettls.findIndex(
+        (z: any) => z.id === req.params.zettlId && (z.from_user_id === user.id || z.to_user_id === user.id)
+      );
+      if (zettlIndex === -1) return res.status(404).json({ error: 'Not found' });
+      const zettl = db.personal_zettls[zettlIndex];
+      if (zettl.is_settled) return res.status(400).json({ error: 'Cannot delete settled Zettl' });
+
+      db.personal_zettls.splice(zettlIndex, 1);
+      writeLocalZettlDB(db);
+      return res.json({ success: true });
+    } catch (err) {
+      console.error('[LOCAL DB] Deletions failed:', err);
+      return res.status(500).json({ error: 'Deletions failed' });
+    }
+  }
 
   try {
     const { data: zettl } = await supabaseAdmin
@@ -964,6 +1370,36 @@ app.post('/api/zettl/groups', async (req, res) => {
   const { name, avatarUrl, memberIds } = req.body;
   if (!name) return res.status(400).json({ error: 'Group name required' });
 
+  if (useZettlFallback) {
+    try {
+      const db = readLocalZettlDB();
+      const newGroup = {
+        id: 'group-' + Math.random().toString(36).substring(2, 15) + '-' + Date.now(),
+        name,
+        avatar_url: avatarUrl || null,
+        created_by_user_id: user.id,
+        created_at: new Date().toISOString()
+      };
+      db.zettl_groups.push(newGroup);
+
+      const uniqueIds = [...new Set([user.id, ...(memberIds || [])])];
+      uniqueIds.forEach(mId => {
+        db.zettl_group_members.push({
+          id: 'member-' + Math.random().toString(36).substring(2, 15) + '-' + Date.now(),
+          group_id: newGroup.id,
+          user_id: mId,
+          joined_at: new Date().toISOString()
+        });
+      });
+
+      writeLocalZettlDB(db);
+      return res.json(newGroup);
+    } catch (err) {
+      console.error('[LOCAL DB] Group creation failed:', err);
+      return res.status(500).json({ error: 'Group creation failed' });
+    }
+  }
+
   try {
     const { data: group, error } = await supabaseAdmin
       .from('zettl_groups')
@@ -991,6 +1427,50 @@ app.post('/api/zettl/groups', async (req, res) => {
 app.get('/api/zettl/groups/my', async (req, res) => {
   const user = await getAuthenticatedUser(req, res);
   if (!user) return res.status(401).json({ error: 'Not authenticated' });
+
+  if (useZettlFallback) {
+    try {
+      const db = readLocalZettlDB();
+      // Find my memberships
+      const myMemberships = db.zettl_group_members.filter((m: any) => m.user_id === user.id);
+      const groupIds = myMemberships.map((m: any) => m.group_id);
+
+      const rawGroups = db.zettl_groups.filter((g: any) => groupIds.includes(g.id));
+
+      // Resolve profiles for all members in these groups
+      const allMembers = db.zettl_group_members.filter((m: any) => groupIds.includes(m.group_id));
+      const memberUserIds = Array.from(new Set(allMembers.map((m: any) => m.user_id))).filter(Boolean);
+
+      let profileMap = new Map();
+      if (memberUserIds.length > 0) {
+        const { data: profiles } = await supabaseAdmin
+          .from('profiles')
+          .select('id, username, full_name, avatar_url')
+          .in('id', memberUserIds);
+        profileMap = new Map(profiles?.map((p: any) => [p.id, p]) || []);
+      }
+
+      const enrichedGroups = rawGroups.map((g: any) => {
+        const groupMembers = allMembers
+          .filter((m: any) => m.group_id === g.id)
+          .map((m: any) => ({
+            id: m.id,
+            user_id: m.user_id,
+            joined_at: m.joined_at,
+            profiles: profileMap.get(m.user_id) || { username: 'Unknown', full_name: 'Unknown User', avatar_url: '' }
+          }));
+        return {
+          ...g,
+          members: groupMembers
+        };
+      });
+
+      return res.json(enrichedGroups);
+    } catch (err: any) {
+      console.error('[LOCAL DB] Fetch groups failed:', err);
+      return res.status(500).json({ error: 'Fetch groups failed' });
+    }
+  }
 
   try {
     // Find group IDs where I'm a member
@@ -1027,6 +1507,30 @@ app.post('/api/zettl/groups/:groupId/members', async (req, res) => {
   const { memberIds } = req.body;
   if (!Array.isArray(memberIds)) return res.status(400).json({ error: 'memberIds array required' });
 
+  if (useZettlFallback) {
+    try {
+      const db = readLocalZettlDB();
+      memberIds.forEach((mId: string) => {
+        const exists = db.zettl_group_members.some(
+          (m: any) => m.group_id === req.params.groupId && m.user_id === mId
+        );
+        if (!exists) {
+          db.zettl_group_members.push({
+            id: 'member-' + Math.random().toString(36).substring(2, 15) + '-' + Date.now(),
+            group_id: req.params.groupId,
+            user_id: mId,
+            joined_at: new Date().toISOString()
+          });
+        }
+      });
+      writeLocalZettlDB(db);
+      return res.json({ success: true });
+    } catch (err) {
+      console.error('[LOCAL DB] Adding members failed:', err);
+      return res.status(500).json({ error: 'Adding members failed' });
+    }
+  }
+
   try {
     const members = memberIds.map(mId => ({
       group_id: req.params.groupId,
@@ -1045,6 +1549,30 @@ app.post('/api/zettl/groups/:groupId/members', async (req, res) => {
 app.get('/api/zettl/groups/:groupId/summary', async (req, res) => {
   const user = await getAuthenticatedUser(req, res);
   if (!user) return res.status(401).json({ error: 'Not authenticated' });
+
+  if (useZettlFallback) {
+    try {
+      const db = readLocalZettlDB();
+      const expenses = db.zettl_group_expenses.filter((e: any) => e.group_id === req.params.groupId);
+      const expenseIds = expenses.map((e: any) => e.id);
+      const splits = db.zettl_expense_splits.filter((s: any) => expenseIds.includes(s.expense_id));
+
+      const balances: Record<string, number> = {};
+
+      expenses.forEach((e: any) => {
+        balances[e.paid_by_user_id] = (balances[e.paid_by_user_id] || 0) + e.total_amount;
+      });
+
+      splits.forEach((s: any) => {
+        balances[s.user_id] = (balances[s.user_id] || 0) - s.amount_owed;
+      });
+
+      return res.json({ balances });
+    } catch (err) {
+      console.error('[LOCAL DB] Summary failed:', err);
+      return res.status(500).json({ error: 'Summary failed' });
+    }
+  }
 
   try {
     // Get total paid vs total owed per member
@@ -1083,6 +1611,38 @@ app.post('/api/zettl/groups/:groupId/expense', async (req, res) => {
   const { amount, description, splits } = req.body;
   // splits: Array of { userId, amountOwed }
 
+  if (useZettlFallback) {
+    try {
+      const db = readLocalZettlDB();
+      const newExpense = {
+        id: 'expense-' + Math.random().toString(36).substring(2, 15) + '-' + Date.now(),
+        group_id: req.params.groupId,
+        paid_by_user_id: user.id,
+        total_amount: parseInt(amount, 10),
+        description: description || '',
+        created_at: new Date().toISOString()
+      };
+      db.zettl_group_expenses.push(newExpense);
+
+      splits.forEach((s: any) => {
+        db.zettl_expense_splits.push({
+          id: 'split-' + Math.random().toString(36).substring(2, 15) + '-' + Date.now(),
+          expense_id: newExpense.id,
+          user_id: s.userId,
+          amount_owed: parseInt(s.amountOwed, 10),
+          is_settled: false,
+          settled_at: null
+        });
+      });
+
+      writeLocalZettlDB(db);
+      return res.json(newExpense);
+    } catch (err) {
+      console.error('[LOCAL DB] Expense creation failed:', err);
+      return res.status(500).json({ error: 'Expense creation failed' });
+    }
+  }
+
   try {
     const { data: expense, error } = await supabaseAdmin
       .from('zettl_group_expenses')
@@ -1115,6 +1675,57 @@ app.get('/api/zettl/groups/:groupId/expenses', async (req, res) => {
   const user = await getAuthenticatedUser(req, res);
   if (!user) return res.status(401).json({ error: 'Not authenticated' });
 
+  if (useZettlFallback) {
+    try {
+      const db = readLocalZettlDB();
+      const rawExpenses = db.zettl_group_expenses.filter((e: any) => e.group_id === req.params.groupId);
+      rawExpenses.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+      if (rawExpenses.length === 0) {
+        return res.json([]);
+      }
+
+      const expenseIds = rawExpenses.map((re: any) => re.id);
+      const paidByUids = rawExpenses.map((re: any) => re.paid_by_user_id).filter(Boolean);
+      const rawSplits = db.zettl_expense_splits.filter((s: any) => expenseIds.includes(s.expense_id));
+
+      const allUserIds = Array.from(new Set([
+        ...paidByUids,
+        ...rawSplits.map((s: any) => s.user_id)
+      ])).filter(Boolean);
+
+      let profileMap = new Map();
+      if (allUserIds.length > 0) {
+        const { data: profiles } = await supabaseAdmin
+          .from('profiles')
+          .select('id, username, full_name, avatar_url')
+          .in('id', allUserIds);
+        profileMap = new Map(profiles?.map((p: any) => [p.id, p]) || []);
+      }
+
+      const formattedSplits = rawSplits.map((s: any) => ({
+        id: s.id,
+        expense_id: s.expense_id,
+        user_id: s.user_id,
+        amount_owed: s.amount_owed,
+        is_settled: s.is_settled,
+        settled_at: s.settled_at,
+        user_profile: profileMap.get(s.user_id) || { username: 'Unknown', full_name: 'Unknown User', avatar_url: '' }
+      }));
+
+      const enrichedExpenses = rawExpenses.map((e: any) => ({
+        ...e,
+        paid_by_profile: profileMap.get(e.paid_by_user_id) || { username: 'Unknown', full_name: 'Unknown User', avatar_url: '' },
+        splits: formattedSplits.filter((s: any) => s.expense_id === e.id)
+      }));
+
+      return res.json(enrichedExpenses);
+    } catch (err) {
+      console.error('[LOCAL DB] Retrieve group expenses failed:', err);
+      return res.status(500).json({ error: 'Fetch expenses failed' });
+    }
+  }
+
   try {
     const { data, error } = await supabaseAdmin
       .from('zettl_group_expenses')
@@ -1129,16 +1740,90 @@ app.get('/api/zettl/groups/:groupId/expenses', async (req, res) => {
       .eq('group_id', req.params.groupId)
       .order('created_at', { ascending: false });
     
-    if (error) throw error;
-    res.json(data || []);
-  } catch (err) {
-    res.status(500).json({ error: 'Fetch expenses failed' });
+    if (!error) {
+      return res.json(data || []);
+    }
+    
+    console.warn('[SERVER] Direct group expenses query failed, falling back to manual profiles join:', error.message);
+    
+    const { data: rawExpenses, error: expError } = await supabaseAdmin
+      .from('zettl_group_expenses')
+      .select('*')
+      .eq('group_id', req.params.groupId)
+      .order('created_at', { ascending: false });
+      
+    if (expError) throw expError;
+    if (!rawExpenses || rawExpenses.length === 0) {
+      return res.json([]);
+    }
+    
+    const expenseIds = rawExpenses.map((re: any) => re.id);
+    const paidByUids = rawExpenses.map((re: any) => re.paid_by_user_id).filter(Boolean);
+    
+    const { data: rawSplits, error: splitErr } = await supabaseAdmin
+      .from('zettl_expense_splits')
+      .select('*')
+      .in('expense_id', expenseIds);
+      
+    if (splitErr) throw splitErr;
+    
+    const allUserIds = Array.from(new Set([
+      ...paidByUids,
+      ...(rawSplits?.map((s: any) => s.user_id) || [])
+    ])).filter(Boolean);
+    
+    const { data: profiles, error: profErr } = await supabaseAdmin
+      .from('profiles')
+      .select('id, username, full_name, avatar_url')
+      .in('id', allUserIds);
+      
+    if (profErr) throw profErr;
+    const profileMap = new Map(profiles?.map((p: any) => [p.id, p]) || []);
+    
+    const formattedSplits = (rawSplits || []).map((s: any) => ({
+      id: s.id,
+      expense_id: s.expense_id,
+      user_id: s.user_id,
+      amount_owed: s.amount_owed,
+      is_settled: s.is_settled,
+      settled_at: s.settled_at,
+      user_profile: profileMap.get(s.user_id) || { username: 'Unknown', full_name: 'Unknown User', avatar_url: '' }
+    }));
+    
+    const enrichedExpenses = rawExpenses.map((e: any) => ({
+      ...e,
+      paid_by_profile: profileMap.get(e.paid_by_user_id) || { username: 'Unknown', full_name: 'Unknown User', avatar_url: '' },
+      splits: formattedSplits.filter((s: any) => s.expense_id === e.id)
+    }));
+    
+    res.json(enrichedExpenses);
+  } catch (err: any) {
+    console.error('[SERVER] Retrieve group expenses failed:', err);
+    res.status(500).json({ error: 'Fetch expenses failed', message: err.message });
   }
 });
 
 app.post('/api/zettl/groups/expense/:expenseId/settle/:userId', async (req, res) => {
   const user = await getAuthenticatedUser(req, res);
   if (!user) return res.status(401).json({ error: 'Not authenticated' });
+
+  if (useZettlFallback) {
+    try {
+      const db = readLocalZettlDB();
+      const splitIndex = db.zettl_expense_splits.findIndex(
+        (s: any) => s.expense_id === req.params.expenseId && s.user_id === req.params.userId
+      );
+      if (splitIndex !== -1) {
+        db.zettl_expense_splits[splitIndex].is_settled = true;
+        db.zettl_expense_splits[splitIndex].settled_at = new Date().toISOString();
+        writeLocalZettlDB(db);
+      }
+      return res.json({ success: true });
+    } catch (err) {
+      console.error('[LOCAL DB] Group settlement failed:', err);
+      return res.status(500).json({ error: 'Group settlement failed' });
+    }
+  }
 
   try {
     const { error } = await supabaseAdmin
@@ -1158,6 +1843,79 @@ app.post('/api/zettl/groups/expense/:expenseId/settle/:userId', async (req, res)
 app.get('/api/zettl/dashboard', async (req, res) => {
   const user = await getAuthenticatedUser(req, res);
   if (!user) return res.status(401).json({ error: 'Not authenticated' });
+
+  if (useZettlFallback) {
+    try {
+      const db = readLocalZettlDB();
+
+      // 1. Personal Debts
+      const lent = db.personal_zettls.filter(
+        (z: any) => z.to_user_id === user.id && !z.is_settled
+      );
+      const borrowed = db.personal_zettls.filter(
+        (z: any) => z.from_user_id === user.id && !z.is_settled
+      );
+
+      const personalOwedToMe = lent.reduce((acc, curr) => acc + curr.amount, 0);
+      const personalIOwe = borrowed.reduce((acc, curr) => acc + curr.amount, 0);
+
+      // 2. Group Debts (Splits)
+      const groupIOweData = db.zettl_expense_splits.filter(
+        (s: any) => s.user_id === user.id && !s.is_settled
+      );
+      const groupIOwe = groupIOweData.reduce((acc, curr) => acc + curr.amount_owed, 0);
+
+      const myExpenses = db.zettl_group_expenses.filter(
+        (e: any) => e.paid_by_user_id === user.id
+      );
+      const myExpenseIds = myExpenses.map((e: any) => e.id);
+
+      const columnCheckZettlDBFieldOwedToMeSplits = db.zettl_expense_splits.filter(
+        (s: any) => myExpenseIds.includes(s.expense_id) && s.user_id !== user.id && !s.is_settled
+      );
+      const groupOwedToMe = columnCheckZettlDBFieldOwedToMeSplits.reduce((acc, curr) => acc + curr.amount_owed, 0);
+
+      const totalOwedToMe = personalOwedToMe + groupOwedToMe;
+      const totalIOwe = personalIOwe + groupIOwe;
+
+      // Recent Activity
+      const rawZettls = db.personal_zettls.filter(
+        (z: any) => z.from_user_id === user.id || z.to_user_id === user.id
+      );
+      rawZettls.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      const recentZettls = rawZettls.slice(0, 5);
+
+      let recentActivity: any[] = [];
+      if (recentZettls.length > 0) {
+        const userIds = Array.from(new Set([
+          ...recentZettls.map((z: any) => z.from_user_id),
+          ...recentZettls.map((z: any) => z.to_user_id)
+        ])).filter(Boolean);
+
+        const { data: profiles } = await supabaseAdmin
+          .from('profiles')
+          .select('id, username, full_name, avatar_url')
+          .in('id', userIds);
+
+        const profileMap = new Map(profiles?.map((p: any) => [p.id, p]) || []);
+        recentActivity = recentZettls.map((z: any) => ({
+          ...z,
+          from_profile: profileMap.get(z.from_user_id) || { username: 'Unknown', full_name: 'Unknown User', avatar_url: '' },
+          to_profile: profileMap.get(z.to_user_id) || { username: 'Unknown', full_name: 'Unknown User', avatar_url: '' }
+        }));
+      }
+
+      return res.json({
+        total_owed_to_me: totalOwedToMe,
+        total_i_owe: totalIOwe,
+        net: totalOwedToMe - totalIOwe,
+        recent_activity: recentActivity
+      });
+    } catch (err) {
+      console.error('[LOCAL DB] Dashboard aggregates failed:', err);
+      return res.status(500).json({ error: 'Dashboard failed' });
+    }
+  }
 
   try {
     // 1. Personal Debts
@@ -1206,16 +1964,52 @@ app.get('/api/zettl/dashboard', async (req, res) => {
     const totalIOwe = personalIOwe + groupIOwe;
 
     // Recent Activity
-    const { data: recentPersonal } = await supabaseAdmin
-      .from('personal_zettls')
-      .select(`
-        *,
-        from_profile:profiles!personal_zettls_from_user_id_fkey(username, full_name, avatar_url),
-        to_profile:profiles!personal_zettls_to_user_id_fkey(username, full_name, avatar_url)
-      `)
-      .or(`from_user_id.eq.${user.id},to_user_id.eq.${user.id}`)
-      .limit(5)
-      .order('created_at', { ascending: false });
+    let recentPersonal;
+    try {
+      const { data, error } = await supabaseAdmin
+        .from('personal_zettls')
+        .select(`
+          *,
+          from_profile:profiles!personal_zettls_from_user_id_fkey(username, full_name, avatar_url),
+          to_profile:profiles!personal_zettls_to_user_id_fkey(username, full_name, avatar_url)
+        `)
+        .or(`from_user_id.eq.${user.id},to_user_id.eq.${user.id}`)
+        .limit(5)
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      recentPersonal = data;
+    } catch (err: any) {
+      console.warn('[SERVER] Dashboard activity select with fkeys failed, using manual join fallback:', err.message);
+      
+      const { data: rawZettls } = await supabaseAdmin
+        .from('personal_zettls')
+        .select('*')
+        .or(`from_user_id.eq.${user.id},to_user_id.eq.${user.id}`)
+        .limit(5)
+        .order('created_at', { ascending: false });
+      
+      if (rawZettls && rawZettls.length > 0) {
+        const userIds = Array.from(new Set([
+          ...rawZettls.map((z: any) => z.from_user_id),
+          ...rawZettls.map((z: any) => z.to_user_id)
+        ])).filter(Boolean);
+        
+        const { data: profiles } = await supabaseAdmin
+          .from('profiles')
+          .select('id, username, full_name, avatar_url')
+          .in('id', userIds);
+          
+        const profileMap = new Map(profiles?.map((p: any) => [p.id, p]) || []);
+        recentPersonal = rawZettls.map((z: any) => ({
+          ...z,
+          from_profile: profileMap.get(z.from_user_id) || { username: 'Unknown', full_name: 'Unknown User', avatar_url: '' },
+          to_profile: profileMap.get(z.to_user_id) || { username: 'Unknown', full_name: 'Unknown User', avatar_url: '' }
+        }));
+      } else {
+        recentPersonal = [];
+      }
+    }
 
     res.json({
       total_owed_to_me: totalOwedToMe,

@@ -283,7 +283,7 @@ export default function TransactionHistory() {
                   <div>
                     <h4 className="text-base font-bold text-foreground tracking-tight">{tx.goalName}</h4>
                     <p className="text-[9px] opacity-20 font-black uppercase tracking-[0.2em] mt-1.5">
-                      {tx.type === 'withdrawal' ? 'Withdrawal' : 'Contribution'} • {format(parseISO(tx.timestamp), 'MMM dd, yyyy')}
+                      {tx.type === 'withdrawal' ? 'Withdrawal' : 'Contribution'} • {format(parseISO(tx.timestamp), 'dd/MM/yyyy')}
                     </p>
                   </div>
                 </div>

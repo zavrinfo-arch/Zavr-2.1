@@ -13,7 +13,7 @@ import {
 import GamingDashboard from '../components/GamingDashboard';
 import { formatCurrency, cn } from '../lib/utils';
 import { useNavigate } from 'react-router-dom';
-import { startOfDay, startOfWeek, startOfMonth, isAfter, parseISO, differenceInDays } from 'date-fns';
+import { startOfDay, startOfWeek, startOfMonth, isAfter, parseISO, differenceInDays, format } from 'date-fns';
 
 export default function Home({ onAddMoney, onWithdraw }: {
   onAddMoney: (goalId: string, type: 'solo' | 'group' | 'emergency', amount?: number) => void;
@@ -421,7 +421,7 @@ export default function Home({ onAddMoney, onWithdraw }: {
                   <div>
                     <h4 className="text-sm font-bold">{tx.goalName}</h4>
                     <p className="text-[9px] opacity-20 font-black uppercase tracking-widest">
-                      {new Date(tx.timestamp).toLocaleDateString()}
+                      {format(parseISO(tx.timestamp), 'dd/MM/yyyy')}
                     </p>
                   </div>
                 </div>

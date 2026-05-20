@@ -19,6 +19,7 @@ import {
 import { useStore } from './store/useStore';
 import { supabase, isConfigured } from './lib/supabaseClient';
 import { Layout } from './components/Layout';
+import { NetworkHealthMonitor } from './components/NetworkHealthMonitor';
 import SplashScreen from './pages/SplashScreen';
 import Auth from './pages/Auth';
 import Onboarding from './pages/Onboarding';
@@ -28,10 +29,10 @@ import History from './pages/History';
 import Profile from './pages/Profile';
 import Zettl from './pages/Zettl';
 import AvatarSelection from './pages/AvatarSelection';
-import { formatCurrency, cn } from './lib/utils';
+import { formatCurrency, cn, formatDateSafely } from './lib/utils';
 import toast from 'react-hot-toast';
 import CelebrationModal from './components/CelebrationModal';
-import { isAfter, startOfWeek, addDays, parseISO, differenceInDays } from 'date-fns';
+import { isAfter, startOfWeek, addDays, parseISO, differenceInDays, format } from 'date-fns';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { currentUser, session, isAuthLoading } = useStore();
@@ -252,6 +253,7 @@ export default function App() {
   return (
     <ErrorBoundary>
       <BrowserRouter>
+        <NetworkHealthMonitor />
         <ConfigWarning />
         <Toaster 
           position="top-center"
@@ -657,6 +659,11 @@ function PlusModal({ action, setAction, onClose, selectedGoal, initialAmount }: 
                       onChange={e => setFormData({ ...formData, deadline: e.target.value })}
                     />
                   </div>
+                  {formData.deadline && (
+                    <p className="text-[10px] text-[#FF6B6B] font-black uppercase tracking-widest ml-4">
+                      Deadline Selected: {formatDateSafely(formData.deadline)}
+                    </p>
+                  )}
                 </div>
               )}
             </div>

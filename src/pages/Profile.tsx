@@ -309,7 +309,7 @@ export default function Profile() {
                 <div>
                   <p className="text-[10px] font-black leading-tight opacity-100 uppercase tracking-widest">{badge.name}</p>
                   <p className="text-[8px] opacity-20 mt-2 font-bold uppercase tracking-wider">
-                    {format(parseISO(badge.unlockedAt), 'MMM dd, yyyy')}
+                    {format(parseISO(badge.unlockedAt), 'dd/MM/yyyy')}
                   </p>
                 </div>
               </motion.div>

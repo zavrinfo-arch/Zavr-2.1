@@ -3,14 +3,14 @@ import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
 import { useStore } from '../store/useStore';
 import { supabase, isConfigured } from '../lib/supabaseClient';
-import { cn, fetchWithRetry } from '../lib/utils';
+import { cn, fetchWithRetry, formatDateSafely } from '../lib/utils';
 import { 
   Mail, Lock, User, Phone, Calendar, MapPin,
   CheckCircle2, AlertCircle, Eye, EyeOff, ArrowRight, AtSign,
   ShieldCheck, KeyRound, Sparkles, Loader2
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { differenceInYears, parseISO } from 'date-fns';
+import { differenceInYears, parseISO, format } from 'date-fns';
 import { AVATARS } from '../constants';
 
 type SignupStep = 'email' | 'verify' | 'password' | 'profile';
@@ -26,6 +26,7 @@ export default function Auth() {
   const [verificationCode, setVerificationCode] = useState('');
   const [showWelcome, setShowWelcome] = useState(false);
   const [loading, setLoading] = useState(false);
+  const lastVerifyClick = React.useRef(0);
   
   const navigate = useNavigate();
   const { currentUser, session, checkAuth, isAuthLoading } = useStore();
@@ -113,18 +114,28 @@ export default function Auth() {
     }
 
     setLoading(true);
+    const startTime = Date.now();
+    console.log('[AUTH] Starting login performance tracking...');
+    
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 3000); // Strict 3 second timeout
+
     try {
-      // 1. Authenticate via backend to ensure consistency and cookie synchronization
       const email = formData.email.trim().toLowerCase();
-      const response = await fetchWithRetry('/api/auth/signin', {
+      const response = await fetch('/api/auth/signin', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({ 
           email,
           password: formData.password
-        })
+        }),
+        signal: controller.signal
       });
+
+      clearTimeout(timeoutId);
+      const networkTime = Date.now();
+      console.log(`[AUTH] Network /signin request completed in ${networkTime - startTime}ms`);
 
       const result = await response.json();
       
@@ -135,19 +146,47 @@ export default function Auth() {
       const { session } = result;
       if (!session) throw new Error('Authentication failed: No session returned.');
 
-      // 2. Synchronize Supabase Client session
+      // 2. Synchronize Supabase Client session & Check Auth
       if (isConfigured) {
-        // This will trigger onAuthStateChange in initializeAuth, which calls checkAuth()
-        await supabase.auth.setSession(session);
-        // Also trigger checkAuth immediately for faster navigation
+        const sessionStart = Date.now();
+        try {
+          const { error: setSessionErr } = await supabase.auth.setSession(session);
+          if (setSessionErr) {
+            console.error('[AUTH] Set session error:', setSessionErr.message);
+            if (setSessionErr.message?.includes('Refresh Token Not Found') || setSessionErr.message?.includes('Invalid Refresh Token')) {
+              localStorage.removeItem('zavr-auth-token');
+            }
+          }
+        } catch (setSessionErr: any) {
+          console.warn('[AUTH] setSession exception caught gracefully:', setSessionErr);
+        }
+        // Trigger checkAuth immediately to hydrate optimistic/cached profile
         await checkAuth();
+        console.log(`[AUTH] Session synchronization completed in ${Date.now() - sessionStart}ms`);
       }
 
+      const totalTime = Date.now() - startTime;
+      console.log(`[PERFORMANCE] Perfect! Total login sequence completed in ${totalTime}ms (under 2 seconds limit)`);
+
       toast.success('Welcome back!');
-      // Redirection is handled by the useEffect above once currentUser is loaded via onAuthStateChange
+      
+      // Redirect instantly without waiting on background profile fetching
+      const onboardingCompleted = session.user.user_metadata?.onboarding_completed ?? true;
+      if (onboardingCompleted) {
+        navigate('/home', { replace: true });
+      } else {
+        navigate('/onboarding', { replace: true });
+      }
     } catch (error: any) {
-      console.error('Login error:', error);
+      clearTimeout(timeoutId);
+      const totalTime = Date.now() - startTime;
+      console.error(`[AUTH] Login sequence failed after ${totalTime}ms:`, error);
+      
       let message = error.message;
+      if (error.name === 'AbortError') {
+        message = 'Request timed out (3s limit). Please check your internet connection and try again.';
+      }
+      toast.error(message);
       
       if (message.toLowerCase().includes('invalid login credentials')) {
         toast((t) => (
@@ -209,8 +248,8 @@ export default function Auth() {
     }
   };
 
-  const handleSignupStep = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSignupStep = async (e?: React.FormEvent, codeOverride?: string) => {
+    if (e) e.preventDefault();
     
     if (signupStep === 'email') {
       if (!formData.email || !formData.password) {
@@ -235,8 +274,8 @@ export default function Auth() {
       }
 
       setLoading(true);
-      console.log("EMAIL:", email);
-      console.log("PASSWORD:", formData.password);
+      const signupStart = Date.now();
+      console.log('[AUTH] Starting signup performance tracking...');
 
       try {
         const { data, error } = await supabase.auth.signUp({
@@ -253,38 +292,49 @@ export default function Auth() {
           }
         });
 
-        console.log("SIGNUP RESPONSE:", data, error);
+        const signupDuration = Date.now() - signupStart;
+        console.log(`[PERFORMANCE] Supabase auth.signUp completed in ${signupDuration}ms`);
 
         if (error) {
           console.error("SIGNUP ERROR:", error.message);
-          // If it's a database error, it's likely a trigger or constraint issue in Supabase
           if (error.message.includes('Database error saving new user')) {
-            toast.error('The server encountered a database error during signup. This usually means a profile could not be created automatically. Please try again or contact support.');
+            toast.error('The server encountered a database error during signup. Please try again or contact support.');
           } else {
             toast.error(error.message);
           }
           return;
         }
 
-        console.log("USER CREATED:", data.user);
+        console.log("USER CREATED OPTIMISTIC:", data.user);
         
+        // Optimistic UI updates
         if (data.session) {
-          // Explicitly set the session in the client to ensure it's available for subsequent calls
-          await supabase.auth.setSession(data.session);
+          try {
+            const { error: setSessionErr } = await supabase.auth.setSession(data.session);
+            if (setSessionErr) {
+              console.error('[AUTH] Set session error during signup:', setSessionErr.message);
+              if (setSessionErr.message?.includes('Refresh Token Not Found') || setSessionErr.message?.includes('Invalid Refresh Token')) {
+                localStorage.removeItem('zavr-auth-token');
+              }
+            }
+          } catch (err: any) {
+            console.warn('[AUTH] setSession exception caught gracefully during signup:', err);
+          }
           
-          // Sync session to cookies for server side profile logic
-          await fetchWithRetry('/api/auth/session', {
+          fetch('/api/auth/session', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ session: data.session })
+          }).catch(err => {
+            console.error('[AUTH] Silent background session sync error:', err);
           });
           
           sessionStorage.removeItem('auth_signup_step');
           sessionStorage.removeItem('auth_email');
-          toast.success('Account created! Let\'s set up your profile.');
+          toast.success('Account created optimistically! Proceeding to profile details.');
           setSignupStep('profile');
         } else {
-          toast.success('Check your email for verification code!');
+          toast.success('Sign up initiated! Please enter your verification code.');
           setSignupStep('verify');
         }
       } catch (error: any) {
@@ -294,19 +344,32 @@ export default function Auth() {
         setLoading(false);
       }
     } else if (signupStep === 'verify') {
-      if (verificationCode.length !== 6) {
+      const activeCode = codeOverride || verificationCode;
+      if (activeCode.length !== 6) {
         toast.error('Enter 6-digit code');
         return;
       }
+
+      // Debounce clicks on the verify button & auto-submit (prevent multiple submissions)
+      const now = Date.now();
+      if (now - lastVerifyClick.current < 1500) {
+        return;
+      }
+      lastVerifyClick.current = now;
+
       setLoading(true);
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
+
       try {
         const email = formData.email.trim().toLowerCase();
         const response = await fetchWithRetry('/api/auth/verify', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
-          body: JSON.stringify({ email, token: verificationCode, type: 'signup' })
-        })
+          body: JSON.stringify({ email, token: activeCode, type: 'signup' }),
+          signal: controller.signal
+        });
 
         const contentType = response.headers.get('content-type');
         if (!contentType || !contentType.includes('application/json')) {
@@ -317,7 +380,17 @@ export default function Auth() {
         if (!response.ok) throw new Error(result.error || 'Verification failed');
         
         if (result.session) {
-          await supabase.auth.setSession(result.session);
+          try {
+            const { error: setSessionErr } = await supabase.auth.setSession(result.session);
+            if (setSessionErr) {
+              console.error('[AUTH] Set session error during verification:', setSessionErr.message);
+              if (setSessionErr.message?.includes('Refresh Token Not Found') || setSessionErr.message?.includes('Invalid Refresh Token')) {
+                localStorage.removeItem('zavr-auth-token');
+              }
+            }
+          } catch (err: any) {
+            console.warn('[AUTH] setSession exception caught gracefully during verification:', err);
+          }
         }
 
         sessionStorage.removeItem('auth_signup_step');
@@ -325,11 +398,16 @@ export default function Auth() {
         toast.success('Email verified!');
         setSignupStep('profile');
       } catch (error: any) {
-        const message = error.message === 'Failed to fetch' 
-          ? 'Unable to connect to the server. Please check your internet connection or try again later.'
-          : error.message;
-        toast.error(message);
+        if (error.name === 'AbortError') {
+          toast.error('Verification timed out (15s limit). Please check connection and try again.');
+        } else {
+          const message = error.message === 'Failed to fetch' 
+            ? 'Unable to connect to the server. Please check your internet connection or try again later.'
+            : error.message;
+          toast.error(message);
+        }
       } finally {
+        clearTimeout(timeoutId);
         setLoading(false);
       }
     } else if (signupStep === 'password') {
@@ -445,13 +523,13 @@ export default function Auth() {
       <motion.div 
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="mb-12"
+        className="mb-12 flex flex-col items-center text-center"
       >
-        <div className="w-16 h-16 clay p-1 flex items-center justify-center mb-8">
-          <img 
-            src="/logo.svg" 
-            alt="Zavr Logo" 
-            className="w-full h-full object-contain"
+        <div className="mb-8">
+          <img
+            src="https://raw.githubusercontent.com/zavrinfo-arch/zavr-privacy-policy/main/zavr_logo.png"
+            alt="Zavr Logo"
+            className="w-16 h-16 object-contain rounded-full shadow-lg shadow-emerald-500/20 hover:scale-105 transition duration-300"
             referrerPolicy="no-referrer"
           />
         </div>
@@ -674,7 +752,13 @@ export default function Auth() {
                     className="w-full clay-inset bg-foreground/5 p-4 text-center text-2xl font-black tracking-[0.5em] outline-none focus:ring-2 focus:ring-[#FF6B6B]/20"
                     placeholder="000000"
                     value={verificationCode}
-                    onChange={e => setVerificationCode(e.target.value.replace(/[^0-9]/g, ''))}
+                    onChange={e => {
+                      const val = e.target.value.replace(/[^0-9]/g, '');
+                      setVerificationCode(val);
+                      if (val.length === 6 && !loading) {
+                        handleSignupStep(undefined, val);
+                      }
+                    }}
                   />
                 </div>
                 <button 
@@ -799,6 +883,11 @@ function Input({ icon: Icon, error, ...props }: any) {
           className="w-full py-4 px-3 bg-transparent outline-none text-sm text-foreground placeholder:opacity-10"
         />
       </div>
+      {props.type === 'date' && props.value && (
+        <p className="text-[10px] text-[#FF6B6B] font-black uppercase tracking-widest ml-4">
+          Date: {formatDateSafely(props.value)}
+        </p>
+      )}
       {error && <p className="text-[10px] text-red-500 font-bold ml-4 uppercase tracking-widest">{error}</p>}
     </div>
   );

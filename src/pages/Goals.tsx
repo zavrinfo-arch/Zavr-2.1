@@ -6,7 +6,7 @@
 import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useStore } from '../store/useStore';
-import { formatCurrency, cn } from '../lib/utils';
+import { formatCurrency, cn, formatDateSafely } from '../lib/utils';
 import { 
   Target, Users, Plus, Calendar, 
   ChevronRight, Trash2, Edit3, Copy, LogOut, UserMinus,
@@ -346,6 +346,11 @@ export default function Goals({ onAddMoney, onWithdraw }: {
                       value={editModal.goal.deadline}
                       onChange={e => setEditModal({ ...editModal, goal: { ...editModal.goal, deadline: e.target.value } })}
                     />
+                    {editModal.goal.deadline && (
+                      <p className="text-[10px] text-[#FF6B6B] font-black uppercase tracking-widest ml-4">
+                        Deadline Selected: {formatDateSafely(editModal.goal.deadline)}
+                      </p>
+                    )}
                   </div>
                   <button 
                     type="submit"

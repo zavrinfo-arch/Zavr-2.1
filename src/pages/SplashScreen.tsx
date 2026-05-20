@@ -35,58 +35,78 @@ export default function SplashScreen() {
         console.log('[SPLASH] Profile complete, navigating to home');
         navigate('/home');
       }
-    }, 1000);
+    }, 1700); // 1.7s allows the premium animations to breathe beautifully
 
     return () => clearTimeout(timer);
   }, [currentUser, isAuthLoading, navigate]);
 
   return (
-    <div className="fixed inset-0 bg-background flex flex-col items-center justify-center z-50">
-      <motion.div className="text-center">
+    <div className="fixed inset-0 flex flex-col items-center justify-center bg-background overflow-hidden z-50">
+      {/* Dynamic Background Glows */}
+      <div className="absolute inset-x-0 top-1/4 -translate-y-1/2 flex justify-center gap-24 pointer-events-none opacity-20">
+        <div className="w-80 h-80 bg-cyan-500 rounded-full blur-[120px] animate-pulse" />
+        <div className="w-80 h-80 bg-pink-500 rounded-full blur-[120px] animate-pulse" style={{ animationDelay: '1.5s' }} />
+      </div>
+
+      <motion.div className="flex flex-col items-center z-10">
+        {/* Floating Logo Container with Glassmorphism */}
         <motion.div
-          initial={{ scale: 0.8, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          transition={{ duration: 1, ease: "easeOut" }}
-          className="w-24 h-24 mx-auto mb-8 clay-card bg-surface p-4 flex items-center justify-center relative"
+          initial={{ opacity: 0, y: 20, scale: 0.9 }}
+          animate={{ 
+            opacity: 1, 
+            y: [0, -8, 0],
+            scale: 1
+          }}
+          transition={{
+            opacity: { duration: 0.8, ease: "easeOut" },
+            scale: { duration: 0.8, ease: "easeOut" },
+            y: {
+              repeat: Infinity,
+              duration: 4,
+              ease: "easeInOut",
+              delay: 0.4
+            }
+          }}
+          className="relative inline-block backdrop-blur-xl bg-white/40 dark:bg-white/5 border border-white/20 rounded-[32px] p-6 shadow-2xl shadow-cyan-500/10"
         >
-          <div className="absolute inset-0 bg-gradient-to-tr from-[#FF6B6B]/20 to-[#4ECDC4]/20 blur-2xl rounded-full animate-pulse" />
-          <img src="/logo.svg" className="w-full h-full relative z-10" alt="Zavr Logo" />
+          {/* Subtle Pink + Cyan Glow Loop */}
+          <div className="absolute inset-0 bg-gradient-to-tr from-cyan-500/20 to-pink-500/20 blur-xl opacity-60 rounded-[32px] animate-pulse pointer-events-none" />
+          
+          <img
+            src="https://raw.githubusercontent.com/zavrinfo-arch/zavr-privacy-policy/main/zavr_logo.png"
+            alt="Zavr Logo"
+            className="w-24 h-24 object-contain rounded-3xl relative z-10 hover:scale-105 transition-transform duration-500"
+            referrerPolicy="no-referrer"
+          />
         </motion.div>
 
+        {/* Brand Text */}
         <motion.h1 
-          initial={{ y: 20, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          transition={{ duration: 0.8, ease: "easeOut", delay: 0.3 }}
-          className="text-5xl font-black tracking-tighter text-foreground"
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.8, delay: 0.3, ease: "easeOut" }}
+          className="mt-6 text-5xl font-black tracking-tight text-foreground"
         >
           Zavr
         </motion.h1>
-        
+
+        {/* Pulse glowing brand accent line */}
         <motion.div
-          initial={{ scaleX: 0 }}
-          animate={{ scaleX: 1 }}
-          transition={{ delay: 0.8, duration: 0.8 }}
-          className="h-px w-32 bg-gradient-to-r from-transparent via-[#4ECDC4] to-transparent mx-auto mt-6"
+          initial={{ scaleX: 0, opacity: 0 }}
+          animate={{ scaleX: 1, opacity: 1 }}
+          transition={{ delay: 0.5, duration: 0.8, ease: "easeOut" }}
+          className="mt-4 w-20 h-1 rounded-full bg-gradient-to-r from-cyan-400 via-pink-400 to-cyan-400 origin-center shadow-lg shadow-cyan-400/50"
         />
       </motion.div>
-      
-      <motion.p 
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 1.2, duration: 1 }}
-        className="mt-10 opacity-20 font-black uppercase tracking-[0.3em] text-[10px] px-12 text-center max-w-xs leading-relaxed"
-      >
-        "From intention to achievement"
-      </motion.p>
 
-      {/* Subtle loading indicator at bottom */}
-      <div className="absolute bottom-16 left-0 right-0 px-16">
-        <div className="h-1 w-full clay-inset bg-foreground/10 rounded-full overflow-hidden">
+      {/* Subtle loader footer */}
+      <div className="absolute bottom-16 left-0 right-0 px-16 max-w-sm mx-auto">
+        <div className="h-[2px] w-full bg-foreground/5 rounded-full overflow-hidden">
           <motion.div 
             initial={{ width: 0 }}
             animate={{ width: '100%' }}
-            transition={{ duration: 1, ease: "linear" }}
-            className="h-full bg-gradient-to-r from-[#FF6B6B] to-[#4ECDC4]"
+            transition={{ duration: 1.5, ease: "easeInOut" }}
+            className="h-full bg-gradient-to-r from-cyan-400 to-pink-400"
           />
         </div>
       </div>

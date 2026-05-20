@@ -17,6 +17,8 @@ import { supabase, isConfigured } from '../lib/supabaseClient';
 import { fetchWithRetry } from '../lib/utils';
 import { setOnboardingCookie } from '../../lib/onboarding';
 
+let activeCheckAuthPromise: Promise<void> | null = null;
+
 interface AppState {
   users: User[];
   currentUser: User | null;
@@ -171,9 +173,9 @@ export const useStore = create<AppState>()(
               id: f.id,
               userId: f.user_id,
               friendId: f.friend_id,
-              friendUsername: f.friend.username,
-              friendFullName: f.friend.full_name,
-              friendAvatar: f.friend.avatar_url,
+              friendUsername: f.friend?.username || 'user',
+              friendFullName: f.friend?.full_name || 'Zettl Friend',
+              friendAvatar: f.friend?.avatar_url || `https://api.dicebear.com/7.x/lorelei/svg?seed=${f.friend_id || 'default'}`,
               status: f.status,
               createdAt: f.created_at,
               type: f.type
@@ -320,89 +322,209 @@ export const useStore = create<AppState>()(
       setSession: (session) => {
         set({ session });
       },
-         checkAuth: async (isInitial = false) => {
-        // Debounce concurrent calls
-        if ((window as any).__authCheckInProgress) {
-          console.log('[AUTH] Auth check already in progress, skipping concurrent call.');
-          return;
+      checkAuth: async (isInitial = false) => {
+        if (activeCheckAuthPromise) {
+          console.log('[AUTH] Reuse active checkAuth promise to collapse concurrent check.');
+          return activeCheckAuthPromise;
         }
-        (window as any).__authCheckInProgress = true;
 
-        // Prevent clearing loading state too early if another check is in progress
-        set({ isAuthLoading: true });
-        console.log('[AUTH] Checking authentication status...');
-        
-        try {
-          // 1. Get session directly from Supabase client for highest accuracy
-          const { data: { session: sbSession }, error: sessionError } = await supabase.auth.getSession();
+        activeCheckAuthPromise = (async () => {
+          // Prevent clearing loading state too early if check is in progress
+          set({ isAuthLoading: true });
+          console.log('[AUTH] Checking authentication status...', { isInitial });
           
-          if (sessionError) {
-            console.error('[AUTH] Session error:', sessionError.message);
-            throw sessionError;
-          }
-          
-          if (sbSession) {
-            console.log('[AUTH] Session found for user:', sbSession.user.id);
-            set({ session: sbSession });
+          try {
+            let sbSession: Session | null = null;
 
-            // 2. Fetch profile from profiles table - use maybeSingle() to avoid throwing on empty
-            const { data: profile, error: profileError } = await supabase
-              .from('profiles')
-              .select('*')
-              .eq('id', sbSession.user.id)
-              .maybeSingle();
+            // 1. First lookup session locally (instantaneous and highly reliable)
+            try {
+              const sessionResult = await supabase.auth.getSession();
+              if (sessionResult.error) {
+                console.warn('[AUTH] getSession error status:', sessionResult.error.message);
+                if (sessionResult.error.message?.includes('Refresh Token Not Found') || sessionResult.error.message?.includes('Invalid Refresh Token')) {
+                  localStorage.removeItem('zavr-auth-token');
+                }
+              }
+              sbSession = sessionResult.data?.session || null;
+              
+              // Sync with server cookies in the background, non-blocking
+              if (sbSession) {
+                fetchWithRetry('/api/auth/session', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ session: sbSession }),
+                  credentials: 'include'
+                }).catch(syncErr => {
+                  console.warn('[AUTH] Background session cookie sync warning:', syncErr);
+                });
+              }
+            } catch (localErr: any) {
+              console.warn('[AUTH] Local session check warning:', localErr);
+              if (localErr?.message?.includes('Refresh Token Not Found') || localErr?.message?.includes('Invalid Refresh Token')) {
+                localStorage.removeItem('zavr-auth-token');
+              }
+            }
 
-            console.log('[AUTH] Raw Profile from DB:', profile);
-            console.log('[AUTH] Profile Error:', profileError);
+            // 2. If no local session and isInitial load, fallback to server cookie-sync first
+            if (!sbSession && isInitial) {
+              try {
+                const syncRes = await fetchWithRetry('/api/auth/session', { credentials: 'include' });
+                if (syncRes.ok) {
+                  const syncData = await syncRes.json();
+                  if (syncData.session) {
+                    sbSession = syncData.session;
+                    // Hydrate local SDK to keep them in sync
+                    try {
+                      const { data: { session: localSession } } = await supabase.auth.getSession();
+                      if (!localSession || localSession.access_token !== sbSession.access_token) {
+                        const { error: setSessionErr } = await supabase.auth.setSession(sbSession);
+                        if (setSessionErr) {
+                          console.warn('[AUTH] setSession hydrated error:', setSessionErr.message);
+                          if (setSessionErr.message?.includes('Refresh Token Not Found') || setSessionErr.message?.includes('Invalid Refresh Token')) {
+                            localStorage.removeItem('zavr-auth-token');
+                            sbSession = null;
+                          }
+                        }
+                      }
+                    } catch (hydrateErr: any) {
+                      console.warn('[AUTH] Session hydration failed safely:', hydrateErr);
+                      if (hydrateErr?.message?.includes('Refresh Token Not Found') || hydrateErr?.message?.includes('Invalid Refresh Token')) {
+                        localStorage.removeItem('zavr-auth-token');
+                        sbSession = null;
+                      }
+                    }
+                  }
+                }
+              } catch (syncErr) {
+                console.warn('[AUTH] Cookie sync fallback check failed:', syncErr);
+              }
+            }
+            
+            if (sbSession) {
+              console.log('[AUTH] Session found for user:', sbSession.user.id);
+              set({ session: sbSession });
 
-            if (profileError) {
-              console.error('[AUTH] Profile fetch error:', profileError.message);
-              // Don't throw here, just set user to null so onboarding can happen
-              set({ currentUser: null });
-            } else if (profile) {
-              // Map snake_case to camelCase
-              const mappedUser: User = {
-                id: profile.id,
-                fullName: profile.full_name,
-                username: profile.username,
-                email: profile.email || sbSession.user.email || '',
-                phone: profile.phone,
-                dob: profile.birth_date || profile.dob,
-                location: profile.location,
-                avatar: profile.avatar_url,
-                avatarId: profile.avatar_id,
-                onboardingCompleted: profile.onboarding_completed || (!!profile.username && !!profile.full_name),
-                interests: profile.interests || [],
-                xp: profile.xp || 0,
-                level: profile.level || 1,
-                badges: profile.badges || [],
-                streak: profile.streak || 0,
-                createdAt: profile.created_at,
-                lastLoginDate: profile.last_login_date,
-                streakFreezeCount: profile.streak_freeze_count || 0,
-                preferences: profile.preferences || {
+              const mapProfileToUser = (prof: any): User => ({
+                id: prof.id,
+                fullName: prof.full_name,
+                username: prof.username,
+                email: prof.email || sbSession.user.email || '',
+                phone: prof.phone,
+                dob: prof.birth_date || prof.dob,
+                location: prof.location,
+                avatar: prof.avatar_url,
+                avatarId: prof.avatar_id,
+                onboardingCompleted: prof.onboarding_completed || (!!prof.username && !!prof.full_name),
+                interests: prof.interests || [],
+                xp: prof.xp || 0,
+                level: prof.level || 1,
+                badges: prof.badges || [],
+                streak: prof.streak || 0,
+                createdAt: prof.created_at,
+                lastLoginDate: prof.last_login_date,
+                streakFreezeCount: prof.streak_freeze_count || 0,
+                preferences: prof.preferences || {
                   currency: 'INR',
                   notificationsEnabled: true,
                   reminders: { enabled: true, time: '20:00', frequency: 'daily' }
                 }
+              });
+
+              // Construct an optimistic fallback as the default so the UI can redirect immediately without blocking
+              const metadata = sbSession.user.user_metadata || {};
+              const optimisticUser: User = {
+                id: sbSession.user.id,
+                fullName: metadata.full_name || '',
+                username: metadata.username || sbSession.user.email?.split('@')[0] || 'user',
+                email: sbSession.user.email || '',
+                phone: metadata.phone || '',
+                dob: metadata.dob || '',
+                location: metadata.location || '',
+                avatar: metadata.avatar_url || `https://api.dicebear.com/7.x/lorelei/svg?seed=${sbSession.user.id}`,
+                avatarId: metadata.avatar_id || 1,
+                onboardingCompleted: metadata.onboarding_completed !== undefined ? metadata.onboarding_completed : (!!metadata.username && !!metadata.full_name),
+                interests: [],
+                xp: metadata.xp || 0,
+                level: metadata.level || 1,
+                badges: [],
+                streak: 0,
+                createdAt: sbSession.user.created_at,
+                lastLoginDate: new Date().toISOString(),
+                streakFreezeCount: 0,
+                preferences: { currency: 'INR', notificationsEnabled: true, reminders: { enabled: true, time: '20:00', frequency: 'daily' } }
               };
-              set({ currentUser: mappedUser });
-              console.log('[AUTH] User set in store. Onboarding completed:', mappedUser.onboardingCompleted);
+
+              // Check localStorage cache (5-minute TTL)
+              const cacheKey = `zavr-profile-${sbSession.user.id}`;
+              const cached = localStorage.getItem(cacheKey);
+              if (cached) {
+                try {
+                  const { profile, timestamp } = JSON.parse(cached);
+                  if (Date.now() - timestamp < 5 * 60 * 1000) {
+                    set({ currentUser: profile, isAuthLoading: false });
+                    console.log('[AUTH] Profile retrieved instantly from local cache');
+                    
+                    // Fetch in background, do not block UI
+                    supabase
+                      .from('profiles')
+                      .select('*')
+                      .eq('id', sbSession.user.id)
+                      .single()
+                      .then(({ data: bgProfile, error }) => {
+                        if (!error && bgProfile) {
+                          const mapped = mapProfileToUser(bgProfile);
+                          localStorage.setItem(cacheKey, JSON.stringify({ profile: mapped, timestamp: Date.now() }));
+                          set({ currentUser: mapped });
+                        }
+                      });
+                    return;
+                  }
+                } catch (err) {
+                  console.warn('[AUTH] Cache reading warning:', err);
+                }
+              }
+
+              // Set optimistic user instantly to allow immediate transition
+              set({ currentUser: optimisticUser, isAuthLoading: false });
+
+              // Fetch the actual profile in the background
+              supabase
+                .from('profiles')
+                .select('*')
+                .eq('id', sbSession.user.id)
+                .single()
+                .then(({ data: profile, error: profileError }) => {
+                  if (profileError) {
+                    console.error('[AUTH] Background profile fetch error:', profileError.message);
+                    // If no profile found, clear optimistic user so onboarding triggers
+                    if (profileError.code === 'PGRST116' || profileError.message.includes('JSON')) {
+                      set({ currentUser: null });
+                    }
+                  } else if (profile) {
+                    const mappedUser = mapProfileToUser(profile);
+                    localStorage.setItem(cacheKey, JSON.stringify({ profile: mappedUser, timestamp: Date.now() }));
+                    set({ currentUser: mappedUser });
+                    console.log('[AUTH] Background profile loaded:', mappedUser.id);
+                  }
+                });
+              return;
             } else {
-              console.log('[AUTH] No profile found in DB for user ID:', sbSession.user.id);
-              set({ currentUser: null });
+              console.log('[AUTH] No session found.');
+              set({ currentUser: null, session: null });
             }
-          } else {
-            console.log('[AUTH] No session found.');
+          } catch (error: any) {
+            console.error('[AUTH] Critical auth check failure:', error);
             set({ currentUser: null, session: null });
+          } finally {
+            console.log('[AUTH] Auth verification complete.');
+            set({ isAuthLoading: false });
           }
-        } catch (error: any) {
-          console.error('[AUTH] Critical auth check failure:', error);
-          set({ currentUser: null, session: null });
+        })();
+
+        try {
+          await activeCheckAuthPromise;
         } finally {
-          console.log('[AUTH] Auth verification complete.');
-          (window as any).__authCheckInProgress = false;
-          set({ isAuthLoading: false });
+          activeCheckAuthPromise = null;
         }
       },
 
@@ -445,9 +567,9 @@ export const useStore = create<AppState>()(
           
           if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
             if (session) {
-              // Only re-trigger full check if session changed or was missing
+              // Only re-trigger full check if session changed or was missing (avoid infinite trigger loop)
               const currentSession = get().session;
-              if (!currentSession || currentSession.access_token !== session.access_token || event === 'SIGNED_IN') {
+              if (!currentSession || currentSession.access_token !== session.access_token) {
                 set({ session });
                 await get().checkAuth();
               }

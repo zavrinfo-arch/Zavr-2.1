@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useStore } from '../store/useStore';
 import { supabase } from '../lib/supabaseClient';
-import { formatCurrency, cn } from '../lib/utils';
+import { formatCurrency, cn, formatDateSafely } from '../lib/utils';
 import { 
   Plus, Users, User, ArrowRight, ArrowLeft, 
   Search, Bell, Check, Clock, Shield, 
@@ -14,6 +14,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { format, isAfter, parseISO } from 'date-fns';
+import DashboardStats from '../components/DashboardStats';
 
 export default function Zettl() {
   const navigate = useNavigate();
@@ -25,7 +26,7 @@ export default function Zettl() {
     addGroupExpense
   } = useStore();
 
-  const [activeTab, setActiveTab] = useState<'personal' | 'groups' | 'friends' | 'activity'>('personal');
+  const [activeTab, setActiveTab] = useState<'stats' | 'personal' | 'groups' | 'friends' | 'activity'>('stats');
   const [isNewZettlOpen, setIsNewZettlOpen] = useState(false);
   const [isNewGroupOpen, setIsNewGroupOpen] = useState(false);
   const [selectedGroupForExpense, setSelectedGroupForExpense] = useState<any>(null);
@@ -38,15 +39,23 @@ export default function Zettl() {
   useEffect(() => {
     fetchZettlData();
 
-    // Subscribe to friends changes for real-time updates
+    // Subscribe to friends and personal_zettls changes for real-time updates
     const channel = supabase
-      .channel('friends_changes')
+      .channel('zettl_realtime')
       .on('postgres_changes', { 
         event: '*', 
         schema: 'public', 
         table: 'friends' 
       }, () => {
         console.log('[ZETTL] Friends table changed, refreshing data...');
+        fetchZettlData();
+      })
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'personal_zettls'
+      }, () => {
+        console.log('[ZETTL] Personal zettls table changed, refreshing data...');
         fetchZettlData();
       })
       .subscribe();
@@ -135,47 +144,50 @@ export default function Zettl() {
       </div>
 
       {/* Balance Cards */}
-      <div className="grid grid-cols-1 gap-4">
-        <motion.div 
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="clay-card p-6 relative overflow-hidden"
-        >
-          <div className="absolute top-0 right-0 w-32 h-32 bg-[#FF6B6B]/5 rounded-full -mr-16 -mt-16 blur-3xl" />
-          <div className="flex justify-between items-start relative z-10">
-            <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.2em] opacity-40 mb-1">Net Balance</p>
-              <h2 className={cn(
-                "text-4xl font-black italic tracking-tighter",
-                netBalance >= 0 ? "text-emerald-500" : "text-red-500"
+      {activeTab !== 'stats' && (
+        <div className="grid grid-cols-1 gap-4">
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="clay-card p-6 relative overflow-hidden"
+          >
+            <div className="absolute top-0 right-0 w-32 h-32 bg-[#FF6B6B]/5 rounded-full -mr-16 -mt-16 blur-3xl" />
+            <div className="flex justify-between items-start relative z-10">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] opacity-40 mb-1">Net Balance</p>
+                <h2 className={cn(
+                  "text-4xl font-black italic tracking-tighter",
+                  netBalance >= 0 ? "text-emerald-500" : "text-red-500"
+                )}>
+                  {netBalance >= 0 ? '+' : ''}{formatCurrency(netBalance)}
+                </h2>
+              </div>
+              <div className={cn(
+                "w-12 h-12 rounded-2xl flex items-center justify-center",
+                netBalance >= 0 ? "bg-emerald-500/10 text-emerald-500" : "bg-red-500/10 text-red-500"
               )}>
-                {netBalance >= 0 ? '+' : ''}{formatCurrency(netBalance)}
-              </h2>
+                {netBalance >= 0 ? <TrendingUp size={24} /> : <TrendingDown size={24} />}
+              </div>
             </div>
-            <div className={cn(
-              "w-12 h-12 rounded-2xl flex items-center justify-center",
-              netBalance >= 0 ? "bg-emerald-500/10 text-emerald-500" : "bg-red-500/10 text-red-500"
-            )}>
-              {netBalance >= 0 ? <TrendingUp size={24} /> : <TrendingDown size={24} />}
+            
+            <div className="grid grid-cols-2 gap-4 mt-6 pt-6 border-t border-foreground/5 relative z-10">
+              <div>
+                <p className="text-[9px] font-black uppercase tracking-[0.2em] opacity-30 mb-1">Owed to you</p>
+                <p className="text-lg font-black text-emerald-500 italic tracking-tight">{formatCurrency(totalOwedToMe)}</p>
+              </div>
+              <div className="text-right">
+                <p className="text-[9px] font-black uppercase tracking-[0.2em] opacity-30 mb-1">You owe</p>
+                <p className="text-lg font-black text-red-500 italic tracking-tight">{formatCurrency(totalIOwe)}</p>
+              </div>
             </div>
-          </div>
-          
-          <div className="grid grid-cols-2 gap-4 mt-6 pt-6 border-t border-foreground/5 relative z-10">
-            <div>
-              <p className="text-[9px] font-black uppercase tracking-[0.2em] opacity-30 mb-1">Owed to you</p>
-              <p className="text-lg font-black text-emerald-500 italic tracking-tight">{formatCurrency(totalOwedToMe)}</p>
-            </div>
-            <div className="text-right">
-              <p className="text-[9px] font-black uppercase tracking-[0.2em] opacity-30 mb-1">You owe</p>
-              <p className="text-lg font-black text-red-500 italic tracking-tight">{formatCurrency(totalIOwe)}</p>
-            </div>
-          </div>
-        </motion.div>
-      </div>
+          </motion.div>
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="flex gap-2 p-1 clay-inset bg-foreground/5 rounded-2xl overflow-x-auto no-scrollbar">
         {[
+          { id: 'stats', label: 'Stats', icon: TrendingUp },
           { id: 'personal', label: 'Personal', icon: User },
           { id: 'groups', label: 'Groups', icon: Users },
           { id: 'friends', label: 'Friends', icon: UserPlus },
@@ -200,6 +212,18 @@ export default function Zettl() {
       {/* Content */}
       <div className="min-h-[300px]">
         <AnimatePresence mode="wait">
+          {activeTab === 'stats' && (
+            <motion.div
+              key="stats"
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 20 }}
+              className="space-y-4"
+            >
+              <DashboardStats onNewZettl={() => setIsNewZettlOpen(true)} />
+            </motion.div>
+          )}
+
           {activeTab === 'personal' && (
             <motion.div 
               key="personal"
@@ -430,7 +454,7 @@ function ZettlItem({ zettl, currentUser, onSettle, onRemind }: ZettlItemProps) {
                "text-[8px] font-black uppercase tracking-widest mt-1",
                isAfter(new Date(), parseISO(zettl.dueDate)) ? "text-red-500" : "opacity-40"
              )}>
-               Due: {format(parseISO(zettl.dueDate), 'MMM dd, yyyy')}
+               Due: {formatDateSafely(zettl.dueDate)}
              </p>
           )}
         </div>
@@ -874,6 +898,11 @@ function NewZettlModal({ isOpen, onClose, friends, onCreate, onOpenSearch }: any
                className="w-full clay-inset bg-foreground/5 p-4 pl-12 text-[10px] font-black tracking-widest outline-none focus:ring-2 focus:ring-[#FF6B6B]/20"
              />
           </div>
+          {dueDate && (
+            <p className="text-[10px] text-[#FF6B6B] font-black uppercase tracking-widest ml-4">
+              Due Date: {formatDateSafely(dueDate)}
+            </p>
+          )}
 
           <button 
             type="submit"
