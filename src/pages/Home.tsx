@@ -83,7 +83,9 @@ export default function Home({ onAddMoney, onWithdraw }: {
       .reduce((sum, t) => sum + t.amount, 0);
   };
 
-  if (activeTab === 'gaming') {
+  const isGamingTab = activeTab === 'gaming';
+
+  if (isGamingTab) {
     return (
       <div className="min-h-screen bg-background text-foreground p-6 lg:p-12 pb-32">
         <div className="max-w-7xl mx-auto space-y-8">
@@ -121,11 +123,11 @@ export default function Home({ onAddMoney, onWithdraw }: {
             onClick={() => setActiveTab('gaming')}
             className={cn(
               "flex-1 py-3 text-[10px] font-black rounded-xl transition-all uppercase tracking-widest flex items-center justify-center gap-2",
-              activeTab === 'gaming' ? "bg-surface text-foreground shadow-xl" : "opacity-30"
+              isGamingTab ? "bg-surface text-foreground shadow-xl" : "opacity-30"
             )}
           >
             Gaming
-            <Flame size={12} className={activeTab === 'gaming' ? "text-orange-500" : ""} />
+            <Flame size={12} className={isGamingTab ? "text-orange-500" : ""} />
           </button>
         </div>
 

@@ -153,9 +153,9 @@ function writeLocalZettlDB(data: any) {
     const { error: friendsError } = await supabaseAdmin.from('friends').select('status').limit(1);
     if (friendsError && (friendsError.message.includes('column') || friendsError.message.includes('status') || friendsError.code === '42703')) {
       hasFriendsStatusColumn = false;
-      console.warn('[SUPABASE] WARNING: Caught column error for friends.status. friends table does not have a "status" column. Enabling seamless dynamic fallback mode.');
+      console.log('[SUPABASE] Friends table status column fallback mode enabled.');
     } else {
-      console.log('[SUPABASE] friends table capacity check passed. "status" column is present.');
+      console.log('[SUPABASE] Friends table status column is present.');
     }
   } catch (err: any) {
     console.error('[SUPABASE] Schema check exception:', err.message);

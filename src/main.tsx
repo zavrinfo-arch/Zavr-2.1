@@ -1,3 +1,6 @@
+import { initSilentSafeLogger } from './utils/debug.ts';
+initSilentSafeLogger();
+
 import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
 import App from './App.tsx';

@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Moon, Sun, Bell, Flame, Check, Trash2, Sparkles, Trophy } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { cn } from '../lib/utils';
 import { formatDistanceToNow, parseISO } from 'date-fns';
+import NotificationBell from './NotificationBell';
 
 import { AVATARS_50 } from '../constants/avatars';
 
@@ -15,6 +16,7 @@ export default function ProfileHeader() {
     updateQuestProgress 
   } = useStore();
   const navigate = useNavigate();
+  const location = useLocation();
   const [showNotifications, setShowNotifications] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -29,6 +31,7 @@ export default function ProfileHeader() {
   }, []);
 
   if (!currentUser) return null;
+  if (location.pathname.includes('/zettl/chat/')) return null;
 
   const toggleDarkMode = () => {
     setTheme(theme === 'dark' ? 'light' : 'dark');
@@ -94,104 +97,8 @@ export default function ProfileHeader() {
           {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
         </button>
 
-        {/* Notification Bell */}
-        <div className="relative">
-          <button
-            onClick={handleBellClick}
-            className={cn(
-              "p-3 rounded-2xl clay-card transition-all active:scale-90 relative",
-              unreadCount > 0 ? "opacity-100" : "opacity-20 hover:opacity-100"
-            )}
-          >
-            <Bell size={20} />
-            {unreadCount > 0 && (
-              <span className="absolute top-2.5 right-2.5 w-2 h-2 bg-[#FF6B6B] rounded-full border-2 border-background" />
-            )}
-          </button>
-
-          <AnimatePresence>
-            {showNotifications && (
-              <motion.div
-                initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                className="absolute right-0 mt-4 w-80 clay bg-surface p-4 shadow-2xl pointer-events-auto"
-              >
-                <div className="flex items-center justify-between mb-4 px-2">
-                  <h3 className="text-sm font-black uppercase tracking-widest">Notifications</h3>
-                  <div className="flex gap-2">
-                    <button 
-                      onClick={markAllNotificationsRead}
-                      className="p-1.5 rounded-lg hover:bg-foreground/5 text-emerald-500"
-                      title="Mark all as read"
-                    >
-                      <Check size={16} />
-                    </button>
-                    <button 
-                      onClick={clearNotifications}
-                      className="p-1.5 rounded-lg hover:bg-foreground/5 text-red-500"
-                      title="Clear all"
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
-                </div>
-
-                <div className="space-y-2 max-h-[400px] overflow-y-auto hide-scrollbar">
-                  {notifications.length === 0 ? (
-                    <div className="py-12 text-center space-y-3">
-                      <div className="w-12 h-12 mx-auto clay-inset flex items-center justify-center opacity-20">
-                        <Bell size={24} />
-                      </div>
-                      <p className="text-xs opacity-30 font-medium">All caught up!</p>
-                    </div>
-                  ) : (
-                    notifications.map((n) => (
-                      <div 
-                        key={n.id}
-                        className={cn(
-                          "p-4 rounded-2xl transition-all border",
-                          n.read ? "bg-foreground/5 border-transparent opacity-60" : "clay-card border-foreground/5"
-                        )}
-                      >
-                        <div className="flex gap-3 items-start">
-                          <div className={cn(
-                            "w-8 h-8 rounded-xl flex items-center justify-center shrink-0",
-                            n.type === 'achievement' ? "bg-amber-500/10 text-amber-500" :
-                            n.type === 'streak' ? "bg-orange-500/10 text-orange-500" :
-                            "bg-blue-500/10 text-blue-500"
-                          )}>
-                            {n.type === 'achievement' ? <Trophy size={16} /> :
-                             n.type === 'streak' ? <Flame size={16} /> :
-                             <Sparkles size={16} />}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex justify-between items-start gap-2">
-                              <p className="text-xs font-bold text-foreground truncate">{n.title}</p>
-                              {!n.read && (
-                                <button 
-                                  onClick={() => markNotificationRead(n.id)}
-                                  className="p-1 rounded-md hover:bg-foreground/5 text-emerald-500 shrink-0"
-                                  title="Mark as read"
-                                >
-                                  <Check size={12} strokeWidth={3} />
-                                </button>
-                              )}
-                            </div>
-                            <p className="text-[10px] opacity-40 leading-relaxed mt-0.5">{n.message}</p>
-                            <p className="text-[8px] font-black opacity-20 uppercase tracking-widest mt-2">
-                              {formatDistanceToNow(parseISO(n.timestamp), { addSuffix: true })}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
+        {/* Real-time Zettl Notification Bell */}
+        <NotificationBell />
       </div>
     </div>
   );

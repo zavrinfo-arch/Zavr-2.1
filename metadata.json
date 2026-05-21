@@ -1,5 +1,6 @@
 {
   "name": "Zavr",
   "description": "A complete financial assistant web app that helps users achieve financial discipline with AI-powered advice and salary splitting tools.",
-  "requestFramePermissions": []
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

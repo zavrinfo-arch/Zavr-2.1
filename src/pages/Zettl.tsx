@@ -1,53 +1,75 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useStore } from '../store/useStore';
+import { useZettl } from '../hooks/useZettl';
 import { supabase } from '../lib/supabaseClient';
-import { formatCurrency, cn, formatDateSafely } from '../lib/utils';
-import { 
-  Plus, Users, User, ArrowRight, ArrowLeft, 
-  Search, Bell, Check, Clock, Shield, 
-  Wallet, TrendingUp, TrendingDown, MoreVertical,
-  Calendar, MessageSquare, HandCoins, Receipt,
-  UserPlus, CheckCircle2, XCircle, Loader2,
-  RefreshCw, Settings
-} from 'lucide-react';
+import { formatCurrency, cn } from '../lib/utils';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { format, isAfter, parseISO } from 'date-fns';
-import DashboardStats from '../components/DashboardStats';
+
+// Icons
+import { 
+  Plus, Users, UserPlus, ArrowLeft, Search, Bell, Clock, 
+  Smartphone, Share2, MoreVertical, CheckCircle2, XCircle, Loader2, RefreshCw 
+} from 'lucide-react';
+
+// Subcomponents
+import ZettlDashboard from '../components/zettl/Dashboard';
+import CreateZettlModal from '../components/zettl/CreateZettl';
+import GroupZettl from '../components/zettl/GroupZettl';
+import FriendDetail from '../components/zettl/FriendDetail';
+import ActivityFeed from '../components/zettl/ActivityFeed';
+import NotificationCenter from '../components/zettl/NotificationCenter';
+import DashboardDebtCards from '../components/DashboardDebtCards';
+import FriendSystem from '../components/FriendSystem';
+import ChatDebt from '../components/ChatDebt';
+import GroupDebtChat from '../components/GroupDebtChat';
 
 export default function Zettl() {
   const navigate = useNavigate();
   const { 
-    currentUser, zettlFriends, zettlGroups, 
-    personalZettls, fetchZettlData, searchZettlUsers,
-    sendFriendRequest, sendFriendRequestByUsername, respondToFriendRequest, createZettlGroup,
-    createPersonalZettl, settleZettl, remindZettl,
-    addGroupExpense
+    currentUser, 
+    zettlFriends, 
+    zettlGroups, 
+    personalZettls, 
+    fetchZettlData, 
+    searchZettlUsers,
+    sendFriendRequest, 
+    respondToFriendRequest 
   } = useStore();
 
-  const [activeTab, setActiveTab] = useState<'stats' | 'personal' | 'groups' | 'friends' | 'activity'>('stats');
-  const [isNewZettlOpen, setIsNewZettlOpen] = useState(false);
-  const [isNewGroupOpen, setIsNewGroupOpen] = useState(false);
-  const [selectedGroupForExpense, setSelectedGroupForExpense] = useState<any>(null);
-  const [isSearchOpen, setIsSearchOpen] = useState(false);
-  const [isRequestsOpen, setIsRequestsOpen] = useState(false);
+  const zettl = useZettl();
+
+  // Navigation states
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'groups' | 'timeline'>('dashboard');
+  const [selectedFriendDetail, setSelectedFriendDetail] = useState<any>(null);
+  const [selectedGroupDetail, setSelectedGroupDetail] = useState<any>(null);
+
+  // Modal open states
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const [isAddFriendOpen, setIsAddFriendOpen] = useState(false);
+
+  // Search states
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+
+  // Settle helper triggers
+  const [settlingZettl, setSettlingZettl] = useState<string | null>(null);
 
   useEffect(() => {
     fetchZettlData();
 
     // Subscribe to friends and personal_zettls changes for real-time updates
     const channel = supabase
-      .channel('zettl_realtime')
+      .channel('zettl_realtime_full')
       .on('postgres_changes', { 
         event: '*', 
         schema: 'public', 
         table: 'friends' 
       }, () => {
-        console.log('[ZETTL] Friends table changed, refreshing data...');
+        console.log('[ZETTL] Friends synchronized, updating context...');
         fetchZettlData();
       })
       .on('postgres_changes', {
@@ -55,7 +77,7 @@ export default function Zettl() {
         schema: 'public',
         table: 'personal_zettls'
       }, () => {
-        console.log('[ZETTL] Personal zettls table changed, refreshing data...');
+        console.log('[ZETTL] Personal zettls table synchronized, updating context...');
         fetchZettlData();
       })
       .subscribe();
@@ -66,73 +88,88 @@ export default function Zettl() {
   }, []);
 
   const pendingIncoming = zettlFriends.filter(f => f.status === 'pending' && f.type === 'incoming');
-  const pendingOutgoing = zettlFriends.filter(f => f.status === 'pending' && f.type === 'outgoing');
-  const confirmedFriends = zettlFriends.filter(f => f.status === 'accepted');
 
-  const totalOwedToMe = personalZettls
-    .filter(z => !z.isSettled && z.toUserId === currentUser?.id)
-    .reduce((sum, z) => sum + z.amount, 0);
-
-  const totalIOwe = personalZettls
-    .filter(z => !z.isSettled && z.fromUserId === currentUser?.id)
-    .reduce((sum, z) => sum + z.amount, 0);
-
-  const netBalance = totalOwedToMe - totalIOwe;
-
-  const searchTimeout = React.useRef<NodeJS.Timeout | null>(null);
-
-  const handleSearch = async (val: string) => {
+  const handleSearchUsers = async (val: string) => {
     setSearchQuery(val);
     if (val.length < 1) {
       setSearchResults([]);
       return;
     }
 
-    if (searchTimeout.current) clearTimeout(searchTimeout.current);
+    setIsSearching(true);
+    try {
+      const results = await searchZettlUsers(val);
+      setSearchResults(results || []);
+    } catch (err) {
+      console.error('Search friends error:', err);
+    } finally {
+      setIsSearching(false);
+    }
+  };
 
-    searchTimeout.current = setTimeout(async () => {
-      setIsSearching(true);
-      try {
-        const results = await searchZettlUsers(val);
-        setSearchResults(results);
-      } catch (err) {
-        console.error('Search failed:', err);
-      } finally {
-        setIsSearching(false);
-      }
-    }, 400);
+  const handleAddFriendAction = async (userId: string) => {
+    try {
+      await sendFriendRequest(userId);
+      toast.success('Friend invitation dispatched!');
+      handleSearchUsers(searchQuery);
+    } catch (err: any) {
+      toast.error(err.message || 'Invitation failed');
+    }
+  };
+
+  const handleDeclineRequest = async (id: string) => {
+    try {
+      await respondToFriendRequest(id, 'declined');
+      toast.success('Invitation declined');
+      fetchZettlData();
+    } catch (err) {
+      toast.error('Operation failed');
+    }
+  };
+
+  const handleAcceptRequest = async (id: string) => {
+    try {
+      await respondToFriendRequest(id, 'accepted');
+      toast.success('Invitation accepted! Linked.');
+      fetchZettlData();
+    } catch (err) {
+      toast.error('Operation failed');
+    }
   };
 
   return (
     <div className="space-y-6 pb-12">
-      {/* Header */}
+      {/* 1. Brand Header */}
       <div className="flex items-center justify-between pt-4">
         <div>
-          <h1 className="text-3xl font-black italic tracking-tighter text-foreground">ZETTL</h1>
-          <p className="text-[10px] font-bold uppercase tracking-[0.2em] opacity-30 mt-1">Settle up with friends</p>
+          <h1 className="text-3xl font-black italic tracking-tighter text-foreground text-[#FF6B6B]">ZETTL</h1>
+          <p className="text-[10px] font-bold uppercase tracking-[0.2em] opacity-35 mt-1">Settle up like Google Pay</p>
         </div>
         <div className="flex items-center gap-3">
           <motion.button
             whileTap={{ scale: 0.9 }}
-            onClick={() => setIsRequestsOpen(true)}
-            className="w-10 h-10 clay-inset flex items-center justify-center text-foreground/40 relative"
+            onClick={() => setIsNotificationsOpen(true)}
+            className="w-10 h-10 clay-inset flex items-center justify-center text-foreground/42 relative"
           >
-            <Bell size={20} />
+            <Bell size={18} />
             {pendingIncoming.length > 0 && (
-              <span className="absolute top-2 right-2 w-2 h-2 bg-[#FF6B6B] rounded-full animate-pulse" />
+              <span className="absolute top-2.5 right-2.5 w-2 h-2 bg-[#FF6B6B] rounded-full animate-ping" />
             )}
           </motion.button>
+          
           <motion.button
             whileTap={{ scale: 0.9 }}
-            onClick={() => setIsSearchOpen(true)}
-            className="w-10 h-10 clay-inset flex items-center justify-center text-foreground/40"
+            onClick={() => setIsAddFriendOpen(true)}
+            className="w-10 h-10 clay-inset flex items-center justify-center text-foreground/42"
+            title="Add Friend"
           >
-            <UserPlus size={20} />
+            <UserPlus size={18} />
           </motion.button>
+
           <motion.button
             whileTap={{ scale: 0.9 }}
             onClick={() => navigate('/profile')}
-            className="w-10 h-10 rounded-xl overflow-hidden clay-card p-0.5 border-2 border-[#FF6B6B]"
+            className="w-10 h-10 rounded-xl overflow-hidden clay-card p-0.5 border-2 border-foreground/5"
           >
             <img 
               src={currentUser?.avatar || `https://api.dicebear.com/7.x/lorelei/svg?seed=${currentUser?.username}`} 
@@ -143,980 +180,273 @@ export default function Zettl() {
         </div>
       </div>
 
-      {/* Balance Cards */}
-      {activeTab !== 'stats' && (
-        <div className="grid grid-cols-1 gap-4">
-          <motion.div 
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="clay-card p-6 relative overflow-hidden"
+      {/* Main Single-Screen Content router */}
+      <AnimatePresence mode="wait">
+        {selectedFriendDetail ? (
+          /* Conversation Friend Detail View */
+          <motion.div
+            key="friend-detail"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+            className="space-y-4"
           >
-            <div className="absolute top-0 right-0 w-32 h-32 bg-[#FF6B6B]/5 rounded-full -mr-16 -mt-16 blur-3xl" />
-            <div className="flex justify-between items-start relative z-10">
-              <div>
-                <p className="text-[10px] font-black uppercase tracking-[0.2em] opacity-40 mb-1">Net Balance</p>
-                <h2 className={cn(
-                  "text-4xl font-black italic tracking-tighter",
-                  netBalance >= 0 ? "text-emerald-500" : "text-red-500"
-                )}>
-                  {netBalance >= 0 ? '+' : ''}{formatCurrency(netBalance)}
-                </h2>
-              </div>
-              <div className={cn(
-                "w-12 h-12 rounded-2xl flex items-center justify-center",
-                netBalance >= 0 ? "bg-emerald-500/10 text-emerald-500" : "bg-red-500/10 text-red-500"
-              )}>
-                {netBalance >= 0 ? <TrendingUp size={24} /> : <TrendingDown size={24} />}
-              </div>
-            </div>
-            
-            <div className="grid grid-cols-2 gap-4 mt-6 pt-6 border-t border-foreground/5 relative z-10">
-              <div>
-                <p className="text-[9px] font-black uppercase tracking-[0.2em] opacity-30 mb-1">Owed to you</p>
-                <p className="text-lg font-black text-emerald-500 italic tracking-tight">{formatCurrency(totalOwedToMe)}</p>
-              </div>
-              <div className="text-right">
-                <p className="text-[9px] font-black uppercase tracking-[0.2em] opacity-30 mb-1">You owe</p>
-                <p className="text-lg font-black text-red-500 italic tracking-tight">{formatCurrency(totalIOwe)}</p>
-              </div>
-            </div>
-          </motion.div>
-        </div>
-      )}
-
-      {/* Tabs */}
-      <div className="flex gap-2 p-1 clay-inset bg-foreground/5 rounded-2xl overflow-x-auto no-scrollbar">
-        {[
-          { id: 'stats', label: 'Stats', icon: TrendingUp },
-          { id: 'personal', label: 'Personal', icon: User },
-          { id: 'groups', label: 'Groups', icon: Users },
-          { id: 'friends', label: 'Friends', icon: UserPlus },
-          { id: 'activity', label: 'Activity', icon: RefreshCw },
-        ].map(tab => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id as any)}
-            className={cn(
-              "flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all",
-              activeTab === tab.id 
-                ? "clay-card bg-surface text-foreground" 
-                : "text-foreground/30 hover:text-foreground/50"
-            )}
-          >
-            <tab.icon size={14} />
-            {tab.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Content */}
-      <div className="min-h-[300px]">
-        <AnimatePresence mode="wait">
-          {activeTab === 'stats' && (
-            <motion.div
-              key="stats"
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 20 }}
-              className="space-y-4"
+            <button
+              onClick={() => setSelectedFriendDetail(null)}
+              className="px-3 py-1.5 bg-foreground/10 hover:bg-foreground/15 rounded-lg text-xs font-bold uppercase cursor-pointer"
             >
-              <DashboardStats onNewZettl={() => setIsNewZettlOpen(true)} />
-            </motion.div>
-          )}
-
-          {activeTab === 'personal' && (
-            <motion.div 
-              key="personal"
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 20 }}
-              className="space-y-4"
-            >
-              <div className="flex items-center justify-between px-2">
-                <h3 className="text-xs font-black uppercase tracking-widest opacity-40">Your Debts</h3>
-                <button 
-                  onClick={() => setIsNewZettlOpen(true)}
-                  className="w-8 h-8 clay-coral rounded-lg flex items-center justify-center text-white"
-                >
-                  <Plus size={16} />
-                </button>
-              </div>
-
-              {personalZettls.length === 0 ? (
-                <div className="clay-card p-12 text-center opacity-30 mt-4">
-                  <HandCoins size={48} className="mx-auto mb-4" />
-                  <p className="text-xs font-bold uppercase tracking-widest leading-relaxed">No active Zettls yet.<br/>Time to settle up!</p>
-                </div>
-              ) : (
-                personalZettls.map(zettl => (
-                  <ZettlItem key={zettl.id} zettl={zettl} currentUser={currentUser!} onSettle={() => settleZettl(zettl.id)} onRemind={() => remindZettl(zettl.id)} />
-                ))
-              )}
-            </motion.div>
-          )}
-
-          {activeTab === 'groups' && (
-            <motion.div 
-              key="groups"
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 20 }}
-              className="space-y-4"
-            >
-              <div className="flex items-center justify-between px-2">
-                <h3 className="text-xs font-black uppercase tracking-widest opacity-40">Your Circles</h3>
-                <button 
-                  onClick={() => setIsNewGroupOpen(true)}
-                  className="w-8 h-8 clay-coral rounded-lg flex items-center justify-center text-white"
-                >
-                  <Plus size={16} />
-                </button>
-              </div>
-
-              {zettlGroups.length === 0 ? (
-                <div className="clay-card p-12 text-center opacity-30 mt-4">
-                  <Users size={48} className="mx-auto mb-4" />
-                  <p className="text-xs font-bold uppercase tracking-widest leading-relaxed">Join or create a group<br/>to split house expenses!</p>
-                </div>
-              ) : (
-                zettlGroups.map(group => (
-                  <GroupItem key={group.id} group={group} onAddExpense={(g) => setSelectedGroupForExpense(g)} />
-                ))
-              )}
-            </motion.div>
-          )}
-
-          {activeTab === 'friends' && (
-            <motion.div 
-              key="friends"
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 20 }}
-              className="space-y-4"
-            >
-              <div className="flex items-center justify-between px-2">
-                <h3 className="text-xs font-black uppercase tracking-widest opacity-40">Your Squad</h3>
-                <button 
-                  onClick={() => setIsSearchOpen(true)}
-                  className="px-3 py-1.5 clay-card rounded-lg flex items-center gap-2 text-[10px] font-black uppercase"
-                >
-                  <Plus size={14} />
-                  Find Friends
-                </button>
-              </div>
-
-              {confirmedFriends.length === 0 ? (
-                <div className="clay-card p-12 text-center opacity-30 mt-4">
-                  <UserPlus size={48} className="mx-auto mb-4" />
-                  <p className="text-xs font-bold uppercase tracking-widest leading-relaxed">No friends yet.<br/>Start by inviting someone!</p>
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 gap-3">
-                  {confirmedFriends.map(friend => (
-                    <motion.div
-                      key={friend.id}
-                      whileTap={{ scale: 0.95 }}
-                      className="clay-card p-4 flex flex-col items-center gap-3"
-                    >
-                      <div className="w-16 h-16 clay-inset p-0.5 rounded-2xl border-2 border-foreground/5">
-                        <img 
-                          src={friend.friendAvatar} 
-                          alt="" 
-                          className="w-full h-full object-cover rounded-xl shadow-inner"
-                        />
-                      </div>
-                      <div className="text-center">
-                        <p className="text-xs font-black italic">@{friend.friendUsername}</p>
-                        <p className="text-[8px] font-bold opacity-30 uppercase tracking-widest mt-0.5">{friend.friendFullName}</p>
-                      </div>
-                    </motion.div>
-                  ))}
-                </div>
-              )}
-            </motion.div>
-          )}
-
-          {activeTab === 'activity' && (
-            <motion.div 
-              key="activity"
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 20 }}
-              className="space-y-4"
-            >
-              <div className="clay-card p-12 text-center opacity-30 mt-4">
-                <RefreshCw size={48} className="mx-auto mb-4" />
-                <p className="text-xs font-bold uppercase tracking-widest leading-relaxed">Recent activity will<br/>appear here</p>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
-
-      {/* Modals */}
-      <SearchModal 
-        isOpen={isSearchOpen} 
-        onClose={() => setIsSearchOpen(false)} 
-        onSearch={handleSearch}
-        query={searchQuery}
-        results={searchResults}
-        loading={isSearching}
-        onSendRequest={sendFriendRequest}
-        onInviteByUsername={sendFriendRequestByUsername}
-        friends={zettlFriends}
-      />
-
-      <RequestsModal
-        isOpen={isRequestsOpen}
-        onClose={() => setIsRequestsOpen(false)}
-        incoming={pendingIncoming}
-        outgoing={pendingOutgoing}
-        onRespond={respondToFriendRequest}
-      />
-
-      <NewZettlModal 
-        isOpen={isNewZettlOpen}
-        onClose={() => setIsNewZettlOpen(false)}
-        friends={zettlFriends.filter(f => f.status === 'accepted')}
-        onCreate={createPersonalZettl}
-        onOpenSearch={() => { setIsNewZettlOpen(false); setIsSearchOpen(true); }}
-      />
-
-      <NewGroupModal 
-        isOpen={isNewGroupOpen}
-        onClose={() => setIsNewGroupOpen(false)}
-        friends={zettlFriends.filter(f => f.status === 'accepted')}
-        onCreate={createZettlGroup}
-        onOpenSearch={() => { setIsNewGroupOpen(false); setIsSearchOpen(true); }}
-      />
-
-      {selectedGroupForExpense && (
-        <NewExpenseModal
-          isOpen={!!selectedGroupForExpense}
-          onClose={() => setSelectedGroupForExpense(null)}
-          group={selectedGroupForExpense}
-          onCreate={addGroupExpense}
-          currentUser={currentUser!}
-        />
-      )}
-
-    </div>
-  );
-}
-
-
-interface ZettlItemProps {
-  key?: any;
-  zettl: any;
-  currentUser: any;
-  onSettle: () => void;
-  onRemind: () => void;
-}
-
-function ZettlItem({ zettl, currentUser, onSettle, onRemind }: ZettlItemProps) {
-  const isOwed = zettl.toUserId === currentUser.id;
-  const friendName = isOwed ? zettl.fromUsername : zettl.toUsername;
-  const [reminding, setReminding] = useState(false);
-
-  const handleRemind = async () => {
-    setReminding(true);
-    try {
-      await onRemind();
-      toast.success(`Reminder sent to @${friendName}!`);
-    } catch (err: any) {
-      toast.error(err.message);
-    } finally {
-      setReminding(false);
-    }
-  };
-
-  return (
-    <motion.div 
-      whileHover={{ scale: 0.98 }}
-      className="clay-card p-4 flex items-center justify-between group"
-    >
-      <div className="flex items-center gap-4">
-        <div className="w-12 h-12 clay-inset p-0.5 rounded-xl border border-foreground/5">
-          <img 
-            src={`https://api.dicebear.com/7.x/lorelei/svg?seed=${friendName}`} 
-            alt="Friend" 
-            className="w-full h-full object-cover rounded-lg"
-          />
-        </div>
-        <div>
-          <div className="flex items-center gap-2">
-            <h4 className="text-sm font-black italic tracking-tight underline underline-offset-4 decoration-[#FF6B6B]/20">@{friendName}</h4>
-            {zettl.isSettled && <CheckCircle2 size={12} className="text-emerald-500" />}
-          </div>
-          <p className="text-[10px] font-bold opacity-30 mt-0.5 uppercase tracking-widest line-clamp-1">{zettl.note || 'No note added'}</p>
-          {!zettl.isSettled && zettl.dueDate && (
-             <p className={cn(
-               "text-[8px] font-black uppercase tracking-widest mt-1",
-               isAfter(new Date(), parseISO(zettl.dueDate)) ? "text-red-500" : "opacity-40"
-             )}>
-               Due: {formatDateSafely(zettl.dueDate)}
-             </p>
-          )}
-        </div>
-      </div>
-      
-      <div className="text-right flex flex-col items-end gap-2">
-        <p className={cn(
-          "text-xl font-black italic tracking-tighter",
-          zettl.isSettled ? "opacity-20 line-through" : (isOwed ? "text-emerald-500" : "text-red-500")
-        )}>
-          {formatCurrency(zettl.amount)}
-        </p>
-        
-        {!zettl.isSettled && (
-          <div className="flex gap-1">
-            {isOwed && (
-              <button 
-                onClick={handleRemind}
-                disabled={reminding}
-                className="w-8 h-8 clay-inset flex items-center justify-center text-foreground hover:text-[#FF6B6B] transition-colors disabled:opacity-50"
-              >
-                {reminding ? <Loader2 size={14} className="animate-spin" /> : <Bell size={14} />}
-              </button>
-            )}
-            <button 
-              onClick={() => {
-                if (confirm(`Mark ${formatCurrency(zettl.amount)} from @${friendName} as settled?`)) {
-                  onSettle();
-                }
-              }}
-              className="w-8 h-8 clay-inset flex items-center justify-center text-foreground hover:text-emerald-500 transition-colors"
-            >
-              <Check size={14} />
+              ← Back to Ledger
             </button>
+            <ChatDebt friend={selectedFriendDetail} />
+          </motion.div>
+        ) : selectedGroupDetail ? (
+          /* Group Splits and members detail view */
+          <motion.div
+            key="group-detail"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+            className="space-y-4"
+          >
+            <button
+              onClick={() => setSelectedGroupDetail(null)}
+              className="px-3 py-1.5 bg-foreground/10 hover:bg-foreground/15 rounded-lg text-xs font-bold uppercase cursor-pointer"
+            >
+              ← Back to Groups
+            </button>
+            <GroupDebtChat group={selectedGroupDetail} />
+          </motion.div>
+        ) : (
+          /* Tabs and main Dashboard View */
+          <motion.div
+            key="tabs-container"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="space-y-6"
+          >
+            {/* Tab selection menu */}
+            <div className="flex gap-1.5 p-1 clay-inset bg-foreground/5 rounded-xl">
+              {[
+                { id: 'dashboard', label: 'Overview' },
+                { id: 'groups', label: 'Group Splits' },
+                { id: 'timeline', label: 'Timeline log' }
+              ].map(tab => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id as any)}
+                  className={cn(
+                    "flex-1 text-center py-2.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all",
+                    activeTab === tab.id ? "clay-card bg-surface text-foreground" : "text-foreground/45 hover:text-foreground/80"
+                  )}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
+            {/* active tab view router */}
+            {activeTab === 'dashboard' && (
+              <div className="space-y-6">
+                <DashboardDebtCards onSelectFriend={(f) => setSelectedFriendDetail(f)} />
+                <FriendSystem />
+              </div>
+            )}
+
+            {activeTab === 'groups' && (
+              <div className="space-y-4">
+                <div className="flex justify-between items-center px-2">
+                  <h3 className="text-xs font-black uppercase tracking-widest opacity-40">Your Circles</h3>
+                  <motion.button
+                    whileTap={{ scale: 0.95 }}
+                    onClick={() => setIsCreateOpen(true)}
+                    className="px-3 py-1.5 clay-inset hover:bg-foreground/5 rounded-xl text-[9px] font-black uppercase text-[#FF6B6B] border border-[#FF6B6B]/10"
+                  >
+                    + NEW GROUP
+                  </motion.button>
+                </div>
+
+                {zettlGroups.length === 0 ? (
+                  <div className="clay-card p-12 text-center opacity-40 border border-dashed border-foreground/10">
+                    <p className="text-xs font-bold uppercase tracking-widest leading-relaxed">No joint circles logged yet.<br/>Initiate a split circle above!</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {zettlGroups.map((g) => (
+                      <motion.div
+                        key={g.id}
+                        whileHover={{ y: -2 }}
+                        onClick={() => setSelectedGroupDetail(g)}
+                        className="clay-card p-4 border border-foreground/5 flex justify-between items-center cursor-pointer"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 clay-inset rounded-xl flex items-center justify-center bg-[#FF6B6B]/10 text-coral">
+                            <Users size={18} />
+                          </div>
+                          <div>
+                            <h4 className="text-xs font-black italic">#{g.name}</h4>
+                            <p className="text-[9px] font-bold opacity-30 uppercase tracking-widest mt-0.5">
+                              {g.memberCount} active members
+                            </p>
+                          </div>
+                        </div>
+                        <MoreVertical size={16} className="opacity-25" />
+                      </motion.div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {activeTab === 'timeline' && (
+              <ActivityFeed 
+                activities={zettl.activities}
+                onRefresh={() => zettl.refresh()}
+              />
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Modal overlays and loaders */}
+
+      {/* 1. Transaction Form Modal */}
+      <AnimatePresence>
+        {isCreateOpen && (
+          <CreateZettlModal 
+            isOpen={isCreateOpen}
+            onClose={() => setIsCreateOpen(false)}
+            friends={zettl.friendBalances}
+            onRequestMoney={(friendId, amount, note, due) => zettl.requestMoney(friendId, amount, note, due)}
+            onSendMoney={(friendId, amount, note) => zettl.sendMoney(friendId, amount, note)}
+            onCreateGroup={(name, friends) => zettl.createGroupZettl(name, friends)}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* 2. Notification dropover */}
+      <AnimatePresence>
+        {isNotificationsOpen && (
+          <NotificationCenter 
+            isOpen={isNotificationsOpen}
+            onClose={() => setIsNotificationsOpen(false)}
+            onPayRequest={(id) => zettl.payDebt(id)}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* 3. Add Friend Search Slideover */}
+      <AnimatePresence>
+        {isAddFriendOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center px-6">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsAddFriendOpen(false)}
+              className="absolute inset-0 bg-background/80 backdrop-blur-md"
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="w-full max-w-sm clay-card p-6 relative z-10 border-2 border-foreground/5 max-h-[80vh] overflow-y-auto no-scrollbar"
+            >
+              <div className="flex justify-between items-center mb-5">
+                <h3 className="text-base font-black italic">Search Zavr</h3>
+                <button onClick={() => { setIsAddFriendOpen(false); setSearchQuery(''); setSearchResults([]); }} className="opacity-20 hover:opacity-100">
+                  <XCircle size={22} />
+                </button>
+              </div>
+
+              {/* Input field */}
+              <div className="relative mb-4">
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 opacity-30" size={15} />
+                <input 
+                  value={searchQuery}
+                  onChange={e => handleSearchUsers(e.target.value)}
+                  placeholder="Enter username..."
+                  className="w-full clay-inset bg-foreground/5 p-3.5 pl-10 text-xs font-black tracking-widest outline-none focus:ring-2 focus:ring-[#FF6B6B]/20 rounded-xl placeholder:opacity-50"
+                />
+              </div>
+
+              {/* Incoming invites checklist inside Friend modal */}
+              {pendingIncoming.length > 0 && (
+                <div className="mb-4 bg-[#FF6B6B]/5 p-3 rounded-2xl space-y-2 border border-[#FF6B6B]/15">
+                  <p className="text-[8px] font-black uppercase text-coral text-[#FF6B6B] tracking-widest">Incoming Friend Link Requests</p>
+                  <div className="space-y-1.5">
+                    {pendingIncoming.map((inv) => (
+                      <div key={inv.id} className="flex justify-between items-center text-[10px] bg-background/40 p-2 rounded-xl">
+                        <span className="font-bold">@{inv.friendUsername}</span>
+                        <div className="flex gap-1">
+                          <button 
+                            onClick={() => handleAcceptRequest(inv.id)}
+                            className="px-2 py-1 bg-emerald-500 text-white rounded-md text-[8px] font-bold"
+                          >
+                            Accept
+                          </button>
+                          <button 
+                            onClick={() => handleDeclineRequest(inv.id)}
+                            className="px-2 py-1 bg-foreground/5 text-foreground/50 rounded-md text-[8px] font-bold"
+                          >
+                            Ignore
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Search result items */}
+              <div className="space-y-2.5">
+                {isSearching ? (
+                  <div className="py-6 text-center opacity-40">
+                    <Loader2 size={18} className="animate-spin mx-auto text-[#FF6B6B]" />
+                  </div>
+                ) : searchResults.length === 0 && searchQuery ? (
+                  <p className="text-[10px] text-center opacity-30 uppercase font-bold py-4">No matched profiles discovered</p>
+                ) : (
+                  searchResults.map((user) => {
+                    // Check if already friends or pending
+                    const linked = zettlFriends.find(f => f.friendId === user.id);
+                    const isPending = linked?.status === 'pending';
+                    const isAccepted = linked?.status === 'accepted';
+
+                    return (
+                      <div key={user.id} className="flex justify-between items-center p-3.5 clay-inset bg-foreground/1 rounded-xl">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-8 h-8 rounded-lg overflow-hidden clay-inset">
+                            <img src={user.avatar_url || `https://api.dicebear.com/7.x/lorelei/svg?seed=${user.username}`} alt="" className="w-full h-full object-cover" />
+                          </div>
+                          <div>
+                            <p className="text-xs font-black italic">@{user.username}</p>
+                            <p className="text-[8px] opacity-35 font-bold uppercase">{user.full_name}</p>
+                          </div>
+                        </div>
+
+                        {isAccepted ? (
+                          <span className="text-[8px] font-black text-emerald-500 uppercase tracking-widest">Linked ✓</span>
+                        ) : isPending ? (
+                          <span className="text-[8px] font-black text-amber-500 uppercase tracking-widest">Pending</span>
+                        ) : (
+                          <motion.button
+                            whileTap={{ scale: 0.95 }}
+                            onClick={() => handleAddFriendAction(user.id)}
+                            className="px-3 py-1.5 bg-[#FF6B6B] text-white rounded-xl text-[8.5px] font-black uppercase tracking-widest"
+                          >
+                            Connect
+                          </motion.button>
+                        )}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </motion.div>
           </div>
         )}
-      </div>
-    </motion.div>
-  );
-}
+      </AnimatePresence>
 
-interface GroupItemProps {
-  key?: any;
-  group: any;
-  onAddExpense: (g: any) => void;
-}
-
-function GroupItem({ group, onAddExpense }: GroupItemProps) {
-  return (
-    <motion.div 
-      whileHover={{ scale: 0.98 }}
-      className="clay-card p-4 flex items-center justify-between group"
-    >
-      <div className="flex items-center gap-4 flex-1" onClick={() => toast.success("Opening group details soon!")}>
-        <div className="w-12 h-12 clay-inset bg-foreground/5 flex items-center justify-center rounded-xl text-[#FF6B6B]">
-          <Users size={24} />
-        </div>
-        <div>
-          <h4 className="text-sm font-black italic tracking-tight underline underline-offset-4 decoration-[#FF6B6B]/20">#{group.name}</h4>
-          <p className="text-[10px] font-bold opacity-30 mt-0.5 uppercase tracking-widest">{group.memberCount} members</p>
-        </div>
-      </div>
-      <div className="text-right flex items-center gap-4">
-        <div>
-          <p className={cn(
-            "text-base font-black italic tracking-tighter",
-            (group.myBalance || 0) >= 0 ? "text-emerald-500" : "text-red-500"
-          )}>
-            {(group.myBalance || 0) >= 0 ? '+' : ''}{formatCurrency(group.myBalance || 0)}
-          </p>
-        </div>
-        <button 
-          onClick={(e) => { e.stopPropagation(); onAddExpense(group); }}
-          className="w-10 h-10 clay-inset rounded-xl flex items-center justify-center text-[#FF6B6B] hover:scale-110 transition-transform"
-        >
-          <Receipt size={20} />
-        </button>
-      </div>
-    </motion.div>
-  );
-}
-
-function ChevronIcon({ direction }: { direction: 'right' | 'left' }) {
-  return (
-    <div className="opacity-20">
-       <ArrowRight size={14} />
-    </div>
-  );
-}
-
-function SearchModal({ isOpen, onClose, onSearch, query, results, loading, onSendRequest, onInviteByUsername, friends }: any) {
-  const [requestLoading, setRequestLoading] = useState<string | null>(null);
-
-  if (!isOpen) return null;
-
-  const handleSendRequest = async (userId: string, username: string) => {
-    setRequestLoading(userId);
-    try {
-      await onSendRequest(userId);
-      toast.success(`Request sent to @${username}!`);
-    } catch (err: any) {
-      toast.error(err.message);
-    } finally {
-      setRequestLoading(null);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center px-6">
-      <motion.div 
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        onClick={onClose}
-        className="absolute inset-0 bg-background/80 backdrop-blur-md"
-      />
-      <motion.div 
-        initial={{ opacity: 0, scale: 0.9, y: 20 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        className="w-full max-w-sm clay-card p-6 relative z-10"
-      >
-        <div className="flex justify-between items-center mb-6">
-          <h3 className="text-lg font-black italic">Find Friends</h3>
-          <button onClick={onClose} className="opacity-20 hover:opacity-100 transition-opacity"><XCircle size={24} /></button>
-        </div>
-
-        <div className="relative mb-6">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 opacity-20" size={18} />
-          <input 
-            autoFocus
-            onChange={(e) => onSearch(e.target.value)}
-            placeholder="Search by username..."
-            className="w-full clay-inset bg-foreground/5 p-4 pl-12 text-sm font-bold tracking-widest outline-none focus:ring-2 focus:ring-[#FF6B6B]/20"
-          />
-        </div>
-
-        <InviteByUsernameSection onInvite={onInviteByUsername} />
-
-        <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
-          {loading ? (
-            <div className="py-12 text-center opacity-30"><Loader2 className="animate-spin mx-auto" /></div>
-          ) : query && results.length === 0 ? (
-            <div className="py-12 text-center opacity-30 text-[10px] font-black uppercase tracking-widest">No users found</div>
-          ) : results.length === 0 ? (
-            <div className="py-12 text-center opacity-30 text-[10px] font-black uppercase tracking-widest">Type to search for friends</div>
-          ) : (
-            results.map(user => {
-              const friendStatus = friends.find((f: any) => f.friendId === user.id)?.status;
-              const isProcessing = requestLoading === user.id;
-
-              return (
-                <div key={user.id} className="clay-card p-3 flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 clay-inset rounded-lg overflow-hidden">
-                      <img src={`https://api.dicebear.com/7.x/lorelei/svg?seed=${user.username}`} alt="" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-black italic tracking-tight underline decoration-[#FF6B6B]/20">@{user.username}</p>
-                      <p className="text-[10px] font-bold opacity-30 uppercase tracking-[0.1em]">{user.full_name}</p>
-                    </div>
-                  </div>
-                  {friendStatus === 'accepted' ? (
-                     <CheckCircle2 size={20} className="text-emerald-500 opacity-50" />
-                  ) : friendStatus === 'pending' ? (
-                     <p className="text-[8px] font-black uppercase tracking-widest opacity-30">Pending</p>
-                  ) : (
-                    <button 
-                      onClick={() => handleSendRequest(user.id, user.username)}
-                      disabled={isProcessing}
-                      className="w-8 h-8 clay-coral rounded-lg flex items-center justify-center text-white disabled:opacity-50"
-                    >
-                      {isProcessing ? <Loader2 size={14} className="animate-spin" /> : <UserPlus size={16} />}
-                    </button>
-                  )}
-                </div>
-              );
-            })
-          )}
-        </div>
-      </motion.div>
-    </div>
-  );
-}
-
-function InviteByUsernameSection({ onInvite }: any) {
-  const [inviteName, setInviteName] = useState('');
-  const [loading, setLoading] = useState(false);
-
-  const handleInvite = async () => {
-    if (!inviteName) return;
-    setLoading(true);
-    try {
-      await onInvite(inviteName);
-      toast.success(`Request sent to @${inviteName}!`);
-      setInviteName('');
-    } catch (err: any) {
-      toast.error(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="mb-6 p-4 clay-inset bg-foreground/5 rounded-2xl">
-      <p className="text-[9px] font-black uppercase tracking-widest opacity-40 mb-3">Or invite by exact username</p>
-      <div className="flex gap-2">
-        <input 
-          value={inviteName}
-          onChange={(e) => setInviteName(e.target.value)}
-          placeholder="Enter username..."
-          className="flex-1 bg-transparent px-2 text-xs font-bold outline-none border-b-2 border-foreground/5 focus:border-[#FF6B6B]/20 transition-colors"
-        />
-        <motion.button
-          whileTap={{ scale: 0.9 }}
-          onClick={handleInvite}
-          disabled={loading || !inviteName}
-          className="w-10 h-10 clay-coral rounded-xl flex items-center justify-center text-white disabled:opacity-50"
-          title="Send friend request"
-        >
-          {loading ? <Loader2 size={16} className="animate-spin" /> : <UserPlus size={18} />}
-        </motion.button>
-      </div>
-    </div>
-  );
-}
-
-function RequestsModal({ isOpen, onClose, incoming, outgoing, onRespond }: any) {
-  if (!isOpen) return null;
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center px-6">
-      <motion.div 
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        onClick={onClose}
-        className="absolute inset-0 bg-background/80 backdrop-blur-md"
-      />
-      <motion.div 
-        initial={{ opacity: 0, scale: 0.9, y: 20 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        className="w-full max-w-sm clay-card p-6 relative z-10"
-      >
-        <div className="flex justify-between items-center mb-6">
-          <h3 className="text-lg font-black italic">Friend Requests</h3>
-          <button onClick={onClose} className="opacity-20 hover:opacity-100 transition-opacity"><XCircle size={24} /></button>
-        </div>
-
-        <div className="space-y-6 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
-          {/* Incoming */}
-          <div className="space-y-3">
-            <h4 className="text-[10px] font-black uppercase tracking-widest opacity-40">Incoming</h4>
-            {incoming.length === 0 ? (
-              <p className="text-[9px] font-bold opacity-30 py-4 text-center">No pending invites</p>
-            ) : (
-              incoming.map((req: any) => (
-                <div key={req.id} className="clay-card p-3 flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <img src={req.friendAvatar} alt="" className="w-8 h-8 rounded-lg" />
-                    <div>
-                      <p className="text-xs font-black italic">@{req.friendUsername}</p>
-                    </div>
-                  </div>
-                  <div className="flex gap-1">
-                    <button 
-                      onClick={() => onRespond(req.id, 'accepted')}
-                      className="w-8 h-8 clay-card bg-emerald-500/10 text-emerald-500 flex items-center justify-center rounded-lg"
-                    >
-                      <Check size={16} />
-                    </button>
-                    <button 
-                      onClick={() => onRespond(req.id, 'declined')}
-                      className="w-8 h-8 clay-card bg-red-500/10 text-red-500 flex items-center justify-center rounded-lg"
-                    >
-                      <XCircle size={16} />
-                    </button>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-
-          {/* Outgoing */}
-          <div className="space-y-3">
-            <h4 className="text-[10px] font-black uppercase tracking-widest opacity-40">Sent by You</h4>
-            {outgoing.length === 0 ? (
-              <p className="text-[9px] font-bold opacity-30 py-4 text-center">No sent invites</p>
-            ) : (
-              outgoing.map((req: any) => (
-                <div key={req.id} className="clay-card p-3 flex items-center justify-between opacity-60">
-                  <div className="flex items-center gap-3">
-                    <img src={req.friendAvatar} alt="" className="w-8 h-8 rounded-lg" />
-                    <p className="text-xs font-black italic">@{req.friendUsername}</p>
-                  </div>
-                  <p className="text-[8px] font-black uppercase tracking-widest">Pending</p>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-      </motion.div>
-    </div>
-  );
-}
-
-function NewZettlModal({ isOpen, onClose, friends, onCreate, onOpenSearch }: any) {
-  const [selectedFriend, setSelectedFriend] = useState<any>(null);
-  const [amount, setAmount] = useState('');
-  const [note, setNote] = useState('');
-  const [dueDate, setDueDate] = useState('');
-  const [direction, setDirection] = useState<'lent' | 'borrowed'>('lent');
-  const [loading, setLoading] = useState(false);
-
-  if (!isOpen) return null;
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedFriend || !amount) {
-      toast.error('Please fill all fields');
-      return;
-    }
-    setLoading(true);
-    try {
-      await onCreate({
-        friendId: selectedFriend.friendId,
-        amount: parseInt(amount),
-        note,
-        dueDate: dueDate || undefined,
-        direction
-      });
-      toast.success('Zettl created!');
-      onClose();
-    } catch (err) {
-      toast.error('Failed to create Zettl');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center px-6">
-      <motion.div 
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        onClick={onClose}
-        className="absolute inset-0 bg-background/80 backdrop-blur-md"
-      />
-      <motion.div 
-        initial={{ opacity: 0, scale: 0.9, y: 20 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        className="w-full max-w-sm clay-card p-6 relative z-10"
-      >
-        <div className="flex justify-between items-center mb-6">
-          <h3 className="text-lg font-black italic">New Zettl</h3>
-          <button onClick={onClose} className="opacity-20 hover:opacity-100 transition-opacity"><XCircle size={24} /></button>
-        </div>
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <p className="text-[10px] font-black uppercase tracking-widest opacity-40 ml-1">Select Friend</p>
-            <div className="flex gap-2 overflow-x-auto pb-2 custom-scrollbar">
-              {friends.length === 0 ? (
-                <div className="flex flex-col items-center gap-2 p-4">
-                  <p className="text-[9px] font-bold opacity-30">Add friends to start zettling!</p>
-                  <button 
-                    type="button"
-                    onClick={onOpenSearch}
-                    className="px-3 py-1.5 clay-card rounded-lg flex items-center gap-1 text-[8px] font-black uppercase text-[#FF6B6B]"
-                  >
-                    <UserPlus size={10} />
-                    Find Friends
-                  </button>
-                </div>
-              ) : (
-                friends.map((f: any) => (
-                  <button
-                    key={f.id}
-                    type="button"
-                    onClick={() => setSelectedFriend(f)}
-                    className={cn(
-                      "flex-shrink-0 w-16 p-2 rounded-xl transition-all",
-                      selectedFriend?.id === f.id ? "clay-card scale-105 border-2 border-[#FF6B6B]" : "opacity-40"
-                    )}
-                  >
-                    <img src={f.friendAvatar} alt="" className="w-10 h-10 mx-auto rounded-lg mb-1" />
-                    <p className="text-[8px] font-black truncate">@{f.friendUsername}</p>
-                  </button>
-                ))
-              )}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              onClick={() => setDirection('lent')}
-              className={cn(
-                "py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all",
-                direction === 'lent' ? "clay-card text-emerald-500 border-2 border-emerald-500/20" : "clay-inset opacity-40"
-              )}
-            >
-              I Lent
-            </button>
-            <button
-              type="button"
-              onClick={() => setDirection('borrowed')}
-              className={cn(
-                "py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all",
-                direction === 'borrowed' ? "clay-card text-red-500 border-2 border-red-500/20" : "clay-inset opacity-40"
-              )}
-            >
-              I Borrowed
-            </button>
-          </div>
-
-          <div className="relative">
-             <div className="absolute left-4 top-1/2 -translate-y-1/2 text-2xl font-black italic opacity-20">₹</div>
-             <input 
-               type="number"
-               value={amount}
-               onChange={e => setAmount(e.target.value)}
-               placeholder="Amount"
-               className="w-full clay-inset bg-foreground/5 p-4 pl-10 text-xl font-black italic outline-none focus:ring-2 focus:ring-[#FF6B6B]/20"
-             />
-          </div>
-
-          <input 
-             value={note}
-             onChange={e => setNote(e.target.value)}
-             placeholder="What's this for? (e.g. Lunch, Movie)"
-             className="w-full clay-inset bg-foreground/5 p-4 text-xs font-bold tracking-widest outline-none focus:ring-2 focus:ring-[#FF6B6B]/20"
-          />
-
-          <div className="relative">
-             <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 opacity-20" size={18} />
-             <input 
-               type="date"
-               value={dueDate}
-               onChange={e => setDueDate(e.target.value)}
-               className="w-full clay-inset bg-foreground/5 p-4 pl-12 text-[10px] font-black tracking-widest outline-none focus:ring-2 focus:ring-[#FF6B6B]/20"
-             />
-          </div>
-          {dueDate && (
-            <p className="text-[10px] text-[#FF6B6B] font-black uppercase tracking-widest ml-4">
-              Due Date: {formatDateSafely(dueDate)}
-            </p>
-          )}
-
-          <button 
-            type="submit"
-            disabled={loading}
-            className="w-full py-4 mt-4 clay-coral rounded-2xl font-bold flex items-center justify-center gap-2 shadow-xl hover:brightness-110 transition-all text-white uppercase tracking-widest text-xs disabled:opacity-50"
-          >
-            {loading ? <Loader2 className="animate-spin" /> : 'Create Zettl'}
-          </button>
-        </form>
-      </motion.div>
-    </div>
-  );
-}
-
-function NewGroupModal({ isOpen, onClose, friends, onCreate, onOpenSearch }: any) {
-  const [name, setName] = useState('');
-  const [selectedFriends, setSelectedFriends] = useState<string[]>([]);
-  const [loading, setLoading] = useState(false);
-
-  if (!isOpen) return null;
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!name || selectedFriends.length === 0) {
-      toast.error('Please add at least one friend');
-      return;
-    }
-    setLoading(true);
-    try {
-      await onCreate(name, selectedFriends);
-      toast.success('Group created!');
-      onClose();
-    } catch (err) {
-      toast.error('Failed to create group');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const toggleFriend = (id: string) => {
-    setSelectedFriends(prev => 
-      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
-    );
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center px-6">
-      <motion.div 
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        onClick={onClose}
-        className="absolute inset-0 bg-background/80 backdrop-blur-md"
-      />
-      <motion.div 
-        initial={{ opacity: 0, scale: 0.9, y: 20 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        className="w-full max-w-sm clay-card p-6 relative z-10"
-      >
-        <div className="flex justify-between items-center mb-6">
-          <h3 className="text-lg font-black italic">Create Circle</h3>
-          <button onClick={onClose} className="opacity-20 hover:opacity-100 transition-opacity"><XCircle size={24} /></button>
-        </div>
-
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <input 
-             value={name}
-             onChange={e => setName(e.target.value)}
-             placeholder="Group Name (e.g. Lunch Crew)"
-             className="w-full clay-inset bg-foreground/5 p-4 text-sm font-bold tracking-widest outline-none focus:ring-2 focus:ring-[#FF6B6B]/20"
-          />
-
-          <div className="space-y-3">
-             <p className="text-[10px] font-black uppercase tracking-widest opacity-40 ml-1">Add Members</p>
-             <div className="grid grid-cols-2 gap-2 max-h-[200px] overflow-y-auto pr-2 custom-scrollbar">
-                {friends.map((f: any) => (
-                  <button
-                    key={f.id}
-                    type="button"
-                    onClick={() => toggleFriend(f.friendId)}
-                    className={cn(
-                      "flex items-center gap-2 p-2 rounded-xl border transition-all",
-                      selectedFriends.includes(f.friendId) 
-                        ? "clay-card border-[#FF6B6B] bg-[#FF6B6B]/5" 
-                        : "border-transparent opacity-40"
-                    )}
-                  >
-                    <img src={f.friendAvatar} alt="" className="w-6 h-6 rounded-lg" />
-                    <p className="text-[9px] font-bold truncate">@{f.friendUsername}</p>
-                  </button>
-                ))}
-             </div>
-             {friends.length === 0 && (
-               <div className="flex flex-col items-center gap-2 p-4">
-                 <p className="text-[9px] font-bold opacity-30">Add friends to create a circle!</p>
-                 <button 
-                   type="button"
-                   onClick={onOpenSearch}
-                   className="px-3 py-1.5 clay-card rounded-lg flex items-center gap-1 text-[8px] font-black uppercase text-[#FF6B6B]"
-                 >
-                   <UserPlus size={10} />
-                   Find Friends
-                 </button>
-               </div>
-             )}
-          </div>
-
-          <button 
-            type="submit"
-            disabled={loading}
-            className="w-full py-4 clay-coral rounded-2xl font-bold flex items-center justify-center gap-2 shadow-xl text-white uppercase tracking-widest text-xs disabled:opacity-50"
-          >
-            {loading ? <Loader2 className="animate-spin" /> : 'Start Circle'}
-          </button>
-        </form>
-      </motion.div>
-    </div>
-  );
-}
-
-function NewExpenseModal({ isOpen, onClose, group, onCreate, currentUser }: any) {
-  const [amount, setAmount] = useState('');
-  const [description, setDescription] = useState('');
-  const [loading, setLoading] = useState(false);
-
-  if (!isOpen) return null;
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!amount || !description) {
-      toast.error('Please fill all fields');
-      return;
-    }
-    
-    setLoading(true);
-    try {
-      const totalAmount = parseInt(amount);
-      await onCreate({
-        groupId: group.id,
-        amount: totalAmount,
-        description,
-        splits: [] 
-      });
-      
-      toast.success('Expense added to group!');
-      onClose();
-    } catch (err) {
-      toast.error('Failed to add expense');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center px-6">
-      <motion.div 
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        onClick={onClose}
-        className="absolute inset-0 bg-background/80 backdrop-blur-md"
-      />
-      <motion.div 
-        initial={{ opacity: 0, scale: 0.9, y: 20 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        className="w-full max-w-sm clay-card p-6 relative z-10"
-      >
-        <div className="flex justify-between items-center mb-6">
-          <div className="flex flex-col">
-            <h3 className="text-lg font-black italic">Add Expense</h3>
-            <p className="text-[10px] font-bold opacity-30 uppercase">{group.name}</p>
-          </div>
-          <button onClick={onClose} className="opacity-20 hover:opacity-100 transition-opacity"><XCircle size={24} /></button>
-        </div>
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="relative">
-             <div className="absolute left-4 top-1/2 -translate-y-1/2 text-2xl font-black italic opacity-20">₹</div>
-             <input 
-               type="number"
-               autoFocus
-               value={amount}
-               onChange={e => setAmount(e.target.value)}
-               placeholder="Total Amount"
-               className="w-full clay-inset bg-foreground/5 p-4 pl-10 text-2xl font-black italic outline-none focus:ring-2 focus:ring-[#FF6B6B]/20"
-             />
-          </div>
-
-          <input 
-             value={description}
-             onChange={e => setDescription(e.target.value)}
-             placeholder="Description (e.g. Pizza, Uber)"
-             className="w-full clay-inset bg-foreground/5 p-4 text-xs font-bold tracking-widest outline-none focus:ring-2 focus:ring-[#FF6B6B]/20"
-          />
-
-          <div className="p-4 clay-inset bg-foreground/5 rounded-2xl">
-             <div className="flex items-center justify-between mb-2">
-                <p className="text-[9px] font-black uppercase tracking-widest opacity-40">Split Type</p>
-                <div className="px-2 py-1 bg-[#FF6B6B]/10 text-[#FF6B6B] rounded text-[8px] font-black uppercase">Equal</div>
-             </div>
-             <p className="text-[10px] font-bold leading-relaxed opacity-60 italic">
-               The amount will be split equally between you and {group.memberCount - 1} other members.
-             </p>
-          </div>
-
-          <button 
-            type="submit"
-            disabled={loading}
-            className="w-full py-4 mt-4 clay-coral rounded-2xl font-bold flex items-center justify-center gap-2 shadow-xl text-white uppercase tracking-widest text-xs disabled:opacity-50"
-          >
-            {loading ? <Loader2 className="animate-spin" /> : 'Split Bill'}
-          </button>
-        </form>
-      </motion.div>
     </div>
   );
 }

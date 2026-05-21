@@ -51,7 +51,7 @@ export default function TransactionHistory() {
 
   const filteredTransactions = useMemo(() => {
     return transactions.filter(tx => {
-      const matchesType = filter === 'all' || tx.type === filter;
+      const matchesType = filter === 'all' || tx.goalType === filter;
       const date = parseISO(tx.timestamp);
       let matchesTime = true;
       
@@ -261,7 +261,7 @@ export default function TransactionHistory() {
         <div className="space-y-4">
           {filteredTransactions.length === 0 ? (
             <div className="clay p-20 text-center opacity-20">
-              <History className="w-16 h-16 mx-auto mb-6 text-foreground" />
+              <HistoryIcon className="w-16 h-16 mx-auto mb-6 text-foreground" />
               <p className="text-xs font-black uppercase tracking-[0.3em] text-foreground">No transactions found</p>
             </div>
           ) : (

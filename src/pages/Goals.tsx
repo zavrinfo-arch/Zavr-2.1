@@ -893,7 +893,7 @@ export default function Goals({ onAddMoney, onWithdraw }: {
                     </div>
                     <div className="flex gap-3">
                       <button 
-                        onClick={() => setConfirmModal({ isOpen: true, type: 'delete-emergency', id: goal.id })}
+                        onClick={() => handleAction('delete-emergency', goal.id)}
                         className="p-3 rounded-xl clay-inset opacity-20 hover:text-red-500 transition-all"
                       >
                         <Trash2 size={16} />

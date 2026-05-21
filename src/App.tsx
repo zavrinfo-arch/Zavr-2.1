@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 
 import { useStore } from './store/useStore';
+import { AuthProvider } from './context/AuthContext';
 import { supabase, isConfigured } from './lib/supabaseClient';
 import { Layout } from './components/Layout';
 import { NetworkHealthMonitor } from './components/NetworkHealthMonitor';
@@ -28,11 +29,20 @@ import Goals from './pages/Goals';
 import History from './pages/History';
 import Profile from './pages/Profile';
 import Zettl from './pages/Zettl';
+import ZettlChatList from './pages/ZettlChatList';
+import ZettlChatRoom from './pages/ZettlChatRoom';
+import { ZettlProvider } from './context/ZettlContext';
+import ActivityFeedPage from './pages/ActivityFeed';
 import AvatarSelection from './pages/AvatarSelection';
 import { formatCurrency, cn, formatDateSafely } from './lib/utils';
 import toast from 'react-hot-toast';
 import CelebrationModal from './components/CelebrationModal';
 import { isAfter, startOfWeek, addDays, parseISO, differenceInDays, format } from 'date-fns';
+import { MotionConfig } from 'motion/react';
+import { isAIStudioPreview, shouldDisableHeavyFeatures, startKeepAliveHeartbeat, stopKeepAliveHeartbeat } from './utils/previewFix';
+import PreviewBanner from './components/PreviewBanner';
+import ErrorBoundary from './components/ErrorBoundary';
+import { initSilentSafeLogger } from './utils/debug';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { currentUser, session, isAuthLoading } = useStore();
@@ -109,62 +119,6 @@ function ConfigWarning() {
   );
 }
 
-interface ErrorBoundaryProps {
-  children: React.ReactNode;
-}
-
-interface ErrorBoundaryState {
-  hasError: boolean;
-  error: Error | null;
-}
-
-class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  constructor(props: ErrorBoundaryProps) {
-    super(props);
-    (this as any).state = { hasError: false, error: null };
-  }
-
-  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
-    return { hasError: true, error };
-  }
-
-  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    console.error('[CRITICAL] App Crash:', error, errorInfo);
-  }
-
-  render() {
-    const { hasError, error } = (this as any).state;
-    if (hasError) {
-      return (
-        <div className="min-h-screen bg-background flex items-center justify-center p-8 text-center">
-          <div className="max-w-md space-y-6">
-            <div className="w-16 h-16 bg-red-500/20 text-red-500 rounded-2xl flex items-center justify-center mx-auto">
-              <ShieldAlert size={32} />
-            </div>
-            <h1 className="text-2xl font-black">Something went wrong</h1>
-            <p className="opacity-60 text-sm leading-relaxed">
-              The application encountered a runtime error. This could be due to corrupted local state or a temporary service issue.
-            </p>
-            <div className="p-4 bg-foreground/5 rounded-xl text-left overflow-auto max-h-40">
-              <code className="text-[10px] whitespace-pre-wrap text-red-500">
-                {error?.message}
-              </code>
-            </div>
-            <button 
-              onClick={() => window.location.href = '/'}
-              className="w-full py-4 clay-coral rounded-2xl font-bold"
-            >
-              Restart Application
-            </button>
-          </div>
-        </div>
-      );
-    }
-
-    return (this as any).props.children;
-  }
-}
-
 export default function App() {
   const { 
     currentUser, addSoloGoal, addGroupGoal, 
@@ -176,6 +130,12 @@ export default function App() {
 
   useEffect(() => {
     initializeAuth();
+    // Run preview safety optimizations
+    initSilentSafeLogger();
+    startKeepAliveHeartbeat();
+    return () => {
+      stopKeepAliveHeartbeat();
+    };
   }, []);
 
   useEffect(() => {
@@ -252,100 +212,123 @@ export default function App() {
 
   return (
     <ErrorBoundary>
-      <BrowserRouter>
-        <NetworkHealthMonitor />
-        <ConfigWarning />
-        <Toaster 
-          position="top-center"
-          toastOptions={{
-            style: {
-              background: 'rgba(0, 0, 0, 0.8)',
-              color: '#fff',
-              backdropFilter: 'blur(10px)',
-              border: '1px solid rgba(255, 255, 255, 0.1)',
-              borderRadius: '16px',
-              fontSize: '14px',
-              fontWeight: 'bold',
-            },
-          }}
-        />
-        
-        <Routes>
-          <Route path="/" element={<SplashScreen />} />
-          <Route path="/auth" element={<Auth />} />
+      <MotionConfig reducedMotion={shouldDisableHeavyFeatures() ? "always" : "user"}>
+        <AuthProvider>
+          <BrowserRouter>
+            <PreviewBanner />
+            <ZettlProvider>
+              <NetworkHealthMonitor />
+              <ConfigWarning />
+          <Toaster 
+            position="top-center"
+            toastOptions={{
+              style: {
+                background: 'rgba(0, 0, 0, 0.8)',
+                color: '#fff',
+                backdropFilter: 'blur(10px)',
+                border: '1px solid rgba(255, 255, 255, 0.1)',
+                borderRadius: '16px',
+                fontSize: '14px',
+                fontWeight: 'bold',
+              },
+            }}
+          />
           
-          <Route path="/onboarding" element={
-            <ProtectedRoute>
-              <Onboarding />
-            </ProtectedRoute>
-          } />
-          <Route path="/avatar-selection" element={
-            <ProtectedRoute>
-              <AvatarSelection />
-            </ProtectedRoute>
-          } />
-          
-          <Route path="/home" element={
-            <ProtectedRoute>
-              <Layout onPlusClick={() => { setPlusAction('main'); setIsPlusModalOpen(true); }}>
-                <Home onAddMoney={handleAddMoney} onWithdraw={handleWithdraw} />
-              </Layout>
-            </ProtectedRoute>
-          } />
-          
-          <Route path="/goals" element={
-            <ProtectedRoute>
-              <Layout onPlusClick={() => { setPlusAction('main'); setIsPlusModalOpen(true); }}>
-                <Goals onAddMoney={handleAddMoney} onWithdraw={handleWithdraw} />
-              </Layout>
-            </ProtectedRoute>
-          } />
-          
-          <Route path="/history" element={
-            <ProtectedRoute>
-              <Layout onPlusClick={() => { setPlusAction('main'); setIsPlusModalOpen(true); }}>
-                <History />
-              </Layout>
-            </ProtectedRoute>
-          } />
-          
-          <Route path="/profile" element={
-            <ProtectedRoute>
-              <Layout onPlusClick={() => { setPlusAction('main'); setIsPlusModalOpen(true); }}>
-                <Profile />
-              </Layout>
-            </ProtectedRoute>
-          } />
+          <Routes>
+            <Route path="/" element={<SplashScreen />} />
+            <Route path="/auth" element={<Auth />} />
+            
+            <Route path="/onboarding" element={
+              <ProtectedRoute>
+                <Onboarding />
+              </ProtectedRoute>
+            } />
+            <Route path="/avatar-selection" element={
+              <ProtectedRoute>
+                <AvatarSelection />
+              </ProtectedRoute>
+            } />
+            
+            <Route path="/home" element={
+              <ProtectedRoute>
+                <Layout onPlusClick={() => { setPlusAction('main'); setIsPlusModalOpen(true); }}>
+                  <Home onAddMoney={handleAddMoney} onWithdraw={handleWithdraw} />
+                </Layout>
+              </ProtectedRoute>
+            } />
+            
+            <Route path="/goals" element={
+              <ProtectedRoute>
+                <Layout onPlusClick={() => { setPlusAction('main'); setIsPlusModalOpen(true); }}>
+                  <Goals onAddMoney={handleAddMoney} onWithdraw={handleWithdraw} />
+                </Layout>
+              </ProtectedRoute>
+            } />
+            
+            <Route path="/history" element={
+              <ProtectedRoute>
+                <Layout onPlusClick={() => { setPlusAction('main'); setIsPlusModalOpen(true); }}>
+                  <History />
+                </Layout>
+              </ProtectedRoute>
+            } />
+            
+            <Route path="/profile" element={
+              <ProtectedRoute>
+                <Layout onPlusClick={() => { setPlusAction('main'); setIsPlusModalOpen(true); }}>
+                  <Profile />
+                </Layout>
+              </ProtectedRoute>
+            } />
+            
+            <Route path="/zettl" element={
+              <ProtectedRoute>
+                <Layout onPlusClick={() => { setPlusAction('main'); setIsPlusModalOpen(true); }}>
+                  <ZettlChatList />
+                </Layout>
+              </ProtectedRoute>
+            } />
 
-          <Route path="/zettl" element={
-            <ProtectedRoute>
-              <Layout onPlusClick={() => { setPlusAction('main'); setIsPlusModalOpen(true); }}>
-                <Zettl />
-              </Layout>
-            </ProtectedRoute>
-          } />
+            <Route path="/zettl/chat/:friendId" element={
+              <ProtectedRoute>
+                <Layout onPlusClick={() => { setPlusAction('main'); setIsPlusModalOpen(true); }}>
+                  <ZettlChatRoom />
+                </Layout>
+              </ProtectedRoute>
+            } />
 
-          {/* Fallback route to catch white screens on invalid paths */}
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
+            <Route path="/zettl-activity" element={
+              <ProtectedRoute>
+                <Layout onPlusClick={() => { setPlusAction('main'); setIsPlusModalOpen(true); }}>
+                  <ActivityFeedPage />
+                </Layout>
+              </ProtectedRoute>
+            } />
+            
+            {/* Fallback route to catch white screens on invalid paths */}
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
 
-        <AnimatePresence>
-          {isPlusModalOpen && (
-            <PlusModal 
-              action={plusAction}
-              setAction={setPlusAction}
-              onClose={() => { setIsPlusModalOpen(false); setPlusAction('main'); setSelectedGoal(null); setInitialAmount(''); }}
-              selectedGoal={selectedGoal}
-              initialAmount={initialAmount}
-            />
-          )}
-        </AnimatePresence>
+          <AnimatePresence>
+            {isPlusModalOpen && (
+              <PlusModal 
+                action={plusAction}
+                setAction={setPlusAction}
+                onClose={() => { setIsPlusModalOpen(false); setPlusAction('main'); setSelectedGoal(null); setInitialAmount(''); }}
+                selectedGoal={selectedGoal}
+                initialAmount={initialAmount}
+              />
+            )}
+          </AnimatePresence>
 
-        <CelebrationModal 
-          {...celebration}
-          onClose={() => setCelebration(prev => ({ ...prev, isOpen: false }))}
-        />
-      </BrowserRouter>
+          <CelebrationModal 
+            {...celebration}
+            onClose={() => setCelebration(prev => ({ ...prev, isOpen: false }))}
+          />
+            </ZettlProvider>
+          </BrowserRouter>
+        </AuthProvider>
+      </MotionConfig>
     </ErrorBoundary>
   );
 }

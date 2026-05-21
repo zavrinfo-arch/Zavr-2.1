@@ -35,32 +35,53 @@ export const getSupabaseClient = () => {
       global: {
         headers: { 'x-application-name': 'zavr-app' },
         fetch: async (url, options = {}) => {
-          const controller = new AbortController();
-          
-          // Auth operations like signup involve external SMTP, password hashing, and user triggers
-          // that are notoriously slow. Let's allow 15 seconds for auth endpoints to prevent AbortError
-          // and rate-limiting, and keep a fast 3 seconds for all other queries.
           const urlStr = typeof url === 'string' ? url : '';
           const isAuthEndpoint = urlStr.includes('/auth/v1/');
-          const timeoutLimit = isAuthEndpoint ? 15000 : 3000;
+          // Allow up to 10 seconds for standard queries and 20 seconds for slow auth operations (with SMTP triggers)
+          const timeoutLimit = isAuthEndpoint ? 20000 : 10000;
+          
+          const maxRetries = isAuthEndpoint ? 1 : 3;
+          let lastError: any = null;
 
-          const timeoutId = setTimeout(() => controller.abort(), timeoutLimit);
+          for (let attempt = 0; attempt < maxRetries; attempt++) {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), timeoutLimit);
 
-          try {
-            const response = await fetch(url, {
-              ...options,
-              signal: controller.signal
-            });
-            return response;
-          } catch (error: any) {
-            if (error?.name === 'AbortError') {
-              console.error(`[SUPABASE CLIENT] Request timed out after ${timeoutLimit / 1000} seconds: ${url}`);
-              throw new Error('Request timed out');
+            try {
+              const response = await fetch(url, {
+                ...options,
+                signal: controller.signal
+              });
+              
+              // Retry on bad gateway / Gateway Timeout / Service Unavailable
+              if (response.status >= 502 && response.status <= 504 && attempt < maxRetries - 1) {
+                const backoff = Math.pow(2, attempt) * 1000;
+                console.warn(`[SUPABASE CLIENT] Received HTTP ${response.status}. Retrying in ${backoff}ms (attempt ${attempt + 1}/${maxRetries})...`);
+                await new Promise(resolve => setTimeout(resolve, backoff));
+                continue;
+              }
+
+              return response;
+            } catch (error: any) {
+              lastError = error;
+              const isTimeout = error?.name === 'AbortError';
+
+              if (attempt < maxRetries - 1) {
+                const backoff = Math.pow(2, attempt) * 1000;
+                console.warn(`[SUPABASE CLIENT] Attempt ${attempt + 1} failed with ${isTimeout ? 'Timeout' : 'Error'}. Retrying in ${backoff}ms...`);
+                await new Promise(resolve => setTimeout(resolve, backoff));
+                continue;
+              }
+              
+              if (isTimeout) {
+                console.error(`[SUPABASE CLIENT] Request timed out after ${timeoutLimit / 1000} seconds (max retries reached): ${url}`);
+                throw new Error('Supabase request timed out');
+              }
+            } finally {
+              clearTimeout(timeoutId);
             }
-            throw error;
-          } finally {
-            clearTimeout(timeoutId);
           }
+          throw lastError || new Error('Request failed');
         }
       },
       realtime: {

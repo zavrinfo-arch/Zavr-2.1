@@ -532,12 +532,50 @@ export const useStore = create<AppState>()(
         console.log('Starting signOut process...');
         try {
           await fetchWithRetry('/api/auth/signout', { method: 'POST', credentials: 'include' });
-          await supabase.auth.signOut();
-          set({ currentUser: null, session: null });
-        } catch (error) {
-          console.error('Sign out failed:', error);
-          set({ currentUser: null });
+        } catch (e) {
+          console.warn('[STORE-SIGNOUT] Server cookie signout failed, continuing:', e);
         }
+        try {
+          await supabase.auth.signOut();
+        } catch (e) {
+          console.warn('[STORE-SIGNOUT] Supabase SDK signout failed:', e);
+        }
+        
+        // 1. Clear all application states in Local / Session Storage
+        localStorage.clear();
+        sessionStorage.clear();
+        
+        // 2. Completely reset ALL user data on the frontend to prevent residual rendering
+        set({
+          currentUser: null,
+          session: null,
+          soloGoals: [],
+          groupGoals: [],
+          emergencyGoals: [],
+          transactions: [],
+          notifications: [],
+          users: [],
+          weeklyChallenge: null,
+          isAuthLoading: false,
+          streakData: {
+            currentStreak: 0,
+            lastContributionDate: null,
+            streakHistory: [],
+            tier: 'Bronze',
+            multiplier: 1.0,
+          }
+        });
+        
+        // 3. Clear any dynamic in-memory cached responses
+        const keysToRemove = Object.keys(localStorage);
+        for (const k of keysToRemove) {
+          if (k.startsWith('zavr-')) {
+            localStorage.removeItem(k);
+          }
+        }
+
+        // 4. Force relocate to authenticate layout
+        window.location.href = '/auth';
       },
       
       initializeAuth: () => {
@@ -576,7 +614,28 @@ export const useStore = create<AppState>()(
             }
           } else if (event === 'SIGNED_OUT') {
             console.log('[AUTH] User signed out, clearing state.');
-            set({ currentUser: null, session: null, isAuthLoading: false });
+            localStorage.clear();
+            sessionStorage.clear();
+            set({
+              currentUser: null,
+              session: null,
+              soloGoals: [],
+              groupGoals: [],
+              emergencyGoals: [],
+              transactions: [],
+              notifications: [],
+              users: [],
+              weeklyChallenge: null,
+              isAuthLoading: false,
+              streakData: {
+                currentStreak: 0,
+                lastContributionDate: null,
+                streakHistory: [],
+                tier: 'Bronze',
+                multiplier: 1.0,
+              }
+            });
+            window.location.href = '/auth';
           }
         });
 
