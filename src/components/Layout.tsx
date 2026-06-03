@@ -33,10 +33,11 @@ export function BottomNav({ onPlusClick }: { onPlusClick: () => void }) {
           return (
             <div key="plus" className="relative w-12">
               <motion.button
-                whileHover={{ scale: 1.1, rotate: 90 }}
-                whileTap={{ scale: 0.9 }}
+                whileHover={{ scale: 1.1 }}
+                whileTap={{ scale: 1.08, rotate: 45 }}
+                transition={{ type: "tween", duration: 0.2 }}
                 onClick={onPlusClick}
-                className="absolute -top-16 left-1/2 -translate-x-1/2 w-16 h-16 clay-coral rounded-2xl flex items-center justify-center text-white border-4 border-background shadow-2xl"
+                className="absolute -top-16 left-1/2 -translate-x-1/2 w-16 h-16 clay-coral rounded-2xl flex items-center justify-center text-white border-4 border-[#121212] shadow-2xl cursor-pointer"
               >
                 <Plus className="w-8 h-8" />
               </motion.button>
@@ -63,10 +64,12 @@ export function BottomNav({ onPlusClick }: { onPlusClick: () => void }) {
 }
 
 export function Layout({ children, onPlusClick }: { children: React.ReactNode, onPlusClick: () => void }) {
+  const location = useLocation();
+
   return (
     <div className="min-h-screen pb-24 pt-20 max-w-md mx-auto relative overflow-x-hidden">
       <ProfileHeader />
-      <main className="px-6">
+      <main key={location.pathname} className="px-6 page-transition">
         {children}
       </main>
       <BottomNav onPlusClick={onPlusClick} />

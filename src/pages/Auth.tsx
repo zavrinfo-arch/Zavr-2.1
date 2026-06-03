@@ -27,6 +27,7 @@ export default function Auth() {
   const [showWelcome, setShowWelcome] = useState(false);
   const [loading, setLoading] = useState(false);
   const lastVerifyClick = React.useRef(0);
+  const isVerifyingRef = React.useRef(false);
   
   const navigate = useNavigate();
   const { currentUser, session, checkAuth, isAuthLoading } = useStore();
@@ -350,6 +351,11 @@ export default function Auth() {
         return;
       }
 
+      if (isVerifyingRef.current) {
+        console.log('[AUTH] OTP verification already in progress, skipping concurrent call.');
+        return;
+      }
+
       // Debounce clicks on the verify button & auto-submit (prevent multiple submissions)
       const now = Date.now();
       if (now - lastVerifyClick.current < 1500) {
@@ -357,57 +363,49 @@ export default function Auth() {
       }
       lastVerifyClick.current = now;
 
+      isVerifyingRef.current = true;
       setLoading(true);
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 15000);
 
       try {
         const email = formData.email.trim().toLowerCase();
-        const response = await fetchWithRetry('/api/auth/verify', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ email, token: activeCode, type: 'signup' }),
-          signal: controller.signal
+        
+        console.log('[AUTH] Verifying OTP directly via client side SDK with type "email"...');
+        // Ensure OTP verification follows this pattern
+        const { data, error } = await supabase.auth.verifyOtp({
+          email,
+          token: activeCode,
+          type: 'email'
         });
 
-        const contentType = response.headers.get('content-type');
-        if (!contentType || !contentType.includes('application/json')) {
-          throw new Error('Server returned an invalid response. Please try again later.');
-        }
-
-        const result = await response.json();
-        if (!response.ok) throw new Error(result.error || 'Verification failed');
-        
-        if (result.session) {
-          try {
-            const { error: setSessionErr } = await supabase.auth.setSession(result.session);
-            if (setSessionErr) {
-              console.error('[AUTH] Set session error during verification:', setSessionErr.message);
-              if (setSessionErr.message?.includes('Refresh Token Not Found') || setSessionErr.message?.includes('Invalid Refresh Token')) {
-                localStorage.removeItem('zavr-auth-token');
-              }
-            }
-          } catch (err: any) {
-            console.warn('[AUTH] setSession exception caught gracefully during verification:', err);
+        if (error) {
+          console.log('[AUTH] OTP type "email" failed, trying type "signup" (confirmation) as fallback...', error.message);
+          const signupVerify = await supabase.auth.verifyOtp({
+            email,
+            token: activeCode,
+            type: 'signup'
+          });
+          if (signupVerify.error) {
+            throw error; // Throw original email verification error
           }
         }
 
+        // Get session
+        await supabase.auth.getSession();
+
         sessionStorage.removeItem('auth_signup_step');
         sessionStorage.removeItem('auth_email');
-        toast.success('Email verified!');
-        setSignupStep('profile');
+        toast.success('Email verified successfully!');
+        
+        // Trigger checkAuth immediately to hydrate optimistic or auto-created user profile
+        await checkAuth();
+
+        // Redirect directly to onboarding page safely
+        navigate('/onboarding', { replace: true });
       } catch (error: any) {
-        if (error.name === 'AbortError') {
-          toast.error('Verification timed out (15s limit). Please check connection and try again.');
-        } else {
-          const message = error.message === 'Failed to fetch' 
-            ? 'Unable to connect to the server. Please check your internet connection or try again later.'
-            : error.message;
-          toast.error(message);
-        }
+        console.error('[AUTH] OTP direct verification exception:', error);
+        toast.error(error.message || 'OTP Verification failed');
       } finally {
-        clearTimeout(timeoutId);
+        isVerifyingRef.current = false;
         setLoading(false);
       }
     } else if (signupStep === 'password') {

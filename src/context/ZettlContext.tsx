@@ -186,9 +186,14 @@ export const ZettlProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   }, [currentUser]);
 
+  const fetchDataRef = React.useRef(fetchData);
+  useEffect(() => {
+    fetchDataRef.current = fetchData;
+  }, [fetchData]);
+
   // Real-time listener for subbed tables
   useEffect(() => {
-    fetchData();
+    fetchDataRef.current();
 
     if (shouldDisableHeavyFeatures()) {
       console.info('[PREVIEW] Suppressing standard real-time listeners inside AI Studio preview frame.');
@@ -198,23 +203,23 @@ export const ZettlProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const friendsSubscription = supabase
       .channel('zettl-realtime-sync')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'friends' }, () => {
-        fetchData();
+        fetchDataRef.current();
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'personal_zettls' }, () => {
-        fetchData();
+        fetchDataRef.current();
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications' }, () => {
-        fetchData();
+        fetchDataRef.current();
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'activities' }, () => {
-        fetchData();
+        fetchDataRef.current();
       })
       .subscribe();
 
     return () => {
       supabase.removeChannel(friendsSubscription);
     };
-  }, [fetchData]);
+  }, []);
 
   const handleSendFriendRequest = async (friendId: string) => {
     let activeUserId = currentUser?.id;

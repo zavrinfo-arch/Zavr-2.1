@@ -493,17 +493,58 @@ export const useStore = create<AppState>()(
                 .select('*')
                 .eq('id', sbSession.user.id)
                 .single()
-                .then(({ data: profile, error: profileError }) => {
+                .then(async ({ data: profile, error: profileError }) => {
                   if (profileError) {
                     console.error('[AUTH] Background profile fetch error:', profileError.message);
-                    // If no profile found, clear optimistic user so onboarding triggers
-                    if (profileError.code === 'PGRST116' || profileError.message.includes('JSON')) {
-                      set({ currentUser: null });
+                    
+                    // Profile creation / verification failure: Create profile automatically
+                    if (profileError.code === 'PGRST116' || profileError.message?.includes('JSON') || profileError.message?.includes('not found')) {
+                      console.log('[AUTH] Profile not found, creating automatically...');
+                      const username = sbSession.user.email?.split('@')[0] || `user_${sbSession.user.id.substring(0, 8)}`;
+                      const emailVal = sbSession.user.email || '';
+                      
+                      const autoProfile = {
+                        id: sbSession.user.id,
+                        username: username.toLowerCase().trim(),
+                        full_name: sbSession.user.user_metadata?.full_name || username,
+                        email: emailVal,
+                        avatar_url: `https://api.dicebear.com/7.x/lorelei/svg?seed=${sbSession.user.id}`,
+                        onboarding_completed: false,
+                        updated_at: new Date().toISOString()
+                      };
+
+                      try {
+                        const { error: insertError } = await supabase
+                          .from('profiles')
+                          .insert(autoProfile);
+
+                        if (insertError) {
+                          console.error('[AUTH] Failed to auto-create database profile:', insertError.message);
+                        } else {
+                          console.log('[AUTH] Automatically created default database profile successfully.');
+                        }
+                      } catch (dbErr: any) {
+                        console.error('[AUTH] Exception while inserting fallback profile:', dbErr);
+                      }
+
+                      // Continue login and set current user in state to prevent indefinitely loading UI
+                      const fallbackUser = mapProfileToUser({
+                        ...autoProfile,
+                        birth_date: null,
+                        phone: null,
+                        location: null,
+                      });
+                      localStorage.setItem(cacheKey, JSON.stringify({ profile: fallbackUser, timestamp: Date.now() }));
+                      set({ currentUser: fallbackUser, isAuthLoading: false });
+                    } else {
+                      // Keep optimistic user setup active so the application doesn't freeze
+                      console.warn('[AUTH] Keeping optimistic user status active despite error:', profileError.message);
+                      set({ currentUser: optimisticUser, isAuthLoading: false });
                     }
                   } else if (profile) {
                     const mappedUser = mapProfileToUser(profile);
                     localStorage.setItem(cacheKey, JSON.stringify({ profile: mappedUser, timestamp: Date.now() }));
-                    set({ currentUser: mappedUser });
+                    set({ currentUser: mappedUser, isAuthLoading: false });
                     console.log('[AUTH] Background profile loaded:', mappedUser.id);
                   }
                 });

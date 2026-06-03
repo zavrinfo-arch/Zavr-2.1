@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import { useStore } from '../store/useStore';
 import { supabase } from '../lib/supabaseClient';
 import { subMonths, format, startOfMonth, endOfMonth, parseISO, isWithinInterval, isAfter } from 'date-fns';
@@ -67,6 +67,11 @@ export function useDashboardStats(): DebtSummaryStats {
 
   const [isLoading, setIsLoading] = useState(true);
 
+  const fetchZettlDataRef = useRef(fetchZettlData);
+  useEffect(() => {
+    fetchZettlDataRef.current = fetchZettlData;
+  }, [fetchZettlData]);
+
   // Fetch initial data & set up real-time subscription
   useEffect(() => {
     let active = true;
@@ -75,7 +80,7 @@ export function useDashboardStats(): DebtSummaryStats {
       try {
         if (active) {
           setIsLoading(true);
-          await fetchZettlData();
+          await fetchZettlDataRef.current();
         }
       } catch (e) {
         console.error('[STATS] Error fetching initial Zettl data:', e);
@@ -97,7 +102,7 @@ export function useDashboardStats(): DebtSummaryStats {
         table: 'personal_zettls' 
       }, () => {
         console.log('[REALTIME] personal_zettls updated, refreshing dashboard stats...');
-        fetchZettlData();
+        fetchZettlDataRef.current();
       })
       .subscribe();
 
@@ -105,7 +110,7 @@ export function useDashboardStats(): DebtSummaryStats {
       active = false;
       supabase.removeChannel(channel);
     };
-  }, [fetchZettlData]);
+  }, []);
 
   const userId = currentUser?.id;
   const currency = currentUser?.preferences?.currency || 'INR';

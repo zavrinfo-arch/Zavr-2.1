@@ -11,6 +11,8 @@ CREATE TABLE IF NOT EXISTS profiles (
   full_name text,
   email text,
   dob date,
+  birth_date date,
+  gender text,
   phone text,
   location text,
   avatar_url text,

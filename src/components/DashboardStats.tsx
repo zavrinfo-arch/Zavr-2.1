@@ -228,8 +228,8 @@ export default function DashboardStats({ onNewZettl }: DashboardStatsProps) {
                   axisLine={false}
                 />
                 <Tooltip content={<CustomTooltip />} cursor={{ fill: 'currentColor', opacity: 0.05 }} />
-                <Bar dataKey="Lent" fill="#10B981" radius={[4, 4, 0, 0]} maxBarSize={30} />
-                <Bar dataKey="Borrowed" fill="#FF6B6B" radius={[4, 4, 0, 0]} maxBarSize={30} />
+                <Bar dataKey="Lent" fill="#10B981" radius={[4, 4, 0, 0]} maxBarSize={30} isAnimationActive={true} animationDuration={1200} animationBegin={150} />
+                <Bar dataKey="Borrowed" fill="#FF6B6B" radius={[4, 4, 0, 0]} maxBarSize={30} isAnimationActive={true} animationDuration={1200} animationBegin={300} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -254,19 +254,25 @@ export default function DashboardStats({ onNewZettl }: DashboardStatsProps) {
                 <div className="h-full bg-foreground/15 w-full" />
               ) : (
                 <>
-                  <div 
-                    style={{ width: `${statusDistribution.paidPercent}%` }} 
-                    className="h-full bg-emerald-500 transition-all duration-500" 
+                  <motion.div 
+                    initial={{ width: 0 }}
+                    animate={{ width: `${statusDistribution.paidPercent}%` }}
+                    transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1] }}
+                    className="h-full bg-emerald-500" 
                     title={`Paid: ${statusDistribution.paidPercent}%`}
                   />
-                  <div 
-                    style={{ width: `${statusDistribution.pendingPercent}%` }} 
-                    className="h-full bg-yellow-500 transition-all duration-500" 
+                  <motion.div 
+                    initial={{ width: 0 }}
+                    animate={{ width: `${statusDistribution.pendingPercent}%` }}
+                    transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1], delay: 0.15 }}
+                    className="h-full bg-yellow-500" 
                     title={`Pending: ${statusDistribution.pendingPercent}%`}
                   />
-                  <div 
-                    style={{ width: `${statusDistribution.overduePercent}%` }} 
-                    className="h-full bg-[#FF6B6B] transition-all duration-500" 
+                  <motion.div 
+                    initial={{ width: 0 }}
+                    animate={{ width: `${statusDistribution.overduePercent}%` }}
+                    transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1], delay: 0.3 }}
+                    className="h-full bg-[#FF6B6B]" 
                     title={`Overdue: ${statusDistribution.overduePercent}%`}
                   />
                 </>

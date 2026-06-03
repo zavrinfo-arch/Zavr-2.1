@@ -18,17 +18,32 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Use refs to stabilize references inside onAuthStateChange callback
+  const sessionRef = React.useRef<Session | null>(null);
+  const userRef = React.useRef<User | null>(null);
+
+  useEffect(() => {
+    sessionRef.current = session;
+  }, [session]);
+
+  useEffect(() => {
+    userRef.current = user;
+  }, [user]);
+
   const getCurrentUserId = () => {
     return user?.id || session?.user?.id || null;
   };
 
   useEffect(() => {
+    console.log('[AUTH-CONTEXT] Registering AuthProvider onAuthStateChange listener...');
+    
     // 1. Initial lookup
     const initAuth = async () => {
       try {
         const { data: { session: initialSession } } = await supabase.auth.getSession();
         setSession(initialSession);
         setUser(initialSession?.user || null);
+        console.log('[AUTH-CONTEXT] Initial session retrieved:', initialSession?.user?.id || 'No Session');
       } catch (err) {
         console.error('[AUTH-CONTEXT] Initial session fetch failed:', err);
       } finally {
@@ -42,7 +57,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, currentSession) => {
       console.log(`[AUTH-CONTEXT] Auth state event: ${event}`);
       
-      const prevUserId = user?.id || session?.user?.id;
+      const prevUserId = userRef.current?.id || sessionRef.current?.user?.id;
       const nextUserId = currentSession?.user?.id;
 
       // Reset state / Prevent cross-user contamination
@@ -74,9 +89,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
 
     return () => {
+      console.log('[AUTH-CONTEXT] Cleaning up AuthProvider onAuthStateChange listener...');
       subscription.unsubscribe();
     };
-  }, [user, session]);
+  }, []);
 
   const logout = async () => {
     console.log('[AUTH-CONTEXT] Clear all user data and signout...');
