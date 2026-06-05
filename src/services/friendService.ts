@@ -1,4 +1,3 @@
-import { supabase } from '../lib/supabaseClient';
 import { Friend, User } from '../types';
 
 export const friendService = {
@@ -8,79 +7,87 @@ export const friendService = {
   async searchUsers(query: string, currentUserId?: string): Promise<User[]> {
     if (!query || query.trim() === '') return [];
     
-    let dbQuery = supabase
-      .from('profiles')
-      .select('*')
-      .ilike('username', `%${query.trim()}%`);
-
-    if (currentUserId) {
-      dbQuery = dbQuery.neq('id', currentUserId);
-    }
-
-    const { data, error } = await dbQuery.limit(15);
-    if (error) {
-      console.error('[FRIEND-SERVICE] Search error:', error);
-      throw error;
-    }
-
-    return (data || []).map((p: any) => ({
-      id: p.id,
-      fullName: p.full_name || p.fullName || '',
-      username: p.username,
-      email: p.email || '',
-      phone: p.phone || '',
-      dob: p.birth_date || p.dob || '',
-      location: p.location || '',
-      avatar: p.avatar_url || p.avatar || `https://api.dicebear.com/7.x/lorelei/svg?seed=${p.username}`,
-      avatarId: p.avatar_id || '',
-      streak: p.streak || 0,
-      onboardingCompleted: p.onboarding_completed || false,
-      interests: p.interests || [],
-      badges: p.badges || [],
-      createdAt: p.created_at || '',
-      lastLoginDate: p.last_login_date || null,
-      streakFreezeCount: p.streak_freeze_count || 0,
-      xp: p.xp || 0,
-      level: p.level || 1,
-      preferences: p.preferences || {
-        currency: 'INR',
-        notificationsEnabled: true,
-        reminders: { enabled: false, time: '12:00', frequency: 'daily' }
+    try {
+      const response = await fetch(`/api/users/search?q=${encodeURIComponent(query.trim())}`);
+      if (!response.ok) {
+        throw new Error('Search request failed');
       }
-    }));
+      const data = await response.json();
+      return (data || []).map((p: any) => ({
+        id: p.id,
+        fullName: p.fullName || p.full_name || '',
+        username: p.username,
+        email: p.email || '',
+        phone: p.phone || '',
+        dob: p.dob || '',
+        location: p.location || '',
+        avatar: p.avatar || p.avatar_url || `https://api.dicebear.com/7.x/lorelei/svg?seed=${p.username}`,
+        avatarId: p.avatarId || p.avatar_id || '',
+        streak: p.streak || 0,
+        onboardingCompleted: p.onboardingCompleted || p.onboarding_completed || false,
+        interests: p.interests || [],
+        badges: p.badges || [],
+        createdAt: p.createdAt || p.created_at || '',
+        lastLoginDate: p.lastLoginDate || p.last_login_date || null,
+        preferences: p.preferences || {
+          currency: 'INR',
+          notificationsEnabled: true,
+          reminders: { enabled: false, time: '12:00', frequency: 'daily' }
+        }
+      }));
+    } catch (err) {
+      console.error('[FRIEND-SERVICE] Search error:', err);
+      return [];
+    }
   },
 
   /**
    * Send a friend request
    */
   async sendFriendRequest(friendId: string, currentUserId: string): Promise<void> {
-    if (!currentUserId || !friendId) return;
+    if (!friendId) return;
     
-    const { error } = await supabase
-      .from('friends')
-      .insert({
-        user_id: currentUserId,
-        friend_id: friendId,
-        status: 'pending'
-      });
-
-    if (error) {
-      console.error('[FRIEND-SERVICE] Send friend request failed:', error);
-      throw error;
-    }
-
-    // Add a pending notification
     try {
-      await supabase.from('notifications').insert({
-        user_id: friendId,
-        type: 'reminder',
-        title: '👥 New Friend Link Request',
-        body: `A user has sent you a connection request.`,
-        data: JSON.stringify({ senderId: currentUserId }),
-        read: false
+      const response = await fetch('/api/friends/request', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ friendId })
       });
-    } catch (nErr) {
-      console.warn('[FRIEND-SERVICE] Warning building request notification:', nErr);
+      
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || 'Failed to dispatch connection invitation');
+      }
+    } catch (err: any) {
+      console.error('[FRIEND-SERVICE] Send friend request failed:', err);
+      throw err;
+    }
+  },
+
+  /**
+   * Send a friend request by username
+   */
+  async sendFriendRequestByUsername(username: string): Promise<void> {
+    if (!username) return;
+    
+    try {
+      const response = await fetch('/api/friends/request-by-username', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ username })
+      });
+      
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || 'Failed to send friend request');
+      }
+    } catch (err: any) {
+      console.error('[FRIEND-SERVICE] Send friend request by username failed:', err);
+      throw err;
     }
   },
 
@@ -88,37 +95,23 @@ export const friendService = {
    * Accept friend request
    */
   async acceptFriendRequest(requestId: string, currentUserId?: string): Promise<void> {
-    const { data: requestRecord } = await supabase
-      .from('friends')
-      .select('*')
-      .eq('id', requestId)
-      .maybeSingle();
+    if (!requestId) return;
 
-    const { error } = await supabase
-      .from('friends')
-      .update({ status: 'accepted' })
-      .eq('id', requestId);
+    try {
+      const response = await fetch(`/api/friends/accept/${requestId}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
 
-    if (error) {
-      console.error('[FRIEND-SERVICE] Accept friend request failed:', error);
-      throw error;
-    }
-
-    // Notify the other user that request is accepted
-    if (requestRecord) {
-      try {
-        const sender = requestRecord.user_id;
-        await supabase.from('notifications').insert({
-          user_id: sender,
-          type: 'achievement',
-          title: '🤝 Connection Accepted',
-          body: `Your friend link request was accepted! You are now interconnected.`,
-          data: JSON.stringify({ accepterId: currentUserId }),
-          read: false
-        });
-      } catch (nErr) {
-        console.warn('[FRIEND-SERVICE] Warning building accept notification:', nErr);
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || 'Failed to finalize connection');
       }
+    } catch (err: any) {
+      console.error('[FRIEND-SERVICE] Accept friend request failed:', err);
+      throw err;
     }
   },
 
@@ -126,14 +119,23 @@ export const friendService = {
    * Reject friend request
    */
   async rejectFriendRequest(requestId: string): Promise<void> {
-    const { error } = await supabase
-      .from('friends')
-      .delete()
-      .eq('id', requestId);
+    if (!requestId) return;
 
-    if (error) {
-      console.error('[FRIEND-SERVICE] Reject friend request failed:', error);
-      throw error;
+    try {
+      const response = await fetch(`/api/friends/decline/${requestId}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || 'Failed to decline connection');
+      }
+    } catch (err: any) {
+      console.error('[FRIEND-SERVICE] Reject friend request failed:', err);
+      throw err;
     }
   },
 
@@ -143,59 +145,27 @@ export const friendService = {
   async getFriendList(userId: string): Promise<Friend[]> {
     if (!userId) return [];
 
-    // Query both outgoing (user_id = userId) and incoming (friend_id = userId)
-    const { data: rawFriends, error } = await supabase
-      .from('friends')
-      .select('*')
-      .or(`user_id.eq.${userId},friend_id.eq.${userId}`);
+    try {
+      const response = await fetch('/api/friends/list');
+      if (!response.ok) {
+        throw new Error('Failed to retrieve connections');
+      }
 
-    if (error) {
-      console.error('[FRIEND-SERVICE] Get friend list error:', error);
-      throw error;
-    }
-
-    if (!rawFriends || rawFriends.length === 0) return [];
-
-    // Gather distinct user IDs to fetch profile data in a scalable batch call
-    const userIdsToFetch = Array.from(
-      new Set(
-        rawFriends.flatMap((f: any) => [f.user_id, f.friend_id])
-      )
-    ).filter(id => id !== userId);
-
-    if (userIdsToFetch.length === 0) return [];
-
-    const { data: rawProfiles, error: profileError } = await supabase
-      .from('profiles')
-      .select('*')
-      .in('id', userIdsToFetch);
-
-    if (profileError) {
-      console.error('[FRIEND-SERVICE] Batch profiles load failed:', profileError);
-      throw profileError;
-    }
-
-    const profilesMap = new Map<string, any>();
-    (rawProfiles || []).forEach((p: any) => {
-      profilesMap.set(p.id, p);
-    });
-
-    return rawFriends.map((f: any) => {
-      const isSender = f.user_id === userId;
-      const targetUserId = isSender ? f.friend_id : f.user_id;
-      const targetProfile = profilesMap.get(targetUserId);
-
-      return {
+      const rawFriends = await response.json();
+      return (rawFriends || []).map((f: any) => ({
         id: f.id,
         userId: f.user_id,
-        friendId: targetUserId,
-        friendUsername: targetProfile?.username || 'user',
-        friendFullName: targetProfile?.full_name || targetProfile?.fullName || 'Zettl Friend',
-        friendAvatar: targetProfile?.avatar_url || targetProfile?.avatar || `https://api.dicebear.com/7.x/lorelei/svg?seed=${targetProfile?.username || targetUserId}`,
+        friendId: f.friend_id || f.friend?.id,
+        friendUsername: f.friend?.username || 'user',
+        friendFullName: f.friend?.full_name || f.friend?.fullName || 'Zavr Friend',
+        friendAvatar: f.friend?.avatar_url || f.friend?.avatar || `https://api.dicebear.com/7.x/lorelei/svg?seed=${f.friend?.username || f.friend_id}`,
         status: f.status as 'pending' | 'accepted' | 'blocked',
-        type: isSender ? 'outgoing' : 'incoming',
+        type: f.type as 'outgoing' | 'incoming',
         createdAt: f.created_at
-      };
-    });
+      }));
+    } catch (err) {
+      console.error('[FRIEND-SERVICE] getFriendList error:', err);
+      return [];
+    }
   }
 };

@@ -692,8 +692,8 @@ app.get('/api/users/search', async (req, res) => {
     }
 
     // Using .or with PostgREST. Note: values with spaces or special characters
-    // in an .or() string MUST be double-quoted.
-    const orCondition = `username.ilike."${wildcard}",full_name.ilike."${wildcard}"`;
+    // in an .or() string are matching wildcards here, so we don't use double-quotes around them.
+    const orCondition = `username.ilike.${wildcard},full_name.ilike.${wildcard}`;
     
     const { data, error } = await searchClient
       .from('profiles')
@@ -718,10 +718,27 @@ app.get('/api/users/search', async (req, res) => {
         console.error('[SERVER] Fallback Search failed:', fbError.message);
         return res.status(500).json({ error: 'Search failed', message: fbError.message });
       }
-      return res.json(fallbackData || []);
+      
+      const mappedFallback = (fallbackData || []).map((p: any) => ({
+        id: p.id,
+        username: p.username,
+        full_name: p.full_name,
+        fullName: p.full_name,
+        avatar_url: p.avatar_url,
+        avatar: p.avatar_url || `https://api.dicebear.com/7.x/lorelei/svg?seed=${p.username}`
+      }));
+      return res.json(mappedFallback);
     }
     
-    res.json(data || []);
+    const mapped = (data || []).map((p: any) => ({
+      id: p.id,
+      username: p.username,
+      full_name: p.full_name,
+      fullName: p.full_name,
+      avatar_url: p.avatar_url,
+      avatar: p.avatar_url || `https://api.dicebear.com/7.x/lorelei/svg?seed=${p.username}`
+    }));
+    res.json(mapped);
   } catch (err: any) {
     console.error('[SERVER] Search Exception:', err);
     res.status(500).json({ error: 'Search failed', message: err.message });

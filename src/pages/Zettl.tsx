@@ -319,6 +319,8 @@ export default function Zettl() {
             onRequestMoney={(friendId, amount, note, due) => zettl.requestMoney(friendId, amount, note, due)}
             onSendMoney={(friendId, amount, note) => zettl.sendMoney(friendId, amount, note)}
             onCreateGroup={(name, friends) => zettl.createGroupZettl(name, friends)}
+            groups={zettlGroups}
+            onPostGroupExpense={zettl.postGroupExpense}
           />
         )}
       </AnimatePresence>

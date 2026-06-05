@@ -32,12 +32,11 @@ export const supabaseService = {
 
   // Profiles
   async updateProfile(userId: string, updates: Partial<User>) {
-    await this.ensureSession();
+    const session = await this.ensureSession();
     console.log('[SUPABASE-SVC] Updating profile for:', userId, updates);
     
     try {
-      // Get logged in user
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = session?.user;
 
       // If no user, stop execution
       if (!user) {
@@ -61,6 +60,7 @@ export const supabaseService = {
       if (updates.location) dbUpdates.location = updates.location;
       if (updates.avatarId) dbUpdates.avatar_id = updates.avatarId;
       if (updates.onboardingCompleted !== undefined) dbUpdates.onboarding_completed = updates.onboardingCompleted;
+      if (updates.personalDetailsFilled !== undefined) dbUpdates.personal_details_filled = updates.personalDetailsFilled;
 
       // Save using UPSERT (not insert) as per requirement 2
       const { data, error } = await supabase

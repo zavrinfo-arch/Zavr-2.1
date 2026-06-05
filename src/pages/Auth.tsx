@@ -119,7 +119,7 @@ export default function Auth() {
     console.log('[AUTH] Starting login performance tracking...');
     
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 3000); // Strict 3 second timeout
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout limit for robustness
 
     try {
       const email = formData.email.trim().toLowerCase();
@@ -171,9 +171,9 @@ export default function Auth() {
 
       toast.success('Welcome back!');
       
-      // Redirect instantly without waiting on background profile fetching
-      const onboardingCompleted = session.user.user_metadata?.onboarding_completed ?? true;
-      if (onboardingCompleted) {
+      // Use the true state from the database profile loaded by checkAuth()
+      const isCompleted = useStore.getState().currentUser?.onboardingCompleted ?? false;
+      if (isCompleted) {
         navigate('/home', { replace: true });
       } else {
         navigate('/onboarding', { replace: true });
@@ -425,13 +425,11 @@ export default function Auth() {
 
       setLoading(true);
       try {
-      // Get logged in user
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      // Get logged in user from session (instant local lookup)
       const { data: { session } } = await supabase.auth.getSession();
-      const finalUser = user || session?.user;
+      const finalUser = session?.user;
 
       console.log("USER:", finalUser);
-      if (userError) console.log("USER ERROR:", userError);
 
       // If no user, stop execution
       if (!finalUser) {

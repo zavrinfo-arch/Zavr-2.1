@@ -94,13 +94,14 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   }
   
   // 3. Profile exists but onboarding not finished
-  if (!currentUser.onboardingCompleted && !isSetupPage) {
+  const detailsFilled = currentUser.personalDetailsFilled || currentUser.onboardingCompleted;
+  if (!detailsFilled && !isSetupPage) {
     console.log('[GUARD] Onboarding incomplete, forcing setup.');
     return <Navigate to="/onboarding" replace />;
   }
 
   // 4. Profile finished but still on setup pages -> Go home
-  if (currentUser.onboardingCompleted && isSetupPage) {
+  if (detailsFilled && isSetupPage) {
     console.log('[GUARD] Onboarding already complete, redirecting to /home');
     return <Navigate to="/home" replace />;
   }

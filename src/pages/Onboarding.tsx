@@ -159,12 +159,12 @@ export default function Onboarding() {
     setLoading(true);
     
     try {
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      // Get logged in user from local session (instant lookup)
       const { data: { session } } = await supabase.auth.getSession();
-      const finalUser = user || session?.user;
+      const finalUser = session?.user;
 
       if (!finalUser) {
-        toast.error('Session timeout. Please authenticating again.');
+        toast.error('Session timeout. Please authenticate again.');
         setLoading(false);
         return;
       }
@@ -172,23 +172,18 @@ export default function Onboarding() {
       const finalPhone = `${data.countryCode}${data.phone}`;
       const finalGender = data.gender === 'Other' ? data.genderOther : data.gender;
 
-      // 1. Persist core profile using our customized resilient onboarding service
-      const { error: profileError } = await onboardingService.saveOnboardingProfile(finalUser.id, {
+      // 1. Update active user state within the global state store (triggers background upsert instantly)
+      updateUser({
         fullName: data.fullName,
         username: data.username,
         phone: finalPhone,
         dob: data.dob,
-        gender: finalGender,
-        avatarUrl: data.avatar.url
+        gender: finalGender as any,
+        avatar: data.avatar.url,
+        avatarId: data.avatar.id,
+        interests: data.interests,
+        onboardingCompleted: true
       });
-
-      if (profileError) {
-        console.error('[Onboarding] Profile write failure:', profileError);
-        console.error('[Onboarding] Profile write error details:', JSON.stringify(profileError, null, 2));
-        toast.error(`Could not save profile details. Error: ${profileError.message || JSON.stringify(profileError)}`);
-        setLoading(false);
-        return;
-      }
 
       // 2. Seamlessly create their very first goal if they typed one
       if (goalName.trim()) {
@@ -206,22 +201,9 @@ export default function Onboarding() {
           completed: false
         };
 
-        // Add both locally inside Zustand and securely inside database
-        await addSoloGoal(firstGoal);
+        // Add both locally inside Zustand and securely inside database in background
+        addSoloGoal(firstGoal);
       }
-
-      // 3. Update active user state within the global state store
-      await updateUser({
-        fullName: data.fullName,
-        username: data.username,
-        phone: finalPhone,
-        dob: data.dob,
-        gender: finalGender as any,
-        avatar: data.avatar.url,
-        avatarId: data.avatar.id,
-        interests: data.interests,
-        onboardingCompleted: true
-      });
 
       resetWeeklyChallenge();
       toast.success('Your Zavr ecosystem is active!', { icon: '✨' });

@@ -28,6 +28,7 @@ export interface User {
   avatarId: string;
   streak: number;
   onboardingCompleted: boolean;
+  personalDetailsFilled?: boolean;
   interests: string[];
   badges: Badge[];
   createdAt: string;
