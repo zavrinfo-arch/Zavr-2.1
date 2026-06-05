@@ -28,6 +28,7 @@ export default function Auth() {
   const [loading, setLoading] = useState(false);
   const lastVerifyClick = React.useRef(0);
   const isVerifyingRef = React.useRef(false);
+  const isSigningUpRef = React.useRef(false);
   
   const navigate = useNavigate();
   const { currentUser, session, checkAuth, isAuthLoading } = useStore();
@@ -109,6 +110,10 @@ export default function Auth() {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (loading) {
+      console.warn('[AUTH] Login already in progress, skipping concurrent click.');
+      return;
+    }
     if (!formData.email || !formData.password) {
       toast.error('Email and password are required');
       return;
@@ -251,6 +256,10 @@ export default function Auth() {
 
   const handleSignupStep = async (e?: React.FormEvent, codeOverride?: string) => {
     if (e) e.preventDefault();
+    if (loading || isSigningUpRef.current) {
+      console.warn('[AUTH] Signup already in progress, skipping concurrent click.');
+      return;
+    }
     
     if (signupStep === 'email') {
       if (!formData.email || !formData.password) {
@@ -274,6 +283,7 @@ export default function Auth() {
         return;
       }
 
+      isSigningUpRef.current = true;
       setLoading(true);
       const signupStart = Date.now();
       console.log('[AUTH] Starting signup performance tracking...');
@@ -342,6 +352,7 @@ export default function Auth() {
         console.error("UNEXPECTED ERROR:", error);
         toast.error(error.message || 'An unexpected error occurred during signup');
       } finally {
+        isSigningUpRef.current = false;
         setLoading(false);
       }
     } else if (signupStep === 'verify') {
@@ -369,23 +380,23 @@ export default function Auth() {
       try {
         const email = formData.email.trim().toLowerCase();
         
-        console.log('[AUTH] Verifying OTP directly via client side SDK with type "email"...');
-        // Ensure OTP verification follows this pattern
+        console.log('[AUTH] Verifying OTP with type "signup" (email confirmation)...');
+        // Correct default type for signup OTP confirmation in Supabase is "signup"
         const { data, error } = await supabase.auth.verifyOtp({
           email,
           token: activeCode,
-          type: 'email'
+          type: 'signup'
         });
 
         if (error) {
-          console.log('[AUTH] OTP type "email" failed, trying type "signup" (confirmation) as fallback...', error.message);
-          const signupVerify = await supabase.auth.verifyOtp({
+          console.log('[AUTH] OTP type "signup" failed, trying fallback type "email" (magic link/login)...', error.message);
+          const emailVerify = await supabase.auth.verifyOtp({
             email,
             token: activeCode,
-            type: 'signup'
+            type: 'email'
           });
-          if (signupVerify.error) {
-            throw error; // Throw original email verification error
+          if (emailVerify.error) {
+            throw error; // Throw original error
           }
         }
 
@@ -462,7 +473,7 @@ export default function Auth() {
 
         if (error) {
           console.error("SAVE ERROR:", error);
-          alert("Failed to save personal details");
+          toast.error("Failed to save personal details");
           setLoading(false);
           return;
         }

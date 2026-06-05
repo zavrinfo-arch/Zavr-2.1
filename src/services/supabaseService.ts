@@ -51,6 +51,14 @@ export const supabaseService = {
       
       if (updates.fullName) dbUpdates.full_name = updates.fullName;
       if (updates.username) dbUpdates.username = updates.username;
+      
+      // Map email from updates or active session user to guarantee it is NEVER null in profiles
+      if (updates.email) {
+        dbUpdates.email = updates.email;
+      } else if (user.email) {
+        dbUpdates.email = user.email;
+      }
+      
       if (updates.phone) dbUpdates.phone = updates.phone;
       if (updates.dob) dbUpdates.birth_date = updates.dob; // birthDate -> birth_date mapping
       if (updates.gender) dbUpdates.gender = updates.gender;
@@ -63,14 +71,28 @@ export const supabaseService = {
       if (updates.personalDetailsFilled !== undefined) dbUpdates.personal_details_filled = updates.personalDetailsFilled;
 
       // Save using UPSERT (not insert) as per requirement 2
-      const { data, error } = await supabase
+      console.log('[SUPABASE-SVC] Executing upsert on profiles...', dbUpdates);
+      let { data, error } = await supabase
         .from('profiles')
         .upsert(dbUpdates)
         .select()
         .maybeSingle();
 
+      if (error && (error.message?.includes('avatar_id') || error.code?.includes('42703'))) {
+        console.warn('[SUPABASE-SVC] Upsert failed due to missing avatar_id column. Retrying without avatar_id...', error.message);
+        const fallbackUpdates = { ...dbUpdates };
+        delete fallbackUpdates.avatar_id;
+        const retryResult = await supabase
+          .from('profiles')
+          .upsert(fallbackUpdates)
+          .select()
+          .maybeSingle();
+        data = retryResult.data;
+        error = retryResult.error;
+      }
+
       if (error) {
-        console.error('[SUPABASE-SVC] Upsert profile error:', error);
+        console.error('[SUPABASE-SVC] Final upsert profile error:', error);
       } else {
         console.log('[SUPABASE-SVC] Profile upsert successful');
       }

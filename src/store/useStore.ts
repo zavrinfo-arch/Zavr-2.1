@@ -504,52 +504,69 @@ export const useStore = create<AppState>()(
 
                 if (profileError) {
                   console.error('[AUTH] Synchronous profile fetch error:', profileError.message);
-                  
-                  // Auto-create profile if missing
-                  if (profileError.code === 'PGRST116' || profileError.message?.includes('JSON') || profileError.message?.includes('not found')) {
-                    console.log('[AUTH] Profile not found synchronously, auto-creating default...');
-                    const username = sbSession.user.email?.split('@')[0] || `user_${sbSession.user.id.substring(0, 8)}`;
-                    const emailVal = sbSession.user.email || '';
-                    
-                    const autoProfile = {
-                      id: sbSession.user.id,
-                      username: username.toLowerCase().trim(),
-                      full_name: sbSession.user.user_metadata?.full_name || username,
-                      email: emailVal,
-                      avatar_url: `https://api.dicebear.com/7.x/lorelei/svg?seed=${sbSession.user.id}`,
-                      onboarding_completed: false,
-                      updated_at: new Date().toISOString()
-                    };
+                }
 
-                    try {
-                      const { error: insertError } = await supabase
-                        .from('profiles')
-                        .insert(autoProfile);
-
-                      if (insertError) {
-                        console.error('[AUTH] Failed to auto-create database profile:', insertError.message);
-                      } else {
-                        console.log('[AUTH] Automatically created default database profile successfully.');
-                      }
-                    } catch (dbErr: any) {
-                      console.error('[AUTH] Exception while inserting fallback profile:', dbErr);
-                    }
-
-                    const fallbackUser = mapProfileToUser({
-                      ...autoProfile,
-                      birth_date: null,
-                      phone: null,
-                      location: null,
-                    });
-                    localStorage.setItem(cacheKey, JSON.stringify({ profile: fallbackUser, timestamp: Date.now() }));
-                    set({ currentUser: fallbackUser });
-                    profileFetched = true;
-                  }
-                } else if (profile) {
+                if (profile) {
                   const mappedUser = mapProfileToUser(profile);
                   localStorage.setItem(cacheKey, JSON.stringify({ profile: mappedUser, timestamp: Date.now() }));
                   set({ currentUser: mappedUser });
                   console.log('[AUTH] Sync profile loaded:', mappedUser.id, 'completeness:', mappedUser.onboardingCompleted);
+                  profileFetched = true;
+                } else {
+                  // Profile is missing in the database - auto-create it now
+                  console.log('[AUTH] Profile row missing in database, auto-creating default...');
+                  const baseUsername = sbSession.user.email?.split('@')[0] || `user_${sbSession.user.id.substring(0, 8)}`;
+                  // Clean base_username to letters, numbers, underscores only
+                  const cleanUsername = baseUsername.toLowerCase().replace(/[^a-z0-9_]/g, '');
+                  const username = cleanUsername.length >= 3 ? cleanUsername : `${cleanUsername}usr`.substring(0, 15);
+                  const emailVal = sbSession.user.email || '';
+                  
+                  // Prepare two variants to ensure maximum database compatibility with existing schemas
+                  const autoProfileWithoutEmail = {
+                    id: sbSession.user.id,
+                    username: `${username}_${sbSession.user.id.substring(0, 4)}`.toLowerCase().trim(),
+                    full_name: sbSession.user.user_metadata?.full_name || username,
+                    avatar_url: `https://api.dicebear.com/7.x/lorelei/svg?seed=${sbSession.user.id}`,
+                    onboarding_completed: false,
+                    updated_at: new Date().toISOString()
+                  };
+
+                  const autoProfileWithEmail = {
+                    ...autoProfileWithoutEmail,
+                    email: emailVal
+                  };
+
+                  try {
+                    console.log('[AUTH_DB] Attempting to auto-create profile with email...', autoProfileWithEmail);
+                    let { error: insertError } = await supabase
+                      .from('profiles')
+                      .insert(autoProfileWithEmail);
+
+                    if (insertError) {
+                      console.warn('[AUTH_DB] Profile creation with email column failed. Retrying without email...', insertError.message);
+                      const fallbackInsert = await supabase
+                        .from('profiles')
+                        .insert(autoProfileWithoutEmail);
+                      insertError = fallbackInsert.error;
+                    }
+
+                    if (insertError) {
+                      console.warn('[AUTH_DB] Failed to auto-create database profile (the user might already have a profile by trigger):', insertError.message, insertError.code);
+                    } else {
+                      console.log('[AUTH_DB] Automatically created default database profile successfully!');
+                    }
+                  } catch (dbErr: any) {
+                    console.warn('[AUTH_DB] Exception while inserting fallback profile (non-blocking):', dbErr);
+                  }
+
+                  const fallbackUser = mapProfileToUser({
+                    ...autoProfileWithoutEmail,
+                    birth_date: null,
+                    phone: null,
+                    location: null,
+                  });
+                  localStorage.setItem(cacheKey, JSON.stringify({ profile: fallbackUser, timestamp: Date.now() }));
+                  set({ currentUser: fallbackUser });
                   profileFetched = true;
                 }
               } catch (err: any) {

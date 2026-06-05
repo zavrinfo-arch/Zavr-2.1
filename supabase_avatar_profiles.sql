@@ -57,27 +57,66 @@ CREATE POLICY "Public profiles are viewable by authenticated users" ON profiles
 -- 5. Trigger to automatically create a profile for new auth users
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS trigger AS $$
+DECLARE
+  default_avatar text;
+  username_part text;
 BEGIN
-  INSERT INTO public.profiles (
-    id, 
-    username, 
-    full_name, 
-    email, 
-    onboarding_completed,
-    avatar_url
-  )
-  VALUES (
-    new.id, 
-    COALESCE(new.raw_user_meta_data->>'username', new.raw_user_meta_data->>'user_name', split_part(new.email, '@', 1)), 
-    COALESCE(new.raw_user_meta_data->>'full_name', ''),
-    new.email,
-    COALESCE((new.raw_user_meta_data->>'onboarding_completed')::boolean, false),
-    COALESCE(new.raw_user_meta_data->>'avatar_url', 'https://api.dicebear.com/7.x/lorelei/svg?seed=' || split_part(new.email, '@', 1))
+  -- Safe fallback extractions
+  username_part := COALESCE(
+    new.raw_user_meta_data->>'username', 
+    new.raw_user_meta_data->>'user_name', 
+    split_part(new.email, '@', 1)
   );
+  default_avatar := COALESCE(
+    new.raw_user_meta_data->>'avatar_url', 
+    'https://api.dicebear.com/7.x/lorelei/svg?seed=' || username_part
+  );
+
+  -- 1. Safe nested insertion block for Profiles
+  BEGIN
+    INSERT INTO public.profiles (
+      id, 
+      username, 
+      full_name, 
+      onboarding_completed,
+      avatar_url
+    )
+    VALUES (
+      new.id, 
+      LOWER(username_part), 
+      COALESCE(new.raw_user_meta_data->>'full_name', username_part),
+      false,
+      default_avatar
+    )
+    ON CONFLICT (id) DO NOTHING;
+  EXCEPTION WHEN OTHERS THEN
+    -- Prevent failures in profiles from blocking the trigger and user creation
+    NULL;
+  END;
+
+  -- 2. Safe nested insertion block for User Profiles (if table exists)
+  BEGIN
+    INSERT INTO public.user_profiles (
+      id,
+      avatar_id,
+      avatar_url,
+      onboarding_completed
+    )
+    VALUES (
+      new.id,
+      'genz_1',
+      default_avatar,
+      false
+    )
+    ON CONFLICT (id) DO NOTHING;
+  EXCEPTION WHEN OTHERS THEN
+    -- Prevent failures in user_profiles from blocking the trigger and user creation
+    NULL;
+  END;
+
   RETURN new;
 EXCEPTION WHEN OTHERS THEN
   -- We catch errors to prevent the auth signup from failing completely 
-  -- but we log it as much as we can in a trigger context
   RETURN new;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;

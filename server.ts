@@ -447,12 +447,22 @@ app.post('/api/auth/complete-profile', async (req, res) => {
 
   console.log('Creating profile record for:', user.id);
 
-  const { error: profileError } = await supabaseAdmin
+  let { error: profileError } = await supabaseAdmin
     .from('profiles')
     .upsert(profileData);
 
+  if (profileError && (profileError.message?.includes('email') || profileError.code === '42703')) {
+    console.warn('[SERVER_DB] Upsert failed due to missing email column in profiles table. Retrying fallback without email...', profileError.message);
+    const fallbackProfileData = { ...profileData };
+    delete fallbackProfileData.email;
+    const retryResult = await supabaseAdmin
+      .from('profiles')
+      .upsert(fallbackProfileData);
+    profileError = retryResult.error;
+  }
+
   if (profileError) {
-    console.error('Profile creation error:', profileError);
+    console.error('Final profile creation error:', profileError);
     if (profileError.code === '23505') return res.status(400).json({ error: 'Username already taken' });
     return res.status(400).json({ error: profileError.message || 'Failed to create profile' });
   }
