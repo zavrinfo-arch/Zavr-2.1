@@ -4,7 +4,7 @@
  */
 
 import * as React from 'react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { AnimatePresence, motion } from 'motion/react';
@@ -23,17 +23,18 @@ import { Layout } from './components/Layout';
 import { NetworkHealthMonitor } from './components/NetworkHealthMonitor';
 import SplashScreen from './pages/SplashScreen';
 import Auth from './pages/Auth';
-import Onboarding from './pages/Onboarding';
-import Home from './pages/Home';
-import Goals from './pages/Goals';
-import History from './pages/History';
-import Profile from './pages/Profile';
-import Zettl from './pages/Zettl';
-import ZettlChatList from './pages/ZettlChatList';
-import ZettlChatRoom from './pages/ZettlChatRoom';
+
+const Onboarding = lazy(() => import('./pages/Onboarding'));
+const Home = lazy(() => import('./pages/Home'));
+const Goals = lazy(() => import('./pages/Goals'));
+const History = lazy(() => import('./pages/History'));
+const Profile = lazy(() => import('./pages/Profile'));
+const ZettlChatList = lazy(() => import('./pages/ZettlChatList'));
+const ZettlChatRoom = lazy(() => import('./pages/ZettlChatRoom'));
+const ActivityFeedPage = lazy(() => import('./pages/ActivityFeed'));
+const AvatarSelection = lazy(() => import('./pages/AvatarSelection'));
+
 import { ZettlProvider } from './context/ZettlContext';
-import ActivityFeedPage from './pages/ActivityFeed';
-import AvatarSelection from './pages/AvatarSelection';
 import { formatCurrency, cn, formatDateSafely } from './lib/utils';
 import toast from 'react-hot-toast';
 import CelebrationModal from './components/CelebrationModal';
@@ -45,7 +46,9 @@ import ErrorBoundary from './components/ErrorBoundary';
 import { initSilentSafeLogger } from './utils/debug';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { currentUser, session, isAuthLoading } = useStore();
+  const currentUser = useStore((state) => state.currentUser);
+  const session = useStore((state) => state.session);
+  const isAuthLoading = useStore((state) => state.isAuthLoading);
   const location = useLocation();
   
   useEffect(() => {
@@ -121,13 +124,12 @@ function ConfigWarning() {
 }
 
 export default function App() {
-  const { 
-    currentUser, addSoloGoal, addGroupGoal, 
-    joinGroupGoal, addContribution, checkStreak,
-    weeklyChallenge, resetWeeklyChallenge, streakData,
-    checkReminders, triggerMotivation, theme, checkAuth,
-    initializeAuth, isAuthLoading, session
-  } = useStore();
+  const theme = useStore((state) => state.theme);
+  const currentStreak = useStore((state) => state.streakData.currentStreak);
+  const checkStreak = useStore((state) => state.checkStreak);
+  const checkReminders = useStore((state) => state.checkReminders);
+  const triggerMotivation = useStore((state) => state.triggerMotivation);
+  const initializeAuth = useStore((state) => state.initializeAuth);
 
   useEffect(() => {
     initializeAuth();
@@ -186,7 +188,7 @@ export default function App() {
 
   // Monitor for 100-day streak
   useEffect(() => {
-    if (streakData.currentStreak === 100) {
+    if (currentStreak === 100) {
       setCelebration({
         isOpen: true,
         title: 'Legendary Streak!',
@@ -195,7 +197,7 @@ export default function App() {
         value: 100
       });
     }
-  }, [streakData.currentStreak]);
+  }, [currentStreak]);
 
   const handleAddMoney = (goalId: string, type: 'solo' | 'group' | 'emergency', amount?: number) => {
     setSelectedGoal({ id: goalId, type });
@@ -235,80 +237,92 @@ export default function App() {
             }}
           />
           
-          <Routes>
-            <Route path="/" element={<SplashScreen />} />
-            <Route path="/auth" element={<Auth />} />
-            
-            <Route path="/onboarding" element={
-              <ProtectedRoute>
-                <Onboarding />
-              </ProtectedRoute>
-            } />
-            <Route path="/avatar-selection" element={
-              <ProtectedRoute>
-                <AvatarSelection />
-              </ProtectedRoute>
-            } />
-            
-            <Route path="/home" element={
-              <ProtectedRoute>
-                <Layout onPlusClick={() => { setPlusAction('main'); setIsPlusModalOpen(true); }}>
-                  <Home onAddMoney={handleAddMoney} onWithdraw={handleWithdraw} />
-                </Layout>
-              </ProtectedRoute>
-            } />
-            
-            <Route path="/goals" element={
-              <ProtectedRoute>
-                <Layout onPlusClick={() => { setPlusAction('main'); setIsPlusModalOpen(true); }}>
-                  <Goals onAddMoney={handleAddMoney} onWithdraw={handleWithdraw} />
-                </Layout>
-              </ProtectedRoute>
-            } />
-            
-            <Route path="/history" element={
-              <ProtectedRoute>
-                <Layout onPlusClick={() => { setPlusAction('main'); setIsPlusModalOpen(true); }}>
-                  <History />
-                </Layout>
-              </ProtectedRoute>
-            } />
-            
-            <Route path="/profile" element={
-              <ProtectedRoute>
-                <Layout onPlusClick={() => { setPlusAction('main'); setIsPlusModalOpen(true); }}>
-                  <Profile />
-                </Layout>
-              </ProtectedRoute>
-            } />
-            
-            <Route path="/zettl" element={
-              <ProtectedRoute>
-                <Layout onPlusClick={() => { setPlusAction('main'); setIsPlusModalOpen(true); }}>
-                  <ZettlChatList />
-                </Layout>
-              </ProtectedRoute>
-            } />
+          <Suspense fallback={
+            <div className="min-h-screen flex items-center justify-center bg-background">
+              <div className="flex flex-col items-center gap-6">
+                <div className="relative w-12 h-12">
+                  <div className="absolute inset-0 bg-coral/20 blur-xl rounded-full animate-pulse" />
+                  <Loader2 className="w-12 h-12 text-coral animate-spin relative z-10" />
+                </div>
+                <p className="text-[10px] font-black opacity-30 uppercase tracking-[0.2em]">Loading Page...</p>
+              </div>
+            </div>
+          }>
+            <Routes>
+              <Route path="/" element={<SplashScreen />} />
+              <Route path="/auth" element={<Auth />} />
+              
+              <Route path="/onboarding" element={
+                <ProtectedRoute>
+                  <Onboarding />
+                </ProtectedRoute>
+              } />
+              <Route path="/avatar-selection" element={
+                <ProtectedRoute>
+                  <AvatarSelection />
+                </ProtectedRoute>
+              } />
+              
+              <Route path="/home" element={
+                <ProtectedRoute>
+                  <Layout onPlusClick={() => { setPlusAction('main'); setIsPlusModalOpen(true); }}>
+                    <Home onAddMoney={handleAddMoney} onWithdraw={handleWithdraw} />
+                  </Layout>
+                </ProtectedRoute>
+              } />
+              
+              <Route path="/goals" element={
+                <ProtectedRoute>
+                  <Layout onPlusClick={() => { setPlusAction('main'); setIsPlusModalOpen(true); }}>
+                    <Goals onAddMoney={handleAddMoney} onWithdraw={handleWithdraw} />
+                  </Layout>
+                </ProtectedRoute>
+              } />
+              
+              <Route path="/history" element={
+                <ProtectedRoute>
+                  <Layout onPlusClick={() => { setPlusAction('main'); setIsPlusModalOpen(true); }}>
+                    <History />
+                  </Layout>
+                </ProtectedRoute>
+              } />
+              
+              <Route path="/profile" element={
+                <ProtectedRoute>
+                  <Layout onPlusClick={() => { setPlusAction('main'); setIsPlusModalOpen(true); }}>
+                    <Profile />
+                  </Layout>
+                </ProtectedRoute>
+              } />
+              
+              <Route path="/zettl" element={
+                <ProtectedRoute>
+                  <Layout onPlusClick={() => { setPlusAction('main'); setIsPlusModalOpen(true); }}>
+                    <ZettlChatList />
+                  </Layout>
+                </ProtectedRoute>
+              } />
 
-            <Route path="/zettl/chat/:friendId" element={
-              <ProtectedRoute>
-                <Layout onPlusClick={() => { setPlusAction('main'); setIsPlusModalOpen(true); }}>
-                  <ZettlChatRoom />
-                </Layout>
-              </ProtectedRoute>
-            } />
+              <Route path="/zettl/chat/:friendId" element={
+                <ProtectedRoute>
+                  <Layout onPlusClick={() => { setPlusAction('main'); setIsPlusModalOpen(true); }}>
+                    <ZettlChatRoom />
+                  </Layout>
+                </ProtectedRoute>
+              } />
 
-            <Route path="/zettl-activity" element={
-              <ProtectedRoute>
-                <Layout onPlusClick={() => { setPlusAction('main'); setIsPlusModalOpen(true); }}>
-                  <ActivityFeedPage />
-                </Layout>
-              </ProtectedRoute>
-            } />
-            
-            {/* Fallback route to catch white screens on invalid paths */}
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
+              <Route path="/zettl-activity" element={
+                <ProtectedRoute>
+                  <Layout onPlusClick={() => { setPlusAction('main'); setIsPlusModalOpen(true); }}>
+                    <ActivityFeedPage />
+                  </Layout>
+                </ProtectedRoute>
+              } />
+              
+              {/* Fallback route to catch white screens on invalid paths */}
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </Suspense>
 
           <AnimatePresence>
             {isPlusModalOpen && (

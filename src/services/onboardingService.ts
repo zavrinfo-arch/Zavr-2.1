@@ -9,20 +9,33 @@ import { SoloGoal } from '../types';
 async function runWithRetry<T>(
   operation: () => Promise<{ data: T | null; error: any }>,
   retries = 3,
-  delayMs = 1000
+  delayMs = 1000,
+  signal?: AbortSignal
 ): Promise<{ data: T | null; error: any }> {
   let attempt = 0;
   while (attempt < retries) {
+    if (signal?.aborted) {
+      throw new DOMException('The user aborted a request.', 'AbortError');
+    }
     try {
       const result = await operation();
       if (!result.error) {
         return result;
       }
       
+      if (result.error?.name === 'AbortError' || result.error?.message?.includes('aborted') || result.error?.message?.includes('AbortError')) {
+        console.log('[Onboarding Database Retry] Abort detected in error result. Exiting retry loop.');
+        return result;
+      }
+
       console.warn(
         `[Onboarding Database Retry] Attempt ${attempt + 1}/${retries} failed. Code: ${result.error?.code}. Message: ${result.error?.message}`
       );
     } catch (err: any) {
+      if (err?.name === 'AbortError' || err?.message?.includes('aborted') || err?.name === 'DOMException') {
+        console.log('[Onboarding Database Exception] Abort detected in caught exception. Exiting retry loop.');
+        throw err;
+      }
       console.warn(
         `[Onboarding Database Exception] Attempt ${attempt + 1}/${retries} failed with exception:`,
         err
@@ -31,14 +44,39 @@ async function runWithRetry<T>(
     
     attempt++;
     if (attempt < retries) {
-      // Exponential backoff to avoid hammering the endpoint
-      await new Promise(resolve => setTimeout(resolve, delayMs * Math.pow(2, attempt)));
+      if (signal?.aborted) {
+        throw new DOMException('The user aborted a request.', 'AbortError');
+      }
+      // Wait or abort early if signal aborts
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          if (signal) signal.removeEventListener('abort', onAbort);
+          resolve();
+        }, delayMs * Math.pow(2, attempt));
+
+        const onAbort = () => {
+          clearTimeout(timeout);
+          reject(new DOMException('The user aborted a request.', 'AbortError'));
+        };
+
+        if (signal) {
+          signal.addEventListener('abort', onAbort);
+        }
+      });
     }
   }
   
+  if (signal?.aborted) {
+    throw new DOMException('The user aborted a request.', 'AbortError');
+  }
   // Final attempt
   return operation();
 }
+
+// Shared in-memory cache for checked usernames
+const usernameCache = new Map<string, boolean>();
+let checkCount = 0;
+let totalLatency = 0;
 
 /**
  * Onboarding Database Service (Supabase)
@@ -51,25 +89,64 @@ export const onboardingService = {
    */
   async checkUsernameAvailability(username: string): Promise<{ available: boolean; error: any }> {
     const cleaned = username.toLowerCase().trim();
-    if (!cleaned) {
+    
+    // Task 3: Client-side Validation pre-checks to reject immediately without database calls
+    if (!cleaned || cleaned.length < 3 || cleaned.length > 20 || !/^[a-zA-Z0-9_]+$/.test(cleaned)) {
       return { available: false, error: null };
     }
 
-    const { data, error } = await runWithRetry(async () => {
-      return supabase
-        .from('profiles')
-        .select('username')
-        .eq('username', cleaned)
-        .maybeSingle();
-    });
-
-    if (error) {
-      console.error('[Onboarding Service] Error checking username availability:', error);
-      return { available: false, error };
+    // Task 5: Cache hit check
+    if (usernameCache.has(cleaned)) {
+      console.log(`[Username Check Cache Hit] "${cleaned}" -> available: ${usernameCache.get(cleaned)}`);
+      return { available: usernameCache.get(cleaned)!, error: null };
     }
 
-    // If data is null/undefined, it means no profile has this username yet -> it's available.
-    return { available: !data, error: null };
+    // Task 7: Performance Tracking & console.time
+    console.time("username-check");
+    const startTime = performance.now();
+    checkCount++;
+
+    try {
+      // Task 4 & 6: Optimized Query Selection (select 'id', eq 'username', limit(1), maybeSingle)
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('username', cleaned)
+        .limit(1)
+        .maybeSingle();
+
+      const endTime = performance.now();
+      const latency = endTime - startTime;
+      totalLatency += latency;
+      console.timeEnd("username-check");
+
+      console.log(
+        `[Username Check DB Fetch] "${cleaned}" completed in ${latency.toFixed(2)}ms. ` +
+        `Result: data=${JSON.stringify(data)}, error=${JSON.stringify(error)}. ` +
+        `Total Checks: ${checkCount}, Avg Latency: ${(totalLatency / checkCount).toFixed(2)}ms.`
+      );
+
+      if (error) {
+        return {
+          available: false,
+          error
+        };
+      }
+
+      const available = !data;
+      // Save to Cache
+      usernameCache.set(cleaned, available);
+
+      return {
+        available,
+        error: null
+      };
+
+    } catch (err: any) {
+      console.timeEnd("username-check");
+      console.error('[Onboarding Service] Error checking username availability:', err);
+      return { available: false, error: err };
+    }
   },
 
   /**

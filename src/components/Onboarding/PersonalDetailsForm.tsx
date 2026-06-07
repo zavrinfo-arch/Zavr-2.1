@@ -49,19 +49,59 @@ export default function PersonalDetailsForm({
     onChange({ username: localUsername });
   }, [localUsername]);
 
+  const statusRef = React.useRef(usernameStatus);
+  useEffect(() => {
+    statusRef.current = usernameStatus;
+  }, [usernameStatus]);
+
   // Debounced real-time username availability check (500ms delay)
   // Ensures we do not pound Supabase with a backend request for every single keystroke.
   useEffect(() => {
+    let active = true;
+
+    const transition = (nextState: 'idle' | 'checking' | 'available' | 'taken') => {
+      if (!active) {
+        console.log('[USERNAME] Discarding transition to state:', nextState, 'for stale user:', localUsername);
+        return;
+      }
+      console.log('[USERNAME] Transition to state:', nextState, 'for user:', localUsername);
+      setUsernameStatus(nextState);
+    };
+
     if (!localUsername) {
-      setUsernameStatus('idle');
+      transition('idle');
+      setManualErrors(prev => {
+        const copy = { ...prev };
+        delete copy.username;
+        return copy;
+      });
+      return;
+    }
+
+    // Task 3: Client side local validation rules
+    if (localUsername.length < 3) {
+      transition('idle');
+      setManualErrors(prev => ({
+        ...prev,
+        username: 'Username must be at least 3 characters long'
+      }));
+      return;
+    }
+
+    if (localUsername.length > 20) {
+      transition('idle');
+      setManualErrors(prev => ({
+        ...prev,
+        username: 'Username must not exceed 20 characters'
+      }));
       return;
     }
 
     if (!/^[a-zA-Z0-9_]+$/.test(localUsername)) {
-      setUsernameStatus('idle');
+      transition('idle');
       setManualErrors(prev => ({
         ...prev,
-        username: 'Only alphanumeric characters & underscores allowed'
+        username: 'Only letters, numbers, and underscores allowed'
       }));
       return;
     }
@@ -72,32 +112,82 @@ export default function PersonalDetailsForm({
       return copy;
     });
 
-    setUsernameStatus('checking');
+    transition('checking');
 
     const timeoutId = setTimeout(async () => {
+      if (!active) return;
+
+      // Task 7: Unique tracer label
+      const checkLabel = `username-check-${localUsername}`;
+      console.time(checkLabel);
+      console.log(`[Username Check Start] Initiating database query for: "${localUsername}"`);
+      
+      // Define a timeout promise which rejects after 5 seconds, storing its timeoutId for cleanup
+      let timeoutId5s: any;
+      const timeoutPromise = new Promise<{ available: boolean; error: any }>((_, reject) => {
+        timeoutId5s = setTimeout(() => {
+          console.warn(`[PersonalDetailsForm] Timeout threshold reached (5000ms) for username: "${localUsername}"`);
+          reject(new Error('TIMEOUT'));
+        }, 5000);
+      });
+
       try {
-        const { available, error } = await onboardingService.checkUsernameAvailability(localUsername);
+        const queryStart = performance.now();
+
+        // Race the username query against the 5-second timeout
+        const checkPromise = onboardingService.checkUsernameAvailability(localUsername);
+        const { available, error } = await Promise.race([checkPromise, timeoutPromise]);
         
+        const queryDuration = performance.now() - queryStart;
+        console.log(`[Username Check End] Finished query for: "${localUsername}" in ${queryDuration.toFixed(2)}ms`);
+
+        if (!active) {
+          console.log('[Username Check] Discarding stale validation query result.');
+          return;
+        }
+
         if (error) {
-          console.warn('[PersonalDetailsForm] Connection snag, defaulting to true for smoother experience:', error);
-          // Fallback gracefully on minor network blips
-          setUsernameStatus('available');
+          console.warn('[PersonalDetailsForm] Connection error returned from query:', error);
+          transition('available');
           return;
         }
 
         if (available) {
-          setUsernameStatus('available');
+          transition('available');
         } else {
-          setUsernameStatus('taken');
+          transition('taken');
         }
-      } catch (err) {
-        console.error('[PersonalDetailsForm] Failed to check username availability:', err);
-        setUsernameStatus('available'); // Graceful fallback
+      } catch (err: any) {
+        if (!active) {
+          console.log('[Username Check] Catch-block abortion triggered safe discard');
+          return;
+        }
+
+        if (err.message === 'TIMEOUT') {
+          console.error('[PersonalDetailsForm] Username validation query exceeded 5 seconds. Timing out.');
+          // Stop spinner and show validation error message as requested
+          transition('idle');
+          setManualErrors(prev => ({
+            ...prev,
+            username: 'Validation timed out. Please try again.'
+          }));
+        } else {
+          console.error('[PersonalDetailsForm] Failed to check username availability with exception:', err);
+          transition('available'); // Graceful fallback
+        }
+      } finally {
+        if (timeoutId5s) {
+          clearTimeout(timeoutId5s);
+        }
+        console.timeEnd(checkLabel);
       }
     }, 500); // Strict 500ms lazy delay
 
-    // Memory optimization: clear timeout on unmount or keystroke change to prevent memory leaks
-    return () => clearTimeout(timeoutId);
+    // Memory & Connection optimization: cancel both the timer and the network request on typing changes
+    return () => {
+      active = false;
+      clearTimeout(timeoutId);
+    };
   }, [localUsername, setUsernameStatus, setManualErrors]);
 
   return (

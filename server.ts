@@ -529,7 +529,23 @@ app.post('/api/auth/signin', signinLimiter, async (req, res) => {
       });
     }
 
-    res.json({ user: data.user, session: data.session });
+    let profile = null;
+    if (data.user) {
+      try {
+        console.log('[API-AUTH] Elevating to check database profile for user:', data.user.id);
+        const { data: pData } = await supabaseAdmin
+          .from('profiles')
+          .select('*')
+          .eq('id', data.user.id)
+          .maybeSingle();
+        profile = pData;
+        console.log('[API-AUTH] Profile retrieval completed on signin. Found:', !!pData);
+      } catch (profileErr) {
+        console.warn('[API-AUTH] Failed to fetch profile on signin:', profileErr);
+      }
+    }
+
+    res.json({ user: data.user, session: data.session, profile });
   } catch (err) {
     console.error('Signin error:', err);
     res.status(500).json({ error: 'Internal server error' });

@@ -166,8 +166,8 @@ export default function Auth() {
         } catch (setSessionErr: any) {
           console.warn('[AUTH] setSession exception caught gracefully:', setSessionErr);
         }
-        // Trigger checkAuth immediately to hydrate optimistic/cached profile
-        await checkAuth();
+        // Trigger checkAuth immediately, seeding with pre-fetched profile to run at 0 extra cost
+        await checkAuth(false, result.profile);
         console.log(`[AUTH] Session synchronization completed in ${Date.now() - sessionStart}ms`);
       }
 
@@ -480,7 +480,19 @@ export default function Auth() {
 
         console.log("Saved successfully");
 
-        await checkAuth();
+        const savedProfile = {
+          id: finalUser.id,
+          full_name: fullName || null,
+          username: username || null,
+          phone: phone || null,
+          birth_date: birthDate || null,
+          gender: gender || null,
+          avatar_url: avatarUrl || null,
+          updated_at: new Date().toISOString(),
+          onboarding_completed: false, // The dynamic onboarding page runs next
+          preferences: { currency: 'INR', notificationsEnabled: true, reminders: { enabled: true, time: '20:00', frequency: 'daily' } }
+        };
+        await checkAuth(false, savedProfile);
         setShowWelcome(true);
       } catch (error: any) {
         console.error('[Auth] Unexpected error:', error);

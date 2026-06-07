@@ -1,15 +1,20 @@
 import { supabase } from '../lib/supabaseClient';
 import { User, SoloGoal, GroupGoal, Transaction, Notification, StreakData } from '../types';
 
+let cachedUseStore: any = null;
+
 export const supabaseService = {
   // Helpers
   async ensureSession() {
     // Attempt to get session from store first to avoid unnecessary gotrue calls
     // which can trigger "Lock stolen" errors in some environments
     try {
-      // Use dynamic import to avoid potential circular dependencies
-      const { useStore } = await import('../store/useStore');
-      const state = useStore.getState();
+      if (!cachedUseStore) {
+        // Cache the dynamic store import to run once in application lifecycle
+        const { useStore } = await import('../store/useStore');
+        cachedUseStore = useStore;
+      }
+      const state = cachedUseStore.getState();
       const storeSession = state.session;
       
       // Check if session exists and is not expired (buffer of 60 seconds)
@@ -109,7 +114,7 @@ export const supabaseService = {
     console.log('[SUPABASE-SVC] Gathering profile for:', userId);
     const { data, error } = await supabase
       .from('profiles')
-      .select('*')
+      .select('id,full_name,username,email,phone,birth_date,dob,location,avatar_url,avatar_id,streak,onboarding_completed,interests,badges,created_at,last_login_date,streak_freeze_count,xp,level,preferences')
       .eq('id', userId)
       .maybeSingle();
     
@@ -149,7 +154,7 @@ export const supabaseService = {
     await this.ensureSession();
     const { data, error } = await supabase
       .from('solo_goals')
-      .select('*')
+      .select('id,user_id,name,target_amount,current_amount,deadline,category,frequency,created_at,completed,completed_at')
       .eq('user_id', userId);
     
     if (data) {
@@ -176,7 +181,7 @@ export const supabaseService = {
     await this.ensureSession();
     const { data, error } = await supabase
       .from('emergency_goals')
-      .select('*')
+      .select('id,user_id,name,target_amount,current_amount,category,frequency,created_at,completed,completed_at,routine_amount')
       .eq('user_id', userId);
     
     if (data) {
@@ -268,7 +273,7 @@ export const supabaseService = {
     await this.ensureSession();
     const { data, error } = await supabase
       .from('group_goals')
-      .select('*');
+      .select('id,group_id,name,target_amount,member_count,password,creator_id,members,total_collected,created_at,deadline,frequency,completed,completed_at');
     
     if (data) {
       const mapped = data.map((g: any) => ({
@@ -324,7 +329,7 @@ export const supabaseService = {
     await this.ensureSession();
     const { data, error } = await supabase
       .from('transactions')
-      .select('*')
+      .select('id,goal_id,goal_name,amount,type,goal_type,timestamp,category,user_id')
       .or(`user_id.eq.${userId},goal_id.in.(select goal_id from group_goal_members where user_id.eq.${userId})`);
     
     if (data) {
@@ -448,9 +453,10 @@ export const supabaseService = {
     await this.ensureSession();
     const { data, error } = await supabase
       .from('notifications')
-      .select('*')
+      .select('id,user_id,title,message,type,read,timestamp')
       .eq('user_id', userId)
-      .order('timestamp', { ascending: false });
+      .order('timestamp', { ascending: false })
+      .limit(100);
     
     if (data) {
       const mapped = data.map((n: any) => ({

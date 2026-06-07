@@ -18,6 +18,7 @@ import { fetchWithRetry } from '../lib/utils';
 import { setOnboardingCookie } from '../../lib/onboarding';
 
 let activeCheckAuthPromise: Promise<void> | null = null;
+let activeRefreshDataPromise: Promise<void> | null = null;
 
 interface AppState {
   users: User[];
@@ -59,7 +60,7 @@ interface AppState {
   addUser: (user: User) => void;
   updateUser: (updates: Partial<User>) => void;
   setTheme: (theme: 'light' | 'dark') => void;
-  checkAuth: (isInitial?: boolean) => Promise<void>;
+  checkAuth: (isInitial?: boolean, prefetchedProfile?: any) => Promise<void>;
   signOut: () => Promise<void>;
   initializeAuth: () => void;
   
@@ -322,7 +323,7 @@ export const useStore = create<AppState>()(
       setSession: (session) => {
         set({ session });
       },
-      checkAuth: async (isInitial = false) => {
+      checkAuth: async (isInitial = false, prefetchedProfile: any = null) => {
         if (activeCheckAuthPromise) {
           console.log('[AUTH] Reuse active checkAuth promise to collapse concurrent check.');
           return activeCheckAuthPromise;
@@ -457,6 +458,20 @@ export const useStore = create<AppState>()(
               };
 
               const cacheKey = `zavr-profile-${sbSession.user.id}`;
+
+              if (prefetchedProfile) {
+                try {
+                  const mappedUser = mapProfileToUser(prefetchedProfile);
+                  console.log('[AUTH] Instant pre-fetched profile load, bypassing DB query:', mappedUser.id, 'completeness:', mappedUser.onboardingCompleted);
+                  set({ currentUser: mappedUser, isAuthLoading: false });
+                  localStorage.setItem(cacheKey, JSON.stringify({ profile: mappedUser, timestamp: Date.now() }));
+                  activeCheckAuthPromise = null;
+                  return;
+                } catch (pe) {
+                  console.warn('[AUTH] Failed to map prefetchedProfile:', pe);
+                }
+              }
+
               const cached = localStorage.getItem(cacheKey);
 
               if (cached) {
@@ -468,7 +483,7 @@ export const useStore = create<AppState>()(
                   // Fire-and-forget background synchronization
                   supabase
                     .from('profiles')
-                    .select('*')
+                    .select('id,full_name,username,email,phone,birth_date,dob,location,avatar_url,avatar_id,streak,onboarding_completed,interests,badges,created_at,last_login_date,streak_freeze_count,xp,level,preferences')
                     .eq('id', sbSession.user.id)
                     .maybeSingle()
                     .then(
@@ -498,7 +513,7 @@ export const useStore = create<AppState>()(
               try {
                 const { data: profile, error: profileError } = await supabase
                   .from('profiles')
-                  .select('*')
+                  .select('id,full_name,username,email,phone,birth_date,dob,location,avatar_url,avatar_id,streak,onboarding_completed,interests,badges,created_at,last_login_date,streak_freeze_count,xp,level,preferences')
                   .eq('id', sbSession.user.id)
                   .maybeSingle();
 
@@ -906,7 +921,7 @@ export const useStore = create<AppState>()(
           groupGoals: state.groupGoals.filter(g => g.id !== id)
         }));
         await supabaseService.deleteGroupGoal(id);
-        await get().refreshData();
+        get().refreshData();
       },
 
       joinGroupGoal: (groupId, password) => {
@@ -955,7 +970,7 @@ export const useStore = create<AppState>()(
         }));
 
         await supabaseService.leaveGroup(id, state.currentUser.id);
-        await get().refreshData();
+        get().refreshData();
       },
 
       transferAdminRole: async (goalId, userId) => {
@@ -965,7 +980,7 @@ export const useStore = create<AppState>()(
             g.id === goalId ? { ...g, creatorId: userId } : g
           )
         }));
-        await get().refreshData();
+        get().refreshData();
       },
 
       removeGroupMember: (goalId, userId) => set((state) => ({
@@ -1284,15 +1299,19 @@ export const useStore = create<AppState>()(
       },
 
       deleteTransaction: async (id) => {
+        set((state) => ({
+          transactions: state.transactions.filter(t => t.id !== id)
+        }));
         await supabaseService.deleteTransaction(id);
-        await get().refreshData();
+        get().refreshData();
       },
 
       clearAllHistory: async () => {
         const state = get();
         if (!state.currentUser) return;
+        set({ transactions: [] });
         await supabaseService.clearAllTransactions(state.currentUser.id);
-        await get().refreshData();
+        get().refreshData();
       },
 
       checkReminders: () => {
@@ -1361,42 +1380,68 @@ export const useStore = create<AppState>()(
       },
 
       refreshData: async () => {
+        if (activeRefreshDataPromise) {
+          console.log('[STORE] Reusing active refreshData promise to collapse concurrent queries.');
+          return activeRefreshDataPromise;
+        }
+
         const state = get();
         if (!state.currentUser || !isConfigured) return;
 
+        console.time("dashboard-load");
+        const startTime = performance.now();
+
+        activeRefreshDataPromise = (async () => {
+          try {
+            console.time("profile-load");
+            console.time("goals-load");
+            console.time("notifications-load");
+
+            const [
+              { data: profile },
+              { data: soloGoals },
+              { data: groupGoals },
+              { data: emergencyGoals },
+              { data: notifications },
+              { data: transactions }
+            ] = await Promise.all([
+              supabaseService.getProfile(state.currentUser.id).catch(e => { console.warn('Profile fetch failed:', e); return { data: null }; }),
+              supabaseService.getSoloGoals(state.currentUser.id).catch(e => { console.warn('Solo goals fetch failed:', e); return { data: null }; }),
+              supabaseService.getGroupGoals().catch(e => { console.warn('Group goals fetch failed:', e); return { data: null }; }),
+              supabaseService.getEmergencyGoals(state.currentUser.id).catch(e => { console.warn('Emergency goals fetch failed:', e); return { data: null }; }),
+              supabaseService.getNotifications(state.currentUser.id).catch(e => { console.warn('Notifications fetch failed:', e); return { data: null }; }),
+              supabaseService.getTransactions(state.currentUser.id).catch(e => { console.warn('Transactions fetch failed:', e); return { data: null }; })
+            ]);
+
+            console.timeEnd("profile-load");
+            console.timeEnd("goals-load");
+            console.timeEnd("notifications-load");
+
+            set({
+              currentUser: profile ? { ...state.currentUser, ...profile } : state.currentUser,
+              soloGoals: soloGoals || state.soloGoals,
+              groupGoals: groupGoals || state.groupGoals,
+              emergencyGoals: emergencyGoals || state.emergencyGoals,
+              notifications: notifications || state.notifications,
+              transactions: transactions || state.transactions
+            });
+
+            get().checkStreak();
+            get().checkReminders();
+            get().fetchZettlData().catch(e => console.warn('[STORE] Lazy-load Zettl data failed:', e));
+          } catch (err) {
+            console.error('Data refresh unsuccessful:', err);
+          } finally {
+            console.timeEnd("dashboard-load");
+            const endTime = performance.now();
+            console.log(`[Dashboard Load Profile] all data refreshed in ${(endTime - startTime).toFixed(2)}ms`);
+          }
+        })();
+
         try {
-          // Fetch from Supabase
-          const [
-            { data: profile },
-            { data: soloGoals },
-            { data: groupGoals },
-            { data: emergencyGoals },
-            { data: notifications },
-            { data: transactions }
-          ] = await Promise.all([
-            supabaseService.getProfile(state.currentUser.id).catch(e => { console.warn('Profile fetch failed:', e); return { data: null }; }),
-            supabaseService.getSoloGoals(state.currentUser.id).catch(e => { console.warn('Solo goals fetch failed:', e); return { data: null }; }),
-            supabaseService.getGroupGoals().catch(e => { console.warn('Group goals fetch failed:', e); return { data: null }; }),
-            supabaseService.getEmergencyGoals(state.currentUser.id).catch(e => { console.warn('Emergency goals fetch failed:', e); return { data: null }; }),
-            supabaseService.getNotifications(state.currentUser.id).catch(e => { console.warn('Notifications fetch failed:', e); return { data: null }; }),
-            supabaseService.getTransactions(state.currentUser.id).catch(e => { console.warn('Transactions fetch failed:', e); return { data: null }; })
-          ]);
-
-          set({
-            currentUser: profile ? { ...state.currentUser, ...profile } : state.currentUser,
-            soloGoals: soloGoals || state.soloGoals,
-            groupGoals: groupGoals || state.groupGoals,
-            emergencyGoals: emergencyGoals || state.emergencyGoals,
-            notifications: notifications || state.notifications,
-            transactions: transactions || state.transactions
-          });
-
-          get().checkStreak();
-          get().checkReminders();
-          // Lazy-load non-critical Zettl / Gaming data in background with zero blocking
-          get().fetchZettlData().catch(e => console.warn('[STORE] Lazy-load Zettl data failed:', e));
-        } catch (err) {
-          console.error('Data refresh unsuccessful:', err);
+          await activeRefreshDataPromise;
+        } finally {
+          activeRefreshDataPromise = null;
         }
       },
 
