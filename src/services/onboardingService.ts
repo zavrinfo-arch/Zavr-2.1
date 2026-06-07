@@ -87,7 +87,7 @@ export const onboardingService = {
    * Verifies username availability with a robust check.
    * Compares the lowercase version of the username.
    */
-  async checkUsernameAvailability(username: string, signal?: AbortSignal): Promise<{ available: boolean; error: any }> {
+  async checkUsernameAvailability(username: string, signal?: AbortSignal, excludeUserId?: string): Promise<{ available: boolean; error: any }> {
     const cleaned = username.toLowerCase().trim();
     
     // Task 3: Client-side Validation pre-checks to reject immediately without database calls
@@ -95,10 +95,11 @@ export const onboardingService = {
       return { available: false, error: null };
     }
 
+    const cacheKey = `${cleaned}:${excludeUserId || ''}`;
     // Task 5: Cache hit check
-    if (usernameCache.has(cleaned)) {
-      console.log(`[Username Check Cache Hit] "${cleaned}" -> available: ${usernameCache.get(cleaned)}`);
-      return { available: usernameCache.get(cleaned)!, error: null };
+    if (usernameCache.has(cacheKey)) {
+      console.log(`[Username Check Cache Hit] "${cacheKey}" -> available: ${usernameCache.get(cacheKey)}`);
+      return { available: usernameCache.get(cacheKey)!, error: null };
     }
 
     // Task 7: Performance Tracking & console.time
@@ -111,8 +112,13 @@ export const onboardingService = {
       let query = supabase
         .from('profiles')
         .select('id')
-        .eq('username', cleaned)
-        .limit(1);
+        .eq('username', cleaned);
+
+      if (excludeUserId) {
+        query = query.neq('id', excludeUserId);
+      }
+
+      query = query.limit(1);
 
       if (signal) {
         query = query.abortSignal(signal);
@@ -126,7 +132,7 @@ export const onboardingService = {
       console.timeEnd("username-check");
 
       console.log(
-        `[Username Check DB Fetch] "${cleaned}" completed in ${latency.toFixed(2)}ms. ` +
+        `[Username Check DB Fetch] "${cleaned}" (exclude=${excludeUserId}) completed in ${latency.toFixed(2)}ms. ` +
         `Result: data=${JSON.stringify(data)}, error=${JSON.stringify(error)}. ` +
         `Total Checks: ${checkCount}, Avg Latency: ${(totalLatency / checkCount).toFixed(2)}ms.`
       );
@@ -140,7 +146,7 @@ export const onboardingService = {
 
       const available = !data;
       // Save to Cache
-      usernameCache.set(cleaned, available);
+      usernameCache.set(cacheKey, available);
 
       return {
         available,

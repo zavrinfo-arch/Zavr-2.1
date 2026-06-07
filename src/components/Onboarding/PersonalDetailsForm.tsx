@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { User as UserIcon, Smartphone, Calendar as CalendarIcon, Loader2, Check, AlertCircle } from 'lucide-react';
 import { NeoLuxuryStyles } from './styles';
 import { onboardingService } from '../../services/onboardingService';
+import { useStore } from '../../store/useStore';
 
 // Standard international top regions
 const COUNTRY_CODES = [
@@ -42,6 +43,7 @@ export default function PersonalDetailsForm({
   setUsernameStatus,
   setManualErrors
 }: PersonalDetailsFormProps) {
+  const { currentUser } = useStore();
   const [localUsername, setLocalUsername] = useState(data.username);
 
   // Diagnostics & audit trackers for forensic investigation
@@ -185,6 +187,7 @@ export default function PersonalDetailsForm({
       console.log('[USERNAME] START', localUsername);
       console.log('[USERNAME] QUERY START');
       
+      let timeoutFired = false;
       try {
         const queryStart = performance.now();
 
@@ -194,13 +197,14 @@ export default function PersonalDetailsForm({
         // Define an explicit timeout that triggers after 5 seconds
         timeoutId5s = setTimeout(() => {
           console.log('[USERNAME] TIMEOUT FIRED');
+          timeoutFired = true;
           if (abortController) {
             abortController.abort(new Error('TIMEOUT'));
           }
         }, 5000);
 
         // Fetch username availability with signal
-        const { available, error } = await onboardingService.checkUsernameAvailability(localUsername, abortController.signal);
+        const { available, error } = await onboardingService.checkUsernameAvailability(localUsername, abortController.signal, currentUser?.id);
         
         // Clear the 5-second timeout immediately once query settles, preventing timeout from firing
         if (timeoutId5s) {
@@ -221,16 +225,37 @@ export default function PersonalDetailsForm({
 
         if (error) {
           console.log('[USERNAME] QUERY ERROR', error);
+          
+          const isTimeout = timeoutFired || error.message === 'TIMEOUT' || (error.name === 'AbortError' && timeoutFired);
+          if (isTimeout) {
+            console.log('[TIMEOUT_TRIGGERED]');
+            console.log('[ACTIVE_STATE]', active);
+            console.log('[USERNAME_ERROR]', error);
+            console.error('[USERNAME] Username validation query exceeded 5 seconds. Timing out.');
+            transition('idle');
+            setManualErrors(prev => ({
+              ...prev,
+              username: 'Validation timed out. Please try again.'
+            }));
+            return;
+          }
+
           // Check if the query was aborted due to regular typing cleanup vs actual timeout
           if (error.name === 'AbortError' || error.message?.includes('aborted') || error.message?.includes('AbortError')) {
             console.log('[ABORT_CLEANUP]');
             console.log('[ACTIVE_STATE]', active);
             console.log('[USERNAME_ERROR]', error);
             console.log(`[USERNAME] Query aborted for stale user: "${localUsername}".`);
+            // Bulletproof fallback: if active is true and it was aborted, something weird happened, reset to idle
+            transition('idle');
             return;
           }
           console.warn('[USERNAME] Connection error returned from query:', error);
-          transition('available'); // Graceful fallback
+          transition('idle');
+          setManualErrors(prev => ({
+            ...prev,
+            username: `Validation error: ${error.message || 'Connection lost'}`
+          }));
           return;
         }
 
@@ -259,7 +284,7 @@ export default function PersonalDetailsForm({
         console.log('[USERNAME] QUERY ERROR', err);
 
         // If abortController aborted with 'TIMEOUT', we handle it
-        if (err.message === 'TIMEOUT' || (abortController?.signal.aborted && err.name === 'AbortError')) {
+        if (timeoutFired || err.message === 'TIMEOUT' || (abortController?.signal.aborted && err.name === 'AbortError' && timeoutFired)) {
           console.log('[TIMEOUT_TRIGGERED]');
           console.log('[ACTIVE_STATE]', active);
           console.log('[USERNAME_ERROR]', err);
@@ -270,9 +295,20 @@ export default function PersonalDetailsForm({
             ...prev,
             username: 'Validation timed out. Please try again.'
           }));
+        } else if (err.name === 'AbortError' || err.message?.includes('aborted') || err.message?.includes('AbortError')) {
+          console.log('[ABORT_CLEANUP]');
+          console.log('[ACTIVE_STATE]', active);
+          console.log('[USERNAME_ERROR]', err);
+          console.log(`[USERNAME] Query exception aborted for stale user: "${localUsername}".`);
+          // Bulletproof override: if active is still true, reset status back to idle
+          transition('idle');
         } else {
           console.error('[USERNAME] Failed to check username availability with exception:', err);
-          transition('available'); // Graceful fallback
+          transition('idle');
+          setManualErrors(prev => ({
+            ...prev,
+            username: `Connection failed: ${err.message || 'Check connection settings'}`
+          }));
         }
       } finally {
         console.timeEnd(checkLabel);
@@ -292,7 +328,7 @@ export default function PersonalDetailsForm({
         abortController.abort();
       }
     };
-  }, [localUsername, setUsernameStatus, setManualErrors]);
+  }, [localUsername, setUsernameStatus, setManualErrors, currentUser?.id]);
 
   return (
     <div className="space-y-6 max-w-xl mx-auto animate-fadeIn duration-500">

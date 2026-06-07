@@ -89,8 +89,15 @@ export default function Onboarding() {
   const validateStep1 = () => {
     const newErrors: Record<string, string> = {};
     if (!data.fullName.trim()) newErrors.fullName = 'Full Name is required';
-    if (!data.username) newErrors.username = 'Username is required';
-    if (usernameStatus === 'taken') newErrors.username = 'Username already in use';
+    if (!data.username) {
+      newErrors.username = 'Username is required';
+    } else if (usernameStatus === 'checking') {
+      newErrors.username = 'Checking username availability...';
+    } else if (usernameStatus === 'taken') {
+      newErrors.username = 'Username already in use';
+    } else if (usernameStatus === 'idle') {
+      newErrors.username = 'Please enter a valid, verified username';
+    }
     if (!data.phone) newErrors.phone = 'Phone number is required';
     if (!/^\d{7,15}$/.test(data.phone)) newErrors.phone = 'Enter a valid 7-15 digit number';
     
