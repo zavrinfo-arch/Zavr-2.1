@@ -457,14 +457,12 @@ export const useStore = create<AppState>()(
                 preferences: { currency: 'INR', notificationsEnabled: true, reminders: { enabled: true, time: '20:00', frequency: 'daily' } }
               };
 
-              const cacheKey = `zavr-profile-${sbSession.user.id}`;
-
               if (prefetchedProfile) {
                 try {
                   const mappedUser = mapProfileToUser(prefetchedProfile);
                   console.log('[AUTH] Instant pre-fetched profile load, bypassing DB query:', mappedUser.id, 'completeness:', mappedUser.onboardingCompleted);
                   set({ currentUser: mappedUser, isAuthLoading: false });
-                  localStorage.setItem(cacheKey, JSON.stringify({ profile: mappedUser, timestamp: Date.now() }));
+                  get().refreshData().catch(e => console.warn('[AUTH] refreshData after prefetchedProfile failed:', e));
                   activeCheckAuthPromise = null;
                   return;
                 } catch (pe) {
@@ -472,44 +470,9 @@ export const useStore = create<AppState>()(
                 }
               }
 
-              const cached = localStorage.getItem(cacheKey);
-
-              if (cached) {
-                try {
-                  const { profile: cachedProfile } = JSON.parse(cached);
-                  console.log('[AUTH] Instant cache hit, restoring cached user:', cachedProfile.id, 'completeness:', cachedProfile.onboardingCompleted);
-                  set({ currentUser: cachedProfile, isAuthLoading: false });
-
-                  // Fire-and-forget background synchronization
-                  supabase
-                    .from('profiles')
-                    .select('id,full_name,username,email,phone,birth_date,dob,location,avatar_url,avatar_id,streak,onboarding_completed,interests,badges,created_at,last_login_date,streak_freeze_count,xp,level,preferences')
-                    .eq('id', sbSession.user.id)
-                    .maybeSingle()
-                    .then(
-                      ({ data: profile, error: profileError }) => {
-                        if (!profileError && profile) {
-                          const mappedUser = mapProfileToUser(profile);
-                          localStorage.setItem(cacheKey, JSON.stringify({ profile: mappedUser, timestamp: Date.now() }));
-                          set({ currentUser: mappedUser });
-                          console.log('[AUTH] Background profile synchronization successful.');
-                        }
-                      },
-                      (e) => {
-                        console.warn('[AUTH] Background sync failure (non-blocking):', e);
-                      }
-                    );
-
-                  activeCheckAuthPromise = null;
-                  return; // Immediate mount of UI!
-                } catch (e) {
-                  console.warn('[AUTH] Failed to parse cached profile:', e);
-                }
-              }
-
               let profileFetched = false;
 
-              // Synchronously fetch the user profile ONLY if NOT in local cache
+              // Synchronously fetch the user profile ONLY from Supabase (Single Source of Truth)
               try {
                 const { data: profile, error: profileError } = await supabase
                   .from('profiles')
@@ -523,10 +486,12 @@ export const useStore = create<AppState>()(
 
                 if (profile) {
                   const mappedUser = mapProfileToUser(profile);
-                  localStorage.setItem(cacheKey, JSON.stringify({ profile: mappedUser, timestamp: Date.now() }));
                   set({ currentUser: mappedUser });
-                  console.log('[AUTH] Sync profile loaded:', mappedUser.id, 'completeness:', mappedUser.onboardingCompleted);
+                  console.log('[AUTH] Sync profile loaded from Supabase:', mappedUser.id, 'completeness:', mappedUser.onboardingCompleted);
                   profileFetched = true;
+                  
+                  // Fetch all associated goals, transactions, and notifications fresh from Supabase
+                  get().refreshData().catch(e => console.warn('[AUTH] refreshData after checkAuth failed:', e));
                 } else {
                   // Profile is missing in the database - auto-create it now
                   console.log('[AUTH] Profile row missing in database, auto-creating default...');
@@ -580,27 +545,13 @@ export const useStore = create<AppState>()(
                     phone: null,
                     location: null,
                   });
-                  localStorage.setItem(cacheKey, JSON.stringify({ profile: fallbackUser, timestamp: Date.now() }));
                   set({ currentUser: fallbackUser });
                   profileFetched = true;
+                  
+                  get().refreshData().catch(e => console.warn('[AUTH] refreshData after checkAuth fallback failed:', e));
                 }
               } catch (err: any) {
                 console.error('[AUTH] Synchronous profile check query failed:', err);
-              }
-
-              // Use cached storage fallback if database connection has temporary issues
-              if (!profileFetched) {
-                const cached = localStorage.getItem(cacheKey);
-                if (cached) {
-                  try {
-                    const { profile: cachedProfile } = JSON.parse(cached);
-                    console.log('[AUTH] Using cached offline profile:', cachedProfile.onboardingCompleted);
-                    set({ currentUser: cachedProfile });
-                    profileFetched = true;
-                  } catch (e) {
-                    console.warn('[AUTH] Error parsing cached profile:', e);
-                  }
-                }
               }
 
               // Absolute fallback to optimistic user representation
@@ -821,13 +772,7 @@ export const useStore = create<AppState>()(
           users: state.users.map(u => u.id === finalUser.id ? finalUser : u)
         });
 
-        // Instant local cache update to keep cached profile fully in sync
-        const cacheKey = `zavr-profile-${finalUser.id}`;
-        try {
-          localStorage.setItem(cacheKey, JSON.stringify({ profile: finalUser, timestamp: Date.now() }));
-        } catch (e) {
-          console.warn('[STORE] Cache write failed:', e);
-        }
+
 
         console.log('[STORE] Calling remote updateProfile in background...');
         supabaseService.updateProfile(finalUser.id, {
@@ -1736,19 +1681,7 @@ export const useStore = create<AppState>()(
     {
       name: 'zavr-storage',
       partialize: (state) => ({
-        soloGoals: state.soloGoals,
-        groupGoals: state.groupGoals,
-        emergencyGoals: state.emergencyGoals,
-        transactions: state.transactions,
-        notifications: state.notifications,
-        streakData: state.streakData,
         theme: state.theme,
-        weeklyChallenge: state.weeklyChallenge,
-        dailyQuests: state.dailyQuests,
-        weeklyQuests: state.weeklyQuests,
-        zettlFriends: state.zettlFriends,
-        zettlGroups: state.zettlGroups,
-        personalZettls: state.personalZettls,
       }),
     }
   )

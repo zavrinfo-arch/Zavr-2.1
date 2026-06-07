@@ -44,10 +44,48 @@ export default function PersonalDetailsForm({
 }: PersonalDetailsFormProps) {
   const [localUsername, setLocalUsername] = useState(data.username);
 
+  // Diagnostics & audit trackers for forensic investigation
+  const renderCountRef = React.useRef(0);
+  const validationCountRef = React.useRef(0);
+  const syncCountRef = React.useRef(0);
+  const userHasEditedRef = React.useRef(false);
+
+  renderCountRef.current++;
+
+  // Log active state on every render using requested console format
+  console.log(
+    '[USERNAME_SYNC]',
+    {
+      parent: data.username,
+      local: localUsername,
+      status: usernameStatus
+    }
+  );
+
+  console.log('[USERNAME_METRICS]', {
+    renders: renderCountRef.current,
+    validations: validationCountRef.current,
+    syncs: syncCountRef.current,
+    userHasEdited: userHasEditedRef.current
+  });
+
   // Sync state upward when local username changes
   useEffect(() => {
     onChange({ username: localUsername });
   }, [localUsername]);
+
+  // Sync state downward when parent data changes asynchronously (e.g. on profile auth loaded)
+  useEffect(() => {
+    if (data.username !== undefined && data.username !== null && data.username !== localUsername) {
+      if (!userHasEditedRef.current) {
+        console.log(`[USERNAME_SYNC] DOWNWARD SYNC: Updating localUsername from "${localUsername}" to parent value: "${data.username}"`);
+        syncCountRef.current++;
+        setLocalUsername(data.username);
+      } else {
+        console.log(`[USERNAME_SYNC] DOWNWARD SYNC IGNORED: User has edited. Parent: "${data.username}", Local: "${localUsername}"`);
+      }
+    }
+  }, [data.username]);
 
   const statusRef = React.useRef(usernameStatus);
   useEffect(() => {
@@ -58,17 +96,31 @@ export default function PersonalDetailsForm({
   // Ensures we do not pound Supabase with a backend request for every single keystroke.
   useEffect(() => {
     let active = true;
+    let abortController: AbortController | null = null;
+    let timeoutId5s: any = null;
+
+    console.log('[USERNAME] EFFECT START');
 
     const transition = (nextState: 'idle' | 'checking' | 'available' | 'taken') => {
       if (!active) {
-        console.log('[USERNAME] Discarding transition to state:', nextState, 'for stale user:', localUsername);
+        console.log(`[USERNAME] ACTIVE FLAG: false | Discarding transition to state: "${nextState}" for stale user: "${localUsername}"`);
         return;
       }
-      console.log('[USERNAME] Transition to state:', nextState, 'for user:', localUsername);
+      console.log('[USERNAME] STATUS', statusRef.current, nextState);
+      if (nextState === 'available') {
+        console.log('[USERNAME] STATUS SET AVAILABLE');
+      } else if (nextState === 'taken') {
+        console.log('[USERNAME] STATUS SET TAKEN');
+      } else if (nextState === 'idle') {
+        console.log('[USERNAME] STATUS SET IDLE');
+      }
       setUsernameStatus(nextState);
     };
 
+    console.log(`[USERNAME] EFFECT RE-RUN: active=true, username="${localUsername}"`);
+
     if (!localUsername) {
+      console.log('[USERNAME] Empty username field. Transitioning to idle.');
       transition('idle');
       setManualErrors(prev => {
         const copy = { ...prev };
@@ -80,6 +132,7 @@ export default function PersonalDetailsForm({
 
     // Task 3: Client side local validation rules
     if (localUsername.length < 3) {
+      console.log('[USERNAME] Validation check failed: length < 3');
       transition('idle');
       setManualErrors(prev => ({
         ...prev,
@@ -89,6 +142,7 @@ export default function PersonalDetailsForm({
     }
 
     if (localUsername.length > 20) {
+      console.log('[USERNAME] Validation check failed: length > 20');
       transition('idle');
       setManualErrors(prev => ({
         ...prev,
@@ -98,6 +152,7 @@ export default function PersonalDetailsForm({
     }
 
     if (!/^[a-zA-Z0-9_]+$/.test(localUsername)) {
+      console.log('[USERNAME] Validation check failed: regex match failed');
       transition('idle');
       setManualErrors(prev => ({
         ...prev,
@@ -115,42 +170,71 @@ export default function PersonalDetailsForm({
     transition('checking');
 
     const timeoutId = setTimeout(async () => {
-      if (!active) return;
+      console.log('[USERNAME] DEBOUNCE START');
+      if (!active) {
+        console.log(`[USERNAME] Debounce timeout fired but active is false for: "${localUsername}". Discarding.`);
+        return;
+      }
+
+      // Increment validation tracker count
+      validationCountRef.current++;
 
       // Task 7: Unique tracer label
       const checkLabel = `username-check-${localUsername}`;
       console.time(checkLabel);
-      console.log(`[Username Check Start] Initiating database query for: "${localUsername}"`);
+      console.log('[USERNAME] START', localUsername);
+      console.log('[USERNAME] QUERY START');
       
-      // Define a timeout promise which rejects after 5 seconds, storing its timeoutId for cleanup
-      let timeoutId5s: any;
-      const timeoutPromise = new Promise<{ available: boolean; error: any }>((_, reject) => {
-        timeoutId5s = setTimeout(() => {
-          console.warn(`[PersonalDetailsForm] Timeout threshold reached (5000ms) for username: "${localUsername}"`);
-          reject(new Error('TIMEOUT'));
-        }, 5000);
-      });
-
       try {
         const queryStart = performance.now();
 
-        // Race the username query against the 5-second timeout
-        const checkPromise = onboardingService.checkUsernameAvailability(localUsername);
-        const { available, error } = await Promise.race([checkPromise, timeoutPromise]);
+        // Instantiate the AbortController for both timeout and typing cancellation
+        abortController = new AbortController();
+
+        // Define an explicit timeout that triggers after 5 seconds
+        timeoutId5s = setTimeout(() => {
+          console.log('[USERNAME] TIMEOUT FIRED');
+          if (abortController) {
+            abortController.abort(new Error('TIMEOUT'));
+          }
+        }, 5000);
+
+        // Fetch username availability with signal
+        const { available, error } = await onboardingService.checkUsernameAvailability(localUsername, abortController.signal);
         
+        // Clear the 5-second timeout immediately once query settles, preventing timeout from firing
+        if (timeoutId5s) {
+          clearTimeout(timeoutId5s);
+          timeoutId5s = null;
+        }
+
         const queryDuration = performance.now() - queryStart;
-        console.log(`[Username Check End] Finished query for: "${localUsername}" in ${queryDuration.toFixed(2)}ms`);
+        console.log('[USERNAME] RESULT', { available, error });
 
         if (!active) {
-          console.log('[Username Check] Discarding stale validation query result.');
+          console.log('[ABORT_CLEANUP]');
+          console.log('[ACTIVE_STATE]', active);
+          console.log('[USERNAME_ERROR]', error);
+          console.log(`[USERNAME] Query complete but is stale for: "${localUsername}". Discarding.`);
           return;
         }
 
         if (error) {
-          console.warn('[PersonalDetailsForm] Connection error returned from query:', error);
-          transition('available');
+          console.log('[USERNAME] QUERY ERROR', error);
+          // Check if the query was aborted due to regular typing cleanup vs actual timeout
+          if (error.name === 'AbortError' || error.message?.includes('aborted') || error.message?.includes('AbortError')) {
+            console.log('[ABORT_CLEANUP]');
+            console.log('[ACTIVE_STATE]', active);
+            console.log('[USERNAME_ERROR]', error);
+            console.log(`[USERNAME] Query aborted for stale user: "${localUsername}".`);
+            return;
+          }
+          console.warn('[USERNAME] Connection error returned from query:', error);
+          transition('available'); // Graceful fallback
           return;
         }
+
+        console.log('[USERNAME] QUERY SUCCESS', { available });
 
         if (available) {
           transition('available');
@@ -158,35 +242,55 @@ export default function PersonalDetailsForm({
           transition('taken');
         }
       } catch (err: any) {
+        // Clear timeout in case of exception
+        if (timeoutId5s) {
+          clearTimeout(timeoutId5s);
+          timeoutId5s = null;
+        }
+
         if (!active) {
-          console.log('[Username Check] Catch-block abortion triggered safe discard');
+          console.log('[ABORT_CLEANUP]');
+          console.log('[ACTIVE_STATE]', active);
+          console.log('[USERNAME_ERROR]', err);
+          console.log(`[USERNAME] Exception caught but is stale for: "${localUsername}". Discarding. Error:`, err.message);
           return;
         }
 
-        if (err.message === 'TIMEOUT') {
-          console.error('[PersonalDetailsForm] Username validation query exceeded 5 seconds. Timing out.');
-          // Stop spinner and show validation error message as requested
+        console.log('[USERNAME] QUERY ERROR', err);
+
+        // If abortController aborted with 'TIMEOUT', we handle it
+        if (err.message === 'TIMEOUT' || (abortController?.signal.aborted && err.name === 'AbortError')) {
+          console.log('[TIMEOUT_TRIGGERED]');
+          console.log('[ACTIVE_STATE]', active);
+          console.log('[USERNAME_ERROR]', err);
+          console.log('[USERNAME] TIMEOUT FIRED');
+          console.error('[USERNAME] Username validation query exceeded 5 seconds. Timing out.');
           transition('idle');
           setManualErrors(prev => ({
             ...prev,
             username: 'Validation timed out. Please try again.'
           }));
         } else {
-          console.error('[PersonalDetailsForm] Failed to check username availability with exception:', err);
+          console.error('[USERNAME] Failed to check username availability with exception:', err);
           transition('available'); // Graceful fallback
         }
       } finally {
-        if (timeoutId5s) {
-          clearTimeout(timeoutId5s);
-        }
         console.timeEnd(checkLabel);
       }
     }, 500); // Strict 500ms lazy delay
 
-    // Memory & Connection optimization: cancel both the timer and the network request on typing changes
+    // Memory & Connection optimization: cancel standard timers, cancel debounce, abort active query
     return () => {
+      console.log('[USERNAME] CLEANUP');
+      console.log(`[USERNAME] CLEANUP for: "${localUsername}" (active=false, clear debounce & abort active query)`);
       active = false;
       clearTimeout(timeoutId);
+      if (timeoutId5s) {
+        clearTimeout(timeoutId5s);
+      }
+      if (abortController) {
+        abortController.abort();
+      }
     };
   }, [localUsername, setUsernameStatus, setManualErrors]);
 
@@ -227,7 +331,10 @@ export default function PersonalDetailsForm({
               placeholder="choose_username"
               className={NeoLuxuryStyles.input}
               value={localUsername}
-              onChange={e => setLocalUsername(e.target.value.toLowerCase().trim())}
+              onChange={e => {
+                userHasEditedRef.current = true;
+                setLocalUsername(e.target.value.toLowerCase().trim());
+              }}
             />
             {usernameStatus === 'checking' && <Loader2 size={16} className="animate-spin text-white/40 mr-1" />}
             {usernameStatus === 'available' && <Check size={16} className="text-green-400 mr-1" />}

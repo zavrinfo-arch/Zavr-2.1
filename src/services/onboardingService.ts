@@ -87,7 +87,7 @@ export const onboardingService = {
    * Verifies username availability with a robust check.
    * Compares the lowercase version of the username.
    */
-  async checkUsernameAvailability(username: string): Promise<{ available: boolean; error: any }> {
+  async checkUsernameAvailability(username: string, signal?: AbortSignal): Promise<{ available: boolean; error: any }> {
     const cleaned = username.toLowerCase().trim();
     
     // Task 3: Client-side Validation pre-checks to reject immediately without database calls
@@ -108,12 +108,17 @@ export const onboardingService = {
 
     try {
       // Task 4 & 6: Optimized Query Selection (select 'id', eq 'username', limit(1), maybeSingle)
-      const { data, error } = await supabase
+      let query = supabase
         .from('profiles')
         .select('id')
         .eq('username', cleaned)
-        .limit(1)
-        .maybeSingle();
+        .limit(1);
+
+      if (signal) {
+        query = query.abortSignal(signal);
+      }
+
+      const { data, error } = await query.maybeSingle();
 
       const endTime = performance.now();
       const latency = endTime - startTime;
@@ -144,6 +149,10 @@ export const onboardingService = {
 
     } catch (err: any) {
       console.timeEnd("username-check");
+      if (err?.name === 'AbortError' || err?.message?.includes('aborted')) {
+        console.log(`[Username Check] Query for "${cleaned}" was aborted.`);
+        return { available: false, error: err };
+      }
       console.error('[Onboarding Service] Error checking username availability:', err);
       return { available: false, error: err };
     }
