@@ -46,7 +46,7 @@ export default function Onboarding() {
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
-  const { currentUser, updateUser, addSoloGoal, resetWeeklyChallenge } = useStore();
+  const { currentUser, updateUser, addSoloGoal, resetWeeklyChallenge, signOut } = useStore();
 
   // Primary user profile form states
   const [data, setData] = useState({
@@ -237,13 +237,26 @@ export default function Onboarding() {
             Step {step} of 5
           </span>
         </div>
-        <div className="flex gap-1 w-32 shrink-0">
-          {[1, 2, 3, 4, 5].map((s) => (
-            <div 
-              key={s} 
-              className={s <= step ? NeoLuxuryStyles.stepDotActive : NeoLuxuryStyles.stepDotInactive}
-            />
-          ))}
+        <div className="flex items-center gap-4">
+          <button
+            type="button"
+            onClick={async () => {
+              if (window.confirm("Are you sure you want to sign out and return to the login screen?")) {
+                await signOut();
+              }
+            }}
+            className="text-[10px] uppercase font-bold text-white/40 hover:text-white transition-colors duration-300 tracking-[0.1em] font-mono border border-white/[0.08] hover:border-white/20 px-3 py-1.5 rounded-full cursor-pointer bg-white/[0.02]"
+          >
+            Log Out
+          </button>
+          <div className="flex gap-1 w-24 shrink-0">
+            {[1, 2, 3, 4, 5].map((s) => (
+              <div 
+                key={s} 
+                className={s <= step ? NeoLuxuryStyles.stepDotActive : NeoLuxuryStyles.stepDotInactive}
+              />
+            ))}
+          </div>
         </div>
       </div>
 

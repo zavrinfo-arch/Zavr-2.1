@@ -38,7 +38,7 @@ export default function SplashScreen() {
     }, 1700); // 1.7s allows the premium animations to breathe beautifully
 
     return () => clearTimeout(timer);
-  }, [currentUser, isAuthLoading, navigate]);
+  }, [currentUser, session, isAuthLoading, navigate]);
 
   return (
     <div className="fixed inset-0 flex flex-col items-center justify-center bg-background overflow-hidden z-50">

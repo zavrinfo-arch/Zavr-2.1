@@ -76,30 +76,62 @@ export const supabaseService = {
       if (updates.personalDetailsFilled !== undefined) dbUpdates.personal_details_filled = updates.personalDetailsFilled;
 
       // Save using UPSERT (not insert) as per requirement 2
-      console.log('[SUPABASE-SVC] Executing upsert on profiles...', dbUpdates);
-      let { data, error } = await supabase
-        .from('profiles')
-        .upsert(dbUpdates)
-        .select()
-        .maybeSingle();
+      console.log('[SUPABASE-SVC] Executing upsert on profiles with dynamic column resilience...', dbUpdates);
+      let data = null;
+      let error = null;
+      let maxAttempts = 5;
+      let attempt = 0;
+      let success = false;
 
-      if (error && (error.message?.includes('avatar_id') || error.code?.includes('42703'))) {
-        console.warn('[SUPABASE-SVC] Upsert failed due to missing avatar_id column. Retrying without avatar_id...', error.message);
-        const fallbackUpdates = { ...dbUpdates };
-        delete fallbackUpdates.avatar_id;
-        const retryResult = await supabase
+      while (attempt < maxAttempts) {
+        attempt++;
+        const res = await supabase
           .from('profiles')
-          .upsert(fallbackUpdates)
+          .upsert({ ...dbUpdates })
           .select()
           .maybeSingle();
-        data = retryResult.data;
-        error = retryResult.error;
+
+        if (!res.error) {
+          data = res.data;
+          error = null;
+          success = true;
+          break;
+        }
+
+        error = res.error;
+        console.warn(`[SUPABASE-SVC] Upsert attempt ${attempt} failed:`, error.message, 'code:', error.code);
+
+        // Code 42703 is Postgres "undefined_column" - we also inspect the error message
+        if (error.code === '42703' || error.message?.includes('column')) {
+          // Identify the missing column name using robust regex matches:
+          // e.g., column "personal_details_filled" of relation "profiles" does not exist
+          const match = error.message.match(/column "(.*?)"/) || error.message.match(/column '(.*?)'/);
+          if (match && match[1]) {
+            const missingCol = match[1];
+            console.warn(`[SUPABASE-SVC] Purging missing column "${missingCol}" from updates payload and retrying...`);
+            delete dbUpdates[missingCol];
+          } else {
+            // Precise fallback in case column name extraction fails
+            if (dbUpdates.personal_details_filled !== undefined) {
+              console.warn('[SUPABASE-SVC] Hard fallback: Presumed missing column "personal_details_filled". Purging...');
+              delete dbUpdates.personal_details_filled;
+            } else if (dbUpdates.avatar_id !== undefined) {
+              console.warn('[SUPABASE-SVC] Hard fallback: Presumed missing column "avatar_id". Purging...');
+              delete dbUpdates.avatar_id;
+            } else {
+              break; // No other non-essential keys to drop
+            }
+          }
+        } else {
+          // If the error is not a missing column, break to prevent infinite attempts on general errors
+          break;
+        }
       }
 
       if (error) {
-        console.error('[SUPABASE-SVC] Final upsert profile error:', error);
+        console.error('[SUPABASE-SVC] Final upsert profile failed completely:', error);
       } else {
-        console.log('[SUPABASE-SVC] Profile upsert successful');
+        console.log('[SUPABASE-SVC] Profile upsert successful on attempt', attempt);
       }
       
       return { data, error };
