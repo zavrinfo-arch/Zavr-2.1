@@ -228,6 +228,7 @@ async function getAuthenticatedUser(req: express.Request, res: express.Response)
           if (!refreshError && refreshData.session) {
             const session = refreshData.session;
             res.cookie('sb-access-token', session.access_token, {
+              path: '/',
               httpOnly: true,
               secure: true,
               sameSite: 'none',
@@ -235,6 +236,7 @@ async function getAuthenticatedUser(req: express.Request, res: express.Response)
             });
             if (session.refresh_token) {
               res.cookie('sb-refresh-token', session.refresh_token, {
+                path: '/',
                 httpOnly: true,
                 secure: true,
                 sameSite: 'none',
@@ -314,12 +316,14 @@ app.post('/api/auth/signup', signinLimiter, async (req, res) => {
     if (data.session) {
       console.log('Setting session cookies after signup for user:', data.user?.id);
       res.cookie('sb-access-token', data.session.access_token, {
+        path: '/',
         httpOnly: true,
         secure: true,
         sameSite: 'none',
         maxAge: data.session.expires_in * 1000
       });
       res.cookie('sb-refresh-token', data.session.refresh_token, {
+        path: '/',
         httpOnly: true,
         secure: true,
         sameSite: 'none',
@@ -355,12 +359,14 @@ app.post('/api/auth/verify', async (req, res) => {
   if (data.session) {
     console.log('Setting session cookies after verify for user:', data.user?.id);
     res.cookie('sb-access-token', data.session.access_token, {
+      path: '/',
       httpOnly: true,
       secure: true,
       sameSite: 'none',
       maxAge: data.session.expires_in * 1000
     });
     res.cookie('sb-refresh-token', data.session.refresh_token, {
+      path: '/',
       httpOnly: true,
       secure: true,
       sameSite: 'none',
@@ -516,12 +522,14 @@ app.post('/api/auth/signin', signinLimiter, async (req, res) => {
     if (data.session) {
       console.log('Setting session cookies after signin for user:', data.user?.id);
       res.cookie('sb-access-token', data.session.access_token, {
+        path: '/',
         httpOnly: true,
         secure: true,
         sameSite: 'none',
         maxAge: data.session.expires_in * 1000
       });
       res.cookie('sb-refresh-token', data.session.refresh_token, {
+        path: '/',
         httpOnly: true,
         secure: true,
         sameSite: 'none',
@@ -586,12 +594,14 @@ app.post('/api/auth/session', async (req, res) => {
   if (session) {
     console.log('Synchronizing session cookies for user:', session.user?.id);
     res.cookie('sb-access-token', session.access_token, {
+      path: '/',
       httpOnly: true,
       secure: true,
       sameSite: 'none',
       maxAge: session.expires_in * 1000
     });
     res.cookie('sb-refresh-token', session.refresh_token, {
+      path: '/',
       httpOnly: true,
       secure: true,
       sameSite: 'none',

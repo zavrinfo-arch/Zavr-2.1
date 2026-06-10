@@ -29,6 +29,7 @@ const Home = lazy(() => import('./pages/Home'));
 const Goals = lazy(() => import('./pages/Goals'));
 const History = lazy(() => import('./pages/History'));
 const Profile = lazy(() => import('./pages/Profile'));
+const ZettlPage = lazy(() => import('./pages/Zettl'));
 const ZettlChatList = lazy(() => import('./pages/ZettlChatList'));
 const ZettlChatRoom = lazy(() => import('./pages/ZettlChatRoom'));
 const ActivityFeedPage = lazy(() => import('./pages/ActivityFeed'));
@@ -297,9 +298,7 @@ export default function App() {
               
               <Route path="/zettl" element={
                 <ProtectedRoute>
-                  <Layout onPlusClick={() => { setPlusAction('main'); setIsPlusModalOpen(true); }}>
-                    <ZettlChatList />
-                  </Layout>
+                  <ZettlPage />
                 </ProtectedRoute>
               } />
 

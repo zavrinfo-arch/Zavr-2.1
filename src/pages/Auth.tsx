@@ -26,6 +26,18 @@ export default function Auth() {
   const [verificationCode, setVerificationCode] = useState('');
   const [showWelcome, setShowWelcome] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [isResetMode, setIsResetMode] = useState(false);
+  const [resetPassword, setResetPassword] = useState('');
+  const [resetConfirmPassword, setResetConfirmPassword] = useState('');
+  const [showResetPassword, setShowResetPassword] = useState(false);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const isRecovery = params.get('reset') === 'true' || window.location.hash.includes('type=recovery') || window.location.hash.includes('recovery');
+    if (isRecovery) {
+      setIsResetMode(true);
+    }
+  }, []);
   const lastVerifyClick = React.useRef(0);
   const isVerifyingRef = React.useRef(false);
   const isSigningUpRef = React.useRef(false);
@@ -192,19 +204,19 @@ export default function Auth() {
       if (error.name === 'AbortError') {
         message = 'Request timed out (3s limit). Please check your internet connection and try again.';
       }
-      toast.error(message);
       
-      if (message.toLowerCase().includes('invalid login credentials')) {
+      const lowerMessage = message.toLowerCase();
+      if (lowerMessage.includes('invalid login credentials') || lowerMessage.includes('invalid email or password')) {
         toast((t) => (
           <div className="flex flex-col gap-2">
-            <p className="font-bold text-xs uppercase tracking-tight">Invalid Credentials</p>
+            <p className="font-bold text-xs uppercase tracking-tight">Login Failed</p>
             <p className="text-[10px] opacity-60 leading-relaxed">
-              Check your email and password. You might need to verify your account first if you haven't done so, or reset your password if you've forgotten it.
+              Incorrect email or password. If you just signed up, you may need to verify your email, or reset your password if you forgot it.
             </p>
             <div className="flex flex-wrap gap-2 pt-1">
               <button 
                 onClick={() => { toast.dismiss(t.id); setIsLogin(false); setSignupStep('verify'); }}
-                className="text-[9px] bg-foreground px-2 py-1.5 rounded-md uppercase font-black text-background transition-opacity hover:opacity-80 shrink-0"
+                className="text-[9px] bg-foreground px-2 py-1.5 rounded-md uppercase font-black text-background transition-opacity hover:opacity-80 shrink-0 cursor-pointer"
               >
                 Verify Code
               </button>
@@ -214,6 +226,10 @@ export default function Auth() {
                   setLoading(true);
                   try {
                     const email = formData.email.trim().toLowerCase();
+                    if (!email) {
+                      toast.error('Please enter your email address first.');
+                      return;
+                    }
                     const response = await fetchWithRetry('/api/auth/resend-code', {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
@@ -232,13 +248,43 @@ export default function Auth() {
                     setLoading(false);
                   }
                 }}
-                className="text-[9px] bg-[#FF6B6B] px-2 py-1.5 rounded-md uppercase font-black text-white transition-opacity hover:opacity-80 shrink-0"
+                className="text-[9px] bg-[#FF6B6B] px-2 py-1.5 rounded-md uppercase font-black text-white transition-opacity hover:opacity-80 shrink-0 cursor-pointer"
               >
                 Resend Code
               </button>
               <button 
+                onClick={async () => {
+                  toast.dismiss(t.id);
+                  setLoading(true);
+                  try {
+                    const email = formData.email.trim().toLowerCase();
+                    if (!email) {
+                      toast.error('Please type in your email address first.');
+                      return;
+                    }
+                    const response = await fetchWithRetry('/api/auth/reset-password-request', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ email })
+                    });
+                    if (!response.ok) {
+                      const resData = await response.json();
+                      throw new Error(resData.error || 'Failed to send reset link');
+                    }
+                    toast.success('Password reset link sent to your email! (Check your spam/junk folder too)');
+                  } catch (err: any) {
+                    toast.error(err.message);
+                  } finally {
+                    setLoading(false);
+                  }
+                }}
+                className="text-[9px] bg-amber-500 px-2 py-1.5 rounded-md uppercase font-black text-black transition-opacity hover:opacity-80 shrink-0 cursor-pointer"
+              >
+                Reset Password
+              </button>
+              <button 
                 onClick={() => { toast.dismiss(t.id); }}
-                className="text-[9px] bg-foreground/5 px-2 py-1.5 rounded-md uppercase font-black transition-colors hover:bg-foreground/10 shrink-0"
+                className="text-[9px] bg-foreground/5 px-2 py-1.5 rounded-md uppercase font-black transition-colors hover:bg-foreground/10 shrink-0 cursor-pointer"
               >
                 Dismiss
               </button>
@@ -503,6 +549,69 @@ export default function Auth() {
     }
   };
 
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (loading) return;
+    if (!resetPassword) {
+      toast.error('Password is required');
+      return;
+    }
+    if (resetPassword !== resetConfirmPassword) {
+      toast.error('Passwords do not match');
+      return;
+    }
+    const strength = validatePassword(resetPassword);
+    if (strength !== 'Strong') {
+      toast.error('Password must be strong (8+ chars, Uppercase, Number, Special)');
+      return;
+    }
+
+    setLoading(true);
+    const id = toast.loading('updating your password...');
+    try {
+      const { data, error } = await supabase.auth.updateUser({
+        password: resetPassword
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      toast.success('Password updated successfully!', { id });
+      
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        await fetch('/api/auth/session', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ session: sessionData.session })
+        });
+      } catch (err) {
+        console.warn('[AUTH] Background session sync error:', err);
+      }
+
+      await checkAuth();
+
+      // Clear search query and hashes from the url
+      window.history.replaceState(null, '', window.location.pathname);
+      
+      setIsResetMode(false);
+      setIsLogin(true);
+
+      const user = useStore.getState().currentUser;
+      if (user?.onboardingCompleted) {
+        navigate('/home', { replace: true });
+      } else {
+        navigate('/onboarding', { replace: true });
+      }
+    } catch (err: any) {
+      console.error('[AUTH] Reset password failed:', err);
+      toast.error(err.message || 'Failed to reset password', { id });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen flex flex-col px-8 py-12 bg-background overflow-y-auto">
       <AnimatePresence>
@@ -553,36 +662,112 @@ export default function Auth() {
           />
         </div>
         <h1 className="text-4xl font-bold tracking-tight mb-3 text-foreground">
-          {isLogin ? 'Welcome Back' : 'Join Zavr'}
+          {isResetMode ? 'Update Password' : isLogin ? 'Welcome Back' : 'Join Zavr'}
         </h1>
         <p className="opacity-30 text-sm leading-relaxed">
-          {isLogin ? 'Sign in with your email' : 'Start your gamified savings adventure'}
+          {isResetMode ? 'Set a secure new password for your account' : isLogin ? 'Sign in with your email' : 'Start your gamified savings adventure'}
         </p>
       </motion.div>
 
-      <div className="flex p-1 clay-inset mb-10">
-        <button 
-          onClick={() => { setIsLogin(true); setSignupStep('email'); }}
-          className={cn(
-            "flex-1 py-3 text-xs font-bold rounded-xl transition-all uppercase tracking-widest",
-            isLogin ? "bg-surface text-foreground shadow-xl" : "opacity-30"
-          )}
-        >
-          Login
-        </button>
-        <button 
-          onClick={() => setIsLogin(false)}
-          className={cn(
-            "flex-1 py-3 text-xs font-bold rounded-xl transition-all uppercase tracking-widest",
-            !isLogin ? "bg-surface text-foreground shadow-xl" : "opacity-30"
-          )}
-        >
-          Signup
-        </button>
-      </div>
+      {!isResetMode && (
+        <div className="flex p-1 clay-inset mb-10">
+          <button 
+            onClick={() => { setIsLogin(true); setSignupStep('email'); }}
+            className={cn(
+              "flex-1 py-3 text-xs font-bold rounded-xl transition-all uppercase tracking-widest",
+              isLogin ? "bg-surface text-foreground shadow-xl" : "opacity-30"
+            )}
+          >
+            Login
+          </button>
+          <button 
+            onClick={() => setIsLogin(false)}
+            className={cn(
+              "flex-1 py-3 text-xs font-bold rounded-xl transition-all uppercase tracking-widest",
+              !isLogin ? "bg-surface text-foreground shadow-xl" : "opacity-30"
+            )}
+          >
+            Signup
+          </button>
+        </div>
+      )}
 
       <AnimatePresence mode="wait">
-        {isLogin ? (
+        {isResetMode ? (
+          <motion.form 
+            key="reset-password"
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            onSubmit={handleResetPassword} 
+            className="space-y-4"
+          >
+            <div className="relative">
+              <Input 
+                icon={Lock} 
+                name="resetPassword" 
+                type={showResetPassword ? 'text' : 'password'} 
+                placeholder="New Password" 
+                value={resetPassword} 
+                onChange={(e: any) => setResetPassword(e.target.value)}
+              />
+              <button 
+                type="button"
+                onClick={() => setShowResetPassword(!showResetPassword)}
+                className="absolute right-4 top-1/2 -translate-y-1/2 opacity-40 hover:opacity-100"
+              >
+                {showResetPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+              </button>
+            </div>
+
+            {resetPassword && (
+              <div className="flex items-center gap-2 px-1">
+                <div className="flex-1 h-1 rounded-full bg-foreground/10 overflow-hidden">
+                  <motion.div 
+                    initial={{ width: 0 }}
+                    animate={{ 
+                      width: validatePassword(resetPassword) === 'Weak' ? '33%' : validatePassword(resetPassword) === 'Medium' ? '66%' : '100%',
+                      backgroundColor: validatePassword(resetPassword) === 'Weak' ? '#ef4444' : validatePassword(resetPassword) === 'Medium' ? '#f59e0b' : '#10b981'
+                    }}
+                    className="h-full"
+                  />
+                </div>
+                <span className={cn(
+                  "text-[10px] font-bold uppercase tracking-wider",
+                  validatePassword(resetPassword) === 'Weak' ? "text-red-500" : validatePassword(resetPassword) === 'Medium' ? "text-amber-500" : "text-emerald-500"
+                )}>
+                  {validatePassword(resetPassword)}
+                </span>
+              </div>
+            )}
+
+            <Input 
+              icon={Lock} 
+              name="resetConfirmPassword" 
+              type="password" 
+              placeholder="Confirm New Password" 
+              value={resetConfirmPassword} 
+              onChange={(e: any) => setResetConfirmPassword(e.target.value)}
+            />
+
+            <button 
+              type="submit"
+              disabled={loading}
+              className="w-full py-4 mt-2 clay-coral rounded-2xl font-bold flex items-center justify-center gap-2 shadow-xl hover:brightness-110 transition-all active:scale-95 text-white uppercase tracking-widest text-xs disabled:opacity-50"
+            >
+              {loading ? <Loader2 className="animate-spin" size={18} /> : (
+                <>
+                  Reset Password
+                  <ArrowRight size={18} />
+                </>
+              )}
+            </button>
+
+            <p className="text-center text-[10px] opacity-20 font-bold uppercase tracking-widest mt-4">
+              Remembered your password? <button type="button" onClick={() => { setIsResetMode(false); setIsLogin(true); }} className="text-[#FF6B6B]">Back to Login</button>
+            </p>
+          </motion.form>
+        ) : isLogin ? (
           <motion.form 
             key="login"
             initial={{ opacity: 0, x: -20 }}

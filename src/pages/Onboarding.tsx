@@ -68,7 +68,7 @@ export default function Onboarding() {
   const [frequency, setFrequency] = useState<'daily' | 'weekly' | 'monthly'>('weekly');
   const [deadline, setDeadline] = useState('');
 
-  const [usernameStatus, setUsernameStatus] = useState<'idle' | 'checking' | 'available' | 'taken'>('idle');
+  const [usernameStatus, setUsernameStatus] = useState<'idle' | 'checking' | 'available' | 'taken' | 'invalid' | 'error'>('idle');
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   // Render cycle: Sync active user metadata to default form if available
@@ -241,8 +241,12 @@ export default function Onboarding() {
           <button
             type="button"
             onClick={async () => {
-              if (window.confirm("Are you sure you want to sign out and return to the login screen?")) {
+              const id = toast.loading('Signing out...');
+              try {
                 await signOut();
+                toast.success('Signed out successfully', { id });
+              } catch (err) {
+                toast.error('Failed to sign out', { id });
               }
             }}
             className="text-[10px] uppercase font-bold text-white/40 hover:text-white transition-colors duration-300 tracking-[0.1em] font-mono border border-white/[0.08] hover:border-white/20 px-3 py-1.5 rounded-full cursor-pointer bg-white/[0.02]"

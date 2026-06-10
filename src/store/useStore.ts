@@ -583,22 +583,33 @@ export const useStore = create<AppState>()(
 
       signOut: async () => {
         console.log('Starting signOut process...');
+        
+        // 1. Fire off the server and Supabase signout tasks in parallel without blocking each other.
+        // We use standard fetch instead of fetchWithRetry to prevent slow retry loops during logout.
+        const serverSignout = fetch('/api/auth/signout', { method: 'POST', credentials: 'include' })
+          .then(res => res.json().catch(() => ({})))
+          .catch(e => console.warn('[STORE-SIGNOUT] Server cookie signout failed:', e));
+
+        const sdkSignout = supabase.auth.signOut()
+          .catch(e => console.warn('[STORE-SIGNOUT] Supabase SDK signout failed:', e));
+
+        // 2. Wrap them with a fast 500ms timeout. If either is slow, we proceed anyway.
+        const signoutTimeout = new Promise(resolve => setTimeout(resolve, 500));
+
         try {
-          await fetchWithRetry('/api/auth/signout', { method: 'POST', credentials: 'include' });
+          await Promise.race([
+            Promise.all([serverSignout, sdkSignout]),
+            signoutTimeout
+          ]);
         } catch (e) {
-          console.warn('[STORE-SIGNOUT] Server cookie signout failed, continuing:', e);
-        }
-        try {
-          await supabase.auth.signOut();
-        } catch (e) {
-          console.warn('[STORE-SIGNOUT] Supabase SDK signout failed:', e);
+          console.warn('[STORE-SIGNOUT] Racing during signout:', e);
         }
         
-        // 1. Clear all application states in Local / Session Storage
+        // 3. Clear all application states in Local / Session Storage
         localStorage.clear();
         sessionStorage.clear();
         
-        // 2. Completely reset ALL user data on the frontend to prevent residual rendering
+        // 4. Completely reset ALL user data on the frontend to prevent residual rendering
         set({
           currentUser: null,
           session: null,
@@ -619,7 +630,7 @@ export const useStore = create<AppState>()(
           }
         });
         
-        // 3. Clear any dynamic in-memory cached responses
+        // 5. Clear any dynamic in-memory cached responses (failsafe in case clear() missed items or values was populated asynchronously)
         const keysToRemove = Object.keys(localStorage);
         for (const k of keysToRemove) {
           if (k.startsWith('zavr-')) {
@@ -627,7 +638,7 @@ export const useStore = create<AppState>()(
           }
         }
 
-        // 4. Force relocate to authenticate layout
+        // 6. Force relocate to authenticate layout immediately
         window.location.href = '/auth';
       },
       
