@@ -188,13 +188,8 @@ export default function Auth() {
 
       toast.success('Welcome back!');
       
-      // Use the true state from the database profile loaded by checkAuth()
-      const isCompleted = useStore.getState().currentUser?.onboardingCompleted ?? false;
-      if (isCompleted) {
-        navigate('/home', { replace: true });
-      } else {
-        navigate('/onboarding', { replace: true });
-      }
+      // Redirect directly to dashboard home
+      navigate('/home', { replace: true });
     } catch (error: any) {
       clearTimeout(timeoutId);
       const totalTime = Date.now() - startTime;
@@ -344,7 +339,7 @@ export default function Auth() {
               username: email.split('@')[0],
               user_name: email.split('@')[0],
               full_name: '',
-              onboarding_completed: false
+              onboarding_completed: true
             }
           }
         });
@@ -456,8 +451,8 @@ export default function Auth() {
         // Trigger checkAuth immediately to hydrate optimistic or auto-created user profile
         await checkAuth();
 
-        // Redirect directly to onboarding page safely
-        navigate('/onboarding', { replace: true });
+        // Redirect directly to dashboard safely
+        navigate('/home', { replace: true });
       } catch (error: any) {
         console.error('[AUTH] OTP direct verification exception:', error);
         toast.error(error.message || 'OTP Verification failed');
@@ -535,7 +530,7 @@ export default function Auth() {
           gender: gender || null,
           avatar_url: avatarUrl || null,
           updated_at: new Date().toISOString(),
-          onboarding_completed: false, // The dynamic onboarding page runs next
+          onboarding_completed: true, // Auto-completed now
           preferences: { currency: 'INR', notificationsEnabled: true, reminders: { enabled: true, time: '20:00', frequency: 'daily' } }
         };
         await checkAuth(false, savedProfile);
@@ -598,12 +593,7 @@ export default function Auth() {
       setIsResetMode(false);
       setIsLogin(true);
 
-      const user = useStore.getState().currentUser;
-      if (user?.onboardingCompleted) {
-        navigate('/home', { replace: true });
-      } else {
-        navigate('/onboarding', { replace: true });
-      }
+      navigate('/home', { replace: true });
     } catch (err: any) {
       console.error('[AUTH] Reset password failed:', err);
       toast.error(err.message || 'Failed to reset password', { id });
@@ -638,7 +628,7 @@ export default function Auth() {
                 </p>
               </div>
               <button 
-                onClick={() => navigate('/onboarding')}
+                onClick={() => navigate('/home')}
                 className="w-full py-4 clay-coral text-white rounded-2xl font-bold uppercase tracking-widest text-xs shadow-2xl"
               >
                 Let's Go!

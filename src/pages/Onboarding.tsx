@@ -9,7 +9,6 @@ import { useNavigate } from 'react-router-dom';
 import { useStore } from '../store/useStore';
 import { cn } from '../lib/utils';
 import { ArrowRight, ArrowLeft, Loader2 } from 'lucide-react';
-import { differenceInYears, parseISO } from 'date-fns';
 import toast from 'react-hot-toast';
 import { supabase } from '../lib/supabaseClient';
 
@@ -17,13 +16,11 @@ import { supabase } from '../lib/supabaseClient';
 import { AVATARS_50 } from '../constants/avatars';
 
 // Modular components & styling palette
-import PersonalDetailsForm from '../components/Onboarding/PersonalDetailsForm';
 import AvatarSelector from '../components/Onboarding/AvatarSelector';
 import InterestsSelector from '../components/Onboarding/InterestsSelector';
 import GoalSettingStep from '../components/Onboarding/GoalSettingStep';
 import WelcomeSplash from '../components/Onboarding/WelcomeSplash';
 import { NeoLuxuryStyles } from '../components/Onboarding/styles';
-import { onboardingService } from '../services/onboardingService';
 
 /**
  * Zavr Onboarding Page
@@ -32,15 +29,6 @@ import { onboardingService } from '../services/onboardingService';
  * - Apple-inspired high-contrast matte presentation.
  * - Deep black canvas (#050505) with subtle frosted border overlays.
  * - Brushed silver & chrome accents for primary actions.
- * 
- * PERFORMANCE & ENVIRONMENT OPTIMIZATIONS:
- * 1. Isolated State Tree: Inputs and real-time triggers represent self-contained rendering units
- *    to prevent the entire main router/page from repainting on every single keystroke.
- * 2. Debounced real-time 'lazy' validation: Prevents continuous Supabase RPC/lookup hammering
- *    which causes preview window timeouts or WebSocket drops.
- * 3. Graceful fallback retry boundaries: Captures connection hiccups and automatically retries
- *    database operations without breaking user journey.
- * 4. Microsecond Cleanup: Meticulously clean up all active timeouts, callbacks, and references on unmount.
  */
 export default function Onboarding() {
   const [step, setStep] = useState(1);
@@ -50,15 +38,8 @@ export default function Onboarding() {
 
   // Primary user profile form states
   const [data, setData] = useState({
-    fullName: currentUser?.fullName || '',
-    username: currentUser?.username || '',
-    phone: currentUser?.phone || '',
-    countryCode: '+91',
-    dob: currentUser?.dob || '',
-    gender: (currentUser as any)?.gender || '',
-    genderOther: (currentUser as any)?.genderOther || '',
-    avatar: AVATARS_50[0],
-    interests: [] as string[],
+    avatar: AVATARS_50.find(a => a.url === currentUser?.avatar) || AVATARS_50[0],
+    interests: currentUser?.interests || [] as string[],
   });
 
   // Seamless goal state trackers
@@ -68,88 +49,40 @@ export default function Onboarding() {
   const [frequency, setFrequency] = useState<'daily' | 'weekly' | 'monthly'>('weekly');
   const [deadline, setDeadline] = useState('');
 
-  const [usernameStatus, setUsernameStatus] = useState<'idle' | 'checking' | 'available' | 'taken' | 'invalid' | 'error'>('idle');
-  const [errors, setErrors] = useState<Record<string, string>>({});
-
-  // Render cycle: Sync active user metadata to default form if available
+  // Sync avatar and interests from store in case of load latency
   useEffect(() => {
     if (currentUser) {
       setData(prev => ({
         ...prev,
-        fullName: currentUser.fullName || prev.fullName,
-        username: currentUser.username || prev.username,
-        phone: currentUser.phone || prev.phone,
-        dob: currentUser.dob || prev.dob,
-        interests: currentUser.interests || prev.interests,
+        avatar: AVATARS_50.find(a => a.url === currentUser.avatar) || prev.avatar,
+        interests: currentUser.interests?.length ? currentUser.interests : prev.interests,
       }));
     }
   }, [currentUser]);
 
-  // Validates Personal input boundaries before switching steps
-  const validateStep1 = () => {
-    const newErrors: Record<string, string> = {};
-    if (!data.fullName.trim()) newErrors.fullName = 'Full Name is required';
-    if (!data.username) {
-      newErrors.username = 'Username is required';
-    } else if (usernameStatus === 'checking') {
-      newErrors.username = 'Checking username availability...';
-    } else if (usernameStatus === 'taken') {
-      newErrors.username = 'Username already in use';
-    } else if (usernameStatus === 'idle') {
-      newErrors.username = 'Please enter a valid, verified username';
-    }
-    if (!data.phone) newErrors.phone = 'Phone number is required';
-    if (!/^\d{7,15}$/.test(data.phone)) newErrors.phone = 'Enter a valid 7-15 digit number';
-    
-    if (!data.dob) {
-      newErrors.dob = 'Date of birth is required';
-    } else {
-      const age = differenceInYears(new Date(), parseISO(data.dob));
-      if (age < 13) newErrors.dob = 'You must be at least 13 years old';
-    }
-    
-    if (!data.gender) newErrors.gender = 'Gender selection is required';
-    if (data.gender === 'Other' && !data.genderOther.trim()) newErrors.genderOther = 'Please specify';
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
-
-  const isStep1Valid = 
-    data.fullName.trim() && 
-    data.username && 
-    usernameStatus === 'available' &&
-    data.phone && /^\d{7,15}$/.test(data.phone) &&
-    data.dob && differenceInYears(new Date(), parseISO(data.dob)) >= 13 &&
-    (data.gender !== 'Other' ? data.gender : data.genderOther.trim());
-
   // Handles state evaluation & progression
-  const handleNext = () => {
+  const handleNext = async () => {
     if (step === 1) {
-      if (validateStep1()) setStep(2);
+      setStep(2);
       return;
     }
     if (step === 2) {
+      if (data.interests.length < 2) {
+        toast.error('Select at least 2 interests with your card');
+        return;
+      }
       setStep(3);
       return;
     }
     if (step === 3) {
-      if (data.interests.length < 2) {
-        toast.error('Select at least 2 interests with your card');
+      if (goalName.trim() && !deadline) {
+        toast.error('Please enter a completion date for your goal');
         return;
       }
       setStep(4);
       return;
     }
     if (step === 4) {
-      if (goalName.trim() && !deadline) {
-        toast.error('Please enter a completion date for your goal');
-        return;
-      }
-      setStep(5);
-      return;
-    }
-    if (step === 5) {
       handleFinish();
     }
   };
@@ -176,16 +109,8 @@ export default function Onboarding() {
         return;
       }
 
-      const finalPhone = `${data.countryCode}${data.phone}`;
-      const finalGender = data.gender === 'Other' ? data.genderOther : data.gender;
-
       // 1. Update active user state within the global state store (triggers background upsert instantly)
       updateUser({
-        fullName: data.fullName,
-        username: data.username,
-        phone: finalPhone,
-        dob: data.dob,
-        gender: finalGender as any,
         avatar: data.avatar.url,
         avatarId: data.avatar.id,
         interests: data.interests,
@@ -234,7 +159,7 @@ export default function Onboarding() {
         <div className="flex flex-col">
           <span className="text-white font-semibold text-lg tracking-tight font-sans">Zavr</span>
           <span className="text-[10px] uppercase text-[#8E8E93] tracking-[0.2em] font-medium font-mono">
-            Step {step} of 5
+            Step {step} of 4
           </span>
         </div>
         <div className="flex items-center gap-4">
@@ -254,7 +179,7 @@ export default function Onboarding() {
             Log Out
           </button>
           <div className="flex gap-1 w-24 shrink-0">
-            {[1, 2, 3, 4, 5].map((s) => (
+            {[1, 2, 3, 4].map((s) => (
               <div 
                 key={s} 
                 className={s <= step ? NeoLuxuryStyles.stepDotActive : NeoLuxuryStyles.stepDotInactive}
@@ -277,13 +202,9 @@ export default function Onboarding() {
                   exit={{ opacity: 0, y: -15 }}
                   transition={{ duration: 0.3 }}
                 >
-                  <PersonalDetailsForm
-                    data={data}
-                    onChange={(updates) => setData(prev => ({ ...prev, ...updates }))}
-                    errors={errors}
-                    usernameStatus={usernameStatus}
-                    setUsernameStatus={setUsernameStatus}
-                    setManualErrors={setErrors}
+                  <AvatarSelector
+                    selectedAvatar={data.avatar}
+                    onSelect={(avatar) => setData(prev => ({ ...prev, avatar }))}
                   />
                 </motion.div>
               )}
@@ -296,21 +217,6 @@ export default function Onboarding() {
                   exit={{ opacity: 0, y: -15 }}
                   transition={{ duration: 0.3 }}
                 >
-                  <AvatarSelector
-                    selectedAvatar={data.avatar}
-                    onSelect={(avatar) => setData(prev => ({ ...prev, avatar }))}
-                  />
-                </motion.div>
-              )}
-
-              {step === 3 && (
-                <motion.div
-                  key="step3"
-                  initial={{ opacity: 0, y: 15 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -15 }}
-                  transition={{ duration: 0.3 }}
-                >
                   <InterestsSelector
                     selectedInterests={data.interests}
                     onChange={(interests) => setData(prev => ({ ...prev, interests }))}
@@ -318,9 +224,9 @@ export default function Onboarding() {
                 </motion.div>
               )}
 
-              {step === 4 && (
+              {step === 3 && (
                 <motion.div
-                  key="step4"
+                  key="step3"
                   initial={{ opacity: 0, y: 15 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -15 }}
@@ -342,16 +248,16 @@ export default function Onboarding() {
                 </motion.div>
               )}
 
-              {step === 5 && (
+              {step === 4 && (
                 <motion.div
-                  key="step5"
+                  key="step4"
                   initial={{ opacity: 0, y: 15 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -15 }}
                   transition={{ duration: 0.3 }}
                 >
                   <WelcomeSplash
-                    fullName={data.fullName}
+                    fullName={currentUser?.fullName || currentUser?.username || 'User'}
                     avatarUrl={data.avatar.url}
                     hasGoalSet={!!goalName.trim()}
                     goalName={goalName}
@@ -376,14 +282,14 @@ export default function Onboarding() {
             
             <button 
               onClick={handleNext}
-              disabled={loading || (step === 1 && !isStep1Valid)}
+              disabled={loading}
               className={NeoLuxuryStyles.primaryButton}
             >
               {loading ? (
                 <Loader2 className="animate-spin text-[#050505]" size={16} />
               ) : (
                 <>
-                  <span>{step === 5 ? "Submit Profile" : "Continue"}</span>
+                  <span>{step === 4 ? "Submit Profile" : "Continue"}</span>
                   <ArrowRight size={14} strokeWidth={2.5} />
                 </>
               )}

@@ -48,93 +48,132 @@ export const supabaseService = {
         throw new Error('No authenticated user found');
       }
 
-      // Map camelCase to snake_case for DB as per requirement 6
-      const dbUpdates: any = { 
+      // 1. Prepare and apply updates to user_profiles table using verified columns
+      const userProfilesUpdates: any = {
         id: userId,
         updated_at: new Date().toISOString()
       };
       
-      if (updates.fullName) dbUpdates.full_name = updates.fullName;
-      if (updates.username) dbUpdates.username = updates.username;
+      const cleaningUsername = updates.username ? updates.username.toLowerCase().trim() : undefined;
+      
+      if (updates.fullName !== undefined) userProfilesUpdates.full_name = updates.fullName;
+      if (cleaningUsername !== undefined) userProfilesUpdates.username = cleaningUsername;
+      if (updates.phone !== undefined) {
+        userProfilesUpdates.phone_number = updates.phone;
+        if (updates.phone.startsWith('+')) {
+          const match = updates.phone.match(/^(\+\d{1,4})/);
+          if (match) {
+            userProfilesUpdates.country_code = match[1];
+          }
+        } else {
+          userProfilesUpdates.country_code = '+91';
+        }
+      }
+      if (updates.dob !== undefined) userProfilesUpdates.date_of_birth = updates.dob;
+      if (updates.gender !== undefined) userProfilesUpdates.gender = updates.gender;
+      if (updates.avatar !== undefined) userProfilesUpdates.avatar_url = updates.avatar;
+      if (updates.avatarId !== undefined) userProfilesUpdates.avatar_id = updates.avatarId;
+      if (updates.onboardingCompleted !== undefined) userProfilesUpdates.onboarding_completed = updates.onboardingCompleted;
+
+      let userProfilesError = null;
+      try {
+        console.log('[SUPABASE-SVC] Executing upsert on user_profiles:', userProfilesUpdates);
+        const { error: upErr } = await supabase
+          .from('user_profiles')
+          .upsert(userProfilesUpdates)
+          .select();
+        
+        if (upErr) {
+          console.error('[SUPABASE-SVC] Upsert to user_profiles failed:', upErr.message);
+          userProfilesError = upErr;
+        }
+      } catch (err: any) {
+        console.error('[SUPABASE-SVC] Exception upserting to user_profiles:', err);
+        userProfilesError = err;
+      }
+
+      // 2. Prepare and apply updates to profiles table
+      const profilesUpdates: any = { 
+        id: userId,
+        updated_at: new Date().toISOString()
+      };
+      
+      if (updates.fullName !== undefined) profilesUpdates.full_name = updates.fullName;
+      if (cleaningUsername !== undefined) profilesUpdates.username = cleaningUsername;
       
       // Map email from updates or active session user to guarantee it is NEVER null in profiles
       if (updates.email) {
-        dbUpdates.email = updates.email;
+        profilesUpdates.email = updates.email;
       } else if (user.email) {
-        dbUpdates.email = user.email;
+        profilesUpdates.email = user.email;
       }
       
-      if (updates.phone) dbUpdates.phone = updates.phone;
-      if (updates.dob) dbUpdates.birth_date = updates.dob; // birthDate -> birth_date mapping
-      if (updates.gender) dbUpdates.gender = updates.gender;
-      if (updates.avatar) dbUpdates.avatar_url = updates.avatar;
+      if (updates.phone !== undefined) profilesUpdates.phone = updates.phone;
+      if (updates.dob !== undefined) {
+        profilesUpdates.birth_date = updates.dob;
+        profilesUpdates.dob = updates.dob;
+      }
+      if (updates.gender !== undefined) profilesUpdates.gender = updates.gender;
+      if (updates.avatar !== undefined) profilesUpdates.avatar_url = updates.avatar;
       
-      // Preserve other fields that might not be in the "Personal Details" structure
-      if (updates.location) dbUpdates.location = updates.location;
-      if (updates.avatarId) dbUpdates.avatar_id = updates.avatarId;
-      if (updates.onboardingCompleted !== undefined) dbUpdates.onboarding_completed = updates.onboardingCompleted;
-      if (updates.personalDetailsFilled !== undefined) dbUpdates.personal_details_filled = updates.personalDetailsFilled;
+      if (updates.location !== undefined) profilesUpdates.location = updates.location;
+      if (updates.avatarId !== undefined) profilesUpdates.avatar_id = updates.avatarId;
+      if (updates.onboardingCompleted !== undefined) profilesUpdates.onboarding_completed = updates.onboardingCompleted;
+      if (updates.personalDetailsFilled !== undefined) profilesUpdates.personal_details_filled = updates.personalDetailsFilled;
 
-      // Save using UPSERT (not insert) as per requirement 2
-      console.log('[SUPABASE-SVC] Executing upsert on profiles with dynamic column resilience...', dbUpdates);
+      let profilesError = null;
       let data = null;
-      let error = null;
       let maxAttempts = 5;
       let attempt = 0;
-      let success = false;
 
       while (attempt < maxAttempts) {
         attempt++;
+        console.log(`[SUPABASE-SVC] Executing upsert on profiles (attempt ${attempt}):`, profilesUpdates);
         const res = await supabase
           .from('profiles')
-          .upsert({ ...dbUpdates })
+          .upsert({ ...profilesUpdates })
           .select()
           .maybeSingle();
 
         if (!res.error) {
           data = res.data;
-          error = null;
-          success = true;
+          profilesError = null;
           break;
         }
 
-        error = res.error;
-        console.warn(`[SUPABASE-SVC] Upsert attempt ${attempt} failed:`, error.message, 'code:', error.code);
+        profilesError = res.error;
+        console.warn(`[SUPABASE-SVC] profiles upsert attempt ${attempt} failed:`, profilesError.message);
 
-        // Code 42703 is Postgres "undefined_column" - we also inspect the error message
-        if (error.code === '42703' || error.message?.includes('column')) {
-          // Identify the missing column name using robust regex matches:
-          // e.g., column "personal_details_filled" of relation "profiles" does not exist
-          const match = error.message.match(/column "(.*?)"/) || error.message.match(/column '(.*?)'/);
+        // Code 42703 is Postgres "undefined_column" - clean and retry
+        if (profilesError.code === '42703' || profilesError.message?.includes('column')) {
+          const match = profilesError.message.match(/column "(.*?)"/) || profilesError.message.match(/column '(.*?)'/);
           if (match && match[1]) {
             const missingCol = match[1];
-            console.warn(`[SUPABASE-SVC] Purging missing column "${missingCol}" from updates payload and retrying...`);
-            delete dbUpdates[missingCol];
+            console.warn(`[SUPABASE-SVC] Purging missing column "${missingCol}" from profiles payload and retrying...`);
+            delete profilesUpdates[missingCol];
           } else {
-            // Precise fallback in case column name extraction fails
-            if (dbUpdates.personal_details_filled !== undefined) {
-              console.warn('[SUPABASE-SVC] Hard fallback: Presumed missing column "personal_details_filled". Purging...');
-              delete dbUpdates.personal_details_filled;
-            } else if (dbUpdates.avatar_id !== undefined) {
-              console.warn('[SUPABASE-SVC] Hard fallback: Presumed missing column "avatar_id". Purging...');
-              delete dbUpdates.avatar_id;
+            if (profilesUpdates.personal_details_filled !== undefined) {
+              delete profilesUpdates.personal_details_filled;
+            } else if (profilesUpdates.avatar_id !== undefined) {
+              delete profilesUpdates.avatar_id;
             } else {
-              break; // No other non-essential keys to drop
+              break;
             }
           }
         } else {
-          // If the error is not a missing column, break to prevent infinite attempts on general errors
           break;
         }
       }
 
-      if (error) {
-        console.error('[SUPABASE-SVC] Final upsert profile failed completely:', error);
-      } else {
-        console.log('[SUPABASE-SVC] Profile upsert successful on attempt', attempt);
+      const finalError = userProfilesError || profilesError;
+      if (userProfilesError) {
+        console.warn('[SUPABASE-SVC] Warning: user_profiles update reported error:', userProfilesError);
       }
-      
-      return { data, error };
+      if (profilesError) {
+        console.warn('[SUPABASE-SVC] Warning: profiles update reported error:', profilesError);
+      }
+
+      return { data, error: finalError };
     } catch (err: any) {
       console.error('[SUPABASE-SVC] Unexpected error in updateProfile:', err);
       return { data: null, error: err };

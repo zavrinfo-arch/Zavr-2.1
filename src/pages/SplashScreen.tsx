@@ -24,17 +24,9 @@ export default function SplashScreen() {
         return;
       }
 
-      // 2. We have a session, now check the profile
-      if (!currentUser) {
-        console.log('[SPLASH] Session exists but no profile, navigating to onboarding');
-        navigate('/onboarding');
-      } else if (!currentUser.onboardingCompleted) {
-        console.log('[SPLASH] Profile exists but onboarding incomplete, navigating to onboarding');
-        navigate('/onboarding');
-      } else {
-        console.log('[SPLASH] Profile complete, navigating to home');
-        navigate('/home');
-      }
+      // 2. We have a session, go straight to home
+      console.log('[SPLASH] Session exists, navigating to home');
+      navigate('/home');
     }, 1700); // 1.7s allows the premium animations to breathe beautifully
 
     return () => clearTimeout(timer);

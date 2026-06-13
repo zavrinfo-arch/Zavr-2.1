@@ -47,11 +47,6 @@ export async function middleware(request: NextRequest) {
     if (!user) {
       return NextResponse.redirect(new URL('/login', request.url))
     }
-
-    const onboardingComplete = request.cookies.get('onboarding_complete')?.value
-    if (onboardingComplete !== 'true') {
-      return NextResponse.redirect(new URL('/onboarding', request.url))
-    }
   }
 
   return supabaseResponse

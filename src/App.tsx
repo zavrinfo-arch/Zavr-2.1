@@ -86,27 +86,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
     return <Navigate to="/auth" state={{ from: location }} replace />;
   }
   
-  const isSetupPage = location.pathname === '/onboarding' || location.pathname === '/avatar-selection' || location.pathname === '/auth';
-
-  // 2. No profile yet? 
-  if (!currentUser) {
-    if (isSetupPage) return <>{children}</>;
-    
-    // Check if we just signed in and profile is still being created/fetched
-    console.log('[GUARD] Session exists but no currentUser profile found. Redirecting to onboarding.');
-    return <Navigate to="/onboarding" replace />;
-  }
-  
-  // 3. Profile exists but onboarding not finished
-  const detailsFilled = currentUser.personalDetailsFilled || currentUser.onboardingCompleted;
-  if (!detailsFilled && !isSetupPage) {
-    console.log('[GUARD] Onboarding incomplete, forcing setup.');
-    return <Navigate to="/onboarding" replace />;
-  }
-
-  // 4. Profile finished but still on setup pages -> Go home
-  if (detailsFilled && isSetupPage) {
-    console.log('[GUARD] Onboarding already complete, redirecting to /home');
+  if (location.pathname === '/auth') {
     return <Navigate to="/home" replace />;
   }
 
@@ -253,16 +233,8 @@ export default function App() {
               <Route path="/" element={<SplashScreen />} />
               <Route path="/auth" element={<Auth />} />
               
-              <Route path="/onboarding" element={
-                <ProtectedRoute>
-                  <Onboarding />
-                </ProtectedRoute>
-              } />
-              <Route path="/avatar-selection" element={
-                <ProtectedRoute>
-                  <AvatarSelection />
-                </ProtectedRoute>
-              } />
+              <Route path="/onboarding" element={<Navigate to="/home" replace />} />
+              <Route path="/avatar-selection" element={<Navigate to="/home" replace />} />
               
               <Route path="/home" element={
                 <ProtectedRoute>

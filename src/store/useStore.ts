@@ -407,16 +407,16 @@ export const useStore = create<AppState>()(
 
               const mapProfileToUser = (prof: any): User => ({
                 id: prof.id,
-                fullName: prof.full_name,
-                username: prof.username,
+                fullName: prof.full_name || prof.fullName || '',
+                username: prof.username || '',
                 email: prof.email || sbSession.user.email || '',
-                phone: prof.phone,
-                dob: prof.birth_date || prof.dob,
-                location: prof.location,
-                avatar: prof.avatar_url,
-                avatarId: prof.avatar_id,
-                onboardingCompleted: prof.onboarding_completed || prof.personal_details_filled || (!!prof.username && !!prof.full_name),
-                personalDetailsFilled: prof.personal_details_filled || prof.onboarding_completed || (!!prof.username && !!prof.full_name),
+                phone: prof.phone || prof.phone_number || '',
+                dob: prof.birth_date || prof.date_of_birth || prof.dob || '',
+                location: prof.location || '',
+                avatar: prof.avatar_url || '',
+                avatarId: prof.avatar_id || '',
+                onboardingCompleted: true,
+                personalDetailsFilled: true,
                 interests: prof.interests || [],
                 xp: prof.xp || 0,
                 level: prof.level || 1,
@@ -444,8 +444,8 @@ export const useStore = create<AppState>()(
                 location: metadata.location || '',
                 avatar: metadata.avatar_url || `https://api.dicebear.com/7.x/lorelei/svg?seed=${sbSession.user.id}`,
                 avatarId: metadata.avatar_id || 1,
-                onboardingCompleted: metadata.onboarding_completed !== undefined ? metadata.onboarding_completed : (!!metadata.username && !!metadata.full_name),
-                personalDetailsFilled: metadata.personal_details_filled !== undefined ? metadata.personal_details_filled : (metadata.onboarding_completed !== undefined ? metadata.onboarding_completed : (!!metadata.username && !!metadata.full_name)),
+                onboardingCompleted: true,
+                personalDetailsFilled: true,
                 interests: [],
                 xp: metadata.xp || 0,
                 level: metadata.level || 1,
@@ -474,84 +474,84 @@ export const useStore = create<AppState>()(
 
               // Synchronously fetch the user profile ONLY from Supabase (Single Source of Truth)
               try {
+                console.log('[AUTH] Fetching user profile from primary user_profiles table...', sbSession.user.id);
                 const { data: profile, error: profileError } = await supabase
-                  .from('profiles')
-                  .select('id,full_name,username,email,phone,birth_date,dob,location,avatar_url,avatar_id,streak,onboarding_completed,interests,badges,created_at,last_login_date,streak_freeze_count,xp,level,preferences')
+                  .from('user_profiles')
+                  .select('*')
                   .eq('id', sbSession.user.id)
                   .maybeSingle();
 
                 if (profileError) {
-                  console.error('[AUTH] Synchronous profile fetch error:', profileError.message);
+                  console.error('[AUTH] Primary user_profiles fetch error:', profileError.message);
                 }
 
                 if (profile) {
-                  const mappedUser = mapProfileToUser(profile);
-                  set({ currentUser: mappedUser });
-                  console.log('[AUTH] Sync profile loaded from Supabase:', mappedUser.id, 'completeness:', mappedUser.onboardingCompleted);
-                  profileFetched = true;
-                  
-                  // Fetch all associated goals, transactions, and notifications fresh from Supabase
-                  get().refreshData().catch(e => console.warn('[AUTH] refreshData after checkAuth failed:', e));
-                } else {
-                  // Profile is missing in the database - auto-create it now
-                  console.log('[AUTH] Profile row missing in database, auto-creating default...');
-                  const baseUsername = sbSession.user.email?.split('@')[0] || `user_${sbSession.user.id.substring(0, 8)}`;
-                  // Clean base_username to letters, numbers, underscores only
-                  const cleanUsername = baseUsername.toLowerCase().replace(/[^a-z0-9_]/g, '');
-                  const username = cleanUsername.length >= 3 ? cleanUsername : `${cleanUsername}usr`.substring(0, 15);
-                  const emailVal = sbSession.user.email || '';
-                  
-                  // Prepare two variants to ensure maximum database compatibility with existing schemas
-                  const autoProfileWithoutEmail = {
-                    id: sbSession.user.id,
-                    username: `${username}_${sbSession.user.id.substring(0, 4)}`.toLowerCase().trim(),
-                    full_name: sbSession.user.user_metadata?.full_name || username,
-                    avatar_url: `https://api.dicebear.com/7.x/lorelei/svg?seed=${sbSession.user.id}`,
-                    onboarding_completed: false,
-                    updated_at: new Date().toISOString()
-                  };
-
-                  const autoProfileWithEmail = {
-                    ...autoProfileWithoutEmail,
-                    email: emailVal
-                  };
-
+                  // Fallback: load profiles table for other attributes if needed (e.g. email, preferences)
+                  let pData: any = null;
                   try {
-                    console.log('[AUTH_DB] Attempting to auto-create profile with email...', autoProfileWithEmail);
-                    let { error: insertError } = await supabase
+                    const { data: fallbackProf } = await supabase
                       .from('profiles')
-                      .insert(autoProfileWithEmail);
-
-                    if (insertError) {
-                      console.warn('[AUTH_DB] Profile creation with email column failed. Retrying without email...', insertError.message);
-                      const fallbackInsert = await supabase
-                        .from('profiles')
-                        .insert(autoProfileWithoutEmail);
-                      insertError = fallbackInsert.error;
-                    }
-
-                    if (insertError) {
-                      console.warn('[AUTH_DB] Failed to auto-create database profile (the user might already have a profile by trigger):', insertError.message, insertError.code);
-                    } else {
-                      console.log('[AUTH_DB] Automatically created default database profile successfully!');
-                    }
-                  } catch (dbErr: any) {
-                    console.warn('[AUTH_DB] Exception while inserting fallback profile (non-blocking):', dbErr);
+                      .select('*')
+                      .eq('id', sbSession.user.id)
+                      .maybeSingle();
+                    pData = fallbackProf;
+                  } catch (err) {
+                    console.warn('[AUTH] Secondary profiles table read warning:', err);
                   }
 
-                  const fallbackUser = mapProfileToUser({
-                    ...autoProfileWithoutEmail,
-                    birth_date: null,
-                    phone: null,
-                    location: null,
-                  });
-                  set({ currentUser: fallbackUser });
+                  const mergedProfile = { ...pData, ...profile };
+                  const mappedUser = mapProfileToUser(mergedProfile);
+                  set({ currentUser: mappedUser });
+                  console.log('[AUTH] Sync profile loaded from Supabase user_profiles:', mappedUser.id, 'completeness:', mappedUser.onboardingCompleted);
                   profileFetched = true;
-                  
-                  get().refreshData().catch(e => console.warn('[AUTH] refreshData after checkAuth fallback failed:', e));
+                  get().refreshData().catch(e => console.warn('[AUTH] refreshData after checkAuth failed:', e));
+                } else {
+                  // Profile is missing in user_profiles - auto-create it now
+                  console.log('[AUTH] user_profiles row missing, auto-creating a new row...', sbSession.user.id);
+                  try {
+                    const { error: insError } = await supabase
+                      .from('user_profiles')
+                      .insert({
+                        id: sbSession.user.id,
+                        created_at: new Date().toISOString(),
+                        updated_at: new Date().toISOString()
+                      });
+
+                    if (insError) {
+                      console.warn('[AUTH] Auto-insertion in user_profiles failed/skipped:', insError.message);
+                    }
+                  } catch (insEx: any) {
+                    console.warn('[AUTH] Exception auto-inserting user_profiles:', insEx.message || insEx);
+                  }
+
+                  // Read fallback profiles table to check if there are pre-existing details to carry forward
+                  let pData: any = null;
+                  try {
+                    const { data: fallbackProf } = await supabase
+                      .from('profiles')
+                      .select('*')
+                      .eq('id', sbSession.user.id)
+                      .maybeSingle();
+                    pData = fallbackProf;
+                  } catch (err) {
+                    console.warn('[AUTH] Fallback profiles query error:', err);
+                  }
+
+                  const defaultUserObject = pData ? { ...pData, id: sbSession.user.id } : {
+                    id: sbSession.user.id,
+                    username: (sbSession.user.email?.split('@')[0] || `user_${sbSession.user.id.substring(0, 8)}`).toLowerCase().replace(/[^a-z0-9_]/g, ''),
+                    full_name: sbSession.user.user_metadata?.full_name || '',
+                    created_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString(),
+                  };
+
+                  const mappedUser = mapProfileToUser(defaultUserObject);
+                  set({ currentUser: mappedUser });
+                  profileFetched = true;
+                  get().refreshData().catch(e => console.warn('[AUTH] refreshData after fallback setup failed:', e));
                 }
               } catch (err: any) {
-                console.error('[AUTH] Synchronous profile check query failed:', err);
+                console.error('[AUTH] Primary profile check query failed:', err);
               }
 
               // Absolute fallback to optimistic user representation
@@ -732,7 +732,7 @@ export const useStore = create<AppState>()(
               username: u.user_metadata?.username || u.user_metadata?.user_name || '',
               avatar: u.user_metadata?.avatar_url || '',
               avatarId: '',
-              onboardingCompleted: false,
+              onboardingCompleted: true,
               xp: 0,
               level: 1,
               badges: [],
