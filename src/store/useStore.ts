@@ -17,6 +17,18 @@ import { supabase, isConfigured } from '../lib/supabaseClient';
 import { fetchWithRetry } from '../lib/utils';
 import { setOnboardingCookie } from '../../lib/onboarding';
 
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number = 8000, errorMsg: string = 'Network request timed out'): Promise<T> {
+  let timeoutId: any;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(new Error(errorMsg));
+    }, timeoutMs);
+  });
+  return Promise.race([promise, timeoutPromise]).finally(() => {
+    clearTimeout(timeoutId);
+  });
+}
+
 let activeCheckAuthPromise: Promise<void> | null = null;
 let activeRefreshDataPromise: Promise<void> | null = null;
 
@@ -412,11 +424,13 @@ export const useStore = create<AppState>()(
                 email: prof.email || sbSession.user.email || '',
                 phone: prof.phone || prof.phone_number || '',
                 dob: prof.birth_date || prof.date_of_birth || prof.dob || '',
+                gender: prof.gender || '',
                 location: prof.location || '',
                 avatar: prof.avatar_url || '',
                 avatarId: prof.avatar_id || '',
-                onboardingCompleted: true,
-                personalDetailsFilled: true,
+                onboardingCompleted: !!(prof.onboarding_completed || prof.onboardingCompleted),
+                personalDetailsFilled: !!(prof.onboarding_completed || prof.onboardingCompleted),
+                savingCategories: prof.saving_categories || [],
                 interests: prof.interests || [],
                 xp: prof.xp || 0,
                 level: prof.level || 1,
@@ -441,11 +455,13 @@ export const useStore = create<AppState>()(
                 email: sbSession.user.email || '',
                 phone: metadata.phone || '',
                 dob: metadata.dob || '',
+                gender: metadata.gender || '',
                 location: metadata.location || '',
                 avatar: metadata.avatar_url || `https://api.dicebear.com/7.x/lorelei/svg?seed=${sbSession.user.id}`,
-                avatarId: metadata.avatar_id || 1,
-                onboardingCompleted: true,
-                personalDetailsFilled: true,
+                avatarId: metadata.avatar_id || '1',
+                onboardingCompleted: false,
+                personalDetailsFilled: false,
+                savingCategories: [],
                 interests: [],
                 xp: metadata.xp || 0,
                 level: metadata.level || 1,
@@ -472,72 +488,58 @@ export const useStore = create<AppState>()(
 
               let profileFetched = false;
 
-              // Synchronously fetch the user profile ONLY from Supabase (Single Source of Truth)
+              // Synchronously fetch the user profile ONLY from profiles table (Single Source of Truth)
               try {
-                console.log('[AUTH] Fetching user profile from primary user_profiles table...', sbSession.user.id);
-                const { data: profile, error: profileError } = await supabase
-                  .from('user_profiles')
+                console.log('[AUTH] Fetching user profile from profiles table...', sbSession.user.id);
+                const profilePromise = Promise.resolve(supabase
+                  .from('profiles')
                   .select('*')
                   .eq('id', sbSession.user.id)
-                  .maybeSingle();
+                  .maybeSingle()
+                );
+
+                const { data: profile, error: profileError } = await withTimeout<any>(profilePromise, 8000, 'Profiles table fetch timed out');
 
                 if (profileError) {
-                  console.error('[AUTH] Primary user_profiles fetch error:', profileError.message);
+                  console.error('[AUTH] Profiles table fetch error:', profileError.message);
                 }
 
                 if (profile) {
-                  // Fallback: load profiles table for other attributes if needed (e.g. email, preferences)
-                  let pData: any = null;
-                  try {
-                    const { data: fallbackProf } = await supabase
-                      .from('profiles')
-                      .select('*')
-                      .eq('id', sbSession.user.id)
-                      .maybeSingle();
-                    pData = fallbackProf;
-                  } catch (err) {
-                    console.warn('[AUTH] Secondary profiles table read warning:', err);
-                  }
-
-                  const mergedProfile = { ...pData, ...profile };
-                  const mappedUser = mapProfileToUser(mergedProfile);
+                  const mappedUser = mapProfileToUser(profile);
+                  supabaseService.setProfileCache(sbSession.user.id, mappedUser);
                   set({ currentUser: mappedUser });
-                  console.log('[AUTH] Sync profile loaded from Supabase user_profiles:', mappedUser.id, 'completeness:', mappedUser.onboardingCompleted);
+                  console.log('[AUTH] Sync profile loaded from Supabase profiles:', mappedUser.id, 'completeness:', mappedUser.onboardingCompleted);
                   profileFetched = true;
                   get().refreshData().catch(e => console.warn('[AUTH] refreshData after checkAuth failed:', e));
                 } else {
-                  // Profile is missing in user_profiles - auto-create it now
-                  console.log('[AUTH] user_profiles row missing, auto-creating a new row...', sbSession.user.id);
+                  // Profile is missing from profiles - auto-create it now
+                  console.log('[AUTH] profiles row missing, auto-creating a new row...', sbSession.user.id);
                   try {
-                    const { error: insError } = await supabase
-                      .from('user_profiles')
-                      .insert({
-                        id: sbSession.user.id,
-                        created_at: new Date().toISOString(),
-                        updated_at: new Date().toISOString()
-                      });
+                    const fallbackUsername = (sbSession.user.email?.split('@')[0] || `user_${sbSession.user.id.substring(0, 8)}`).toLowerCase().replace(/[^a-z0-9_]/g, '');
+                    const newProfileRow = {
+                      id: sbSession.user.id,
+                      email: sbSession.user.email || '',
+                      username: fallbackUsername,
+                      full_name: sbSession.user.user_metadata?.full_name || '',
+                      created_at: new Date().toISOString(),
+                      updated_at: new Date().toISOString()
+                    };
+
+                    const insertPromise = Promise.resolve(supabase
+                      .from('profiles')
+                      .insert(newProfileRow)
+                    );
+
+                    const { error: insError } = await withTimeout<any>(insertPromise, 8000, 'Profiles auto-insert timed out');
 
                     if (insError) {
-                      console.warn('[AUTH] Auto-insertion in user_profiles failed/skipped:', insError.message);
+                      console.warn('[AUTH] Auto-insertion in profiles failed:', insError.message);
                     }
                   } catch (insEx: any) {
-                    console.warn('[AUTH] Exception auto-inserting user_profiles:', insEx.message || insEx);
+                    console.warn('[AUTH] Exception auto-inserting profiles:', insEx.message || insEx);
                   }
 
-                  // Read fallback profiles table to check if there are pre-existing details to carry forward
-                  let pData: any = null;
-                  try {
-                    const { data: fallbackProf } = await supabase
-                      .from('profiles')
-                      .select('*')
-                      .eq('id', sbSession.user.id)
-                      .maybeSingle();
-                    pData = fallbackProf;
-                  } catch (err) {
-                    console.warn('[AUTH] Fallback profiles query error:', err);
-                  }
-
-                  const defaultUserObject = pData ? { ...pData, id: sbSession.user.id } : {
+                  const defaultUserObject = {
                     id: sbSession.user.id,
                     username: (sbSession.user.email?.split('@')[0] || `user_${sbSession.user.id.substring(0, 8)}`).toLowerCase().replace(/[^a-z0-9_]/g, ''),
                     full_name: sbSession.user.user_metadata?.full_name || '',
@@ -551,7 +553,7 @@ export const useStore = create<AppState>()(
                   get().refreshData().catch(e => console.warn('[AUTH] refreshData after fallback setup failed:', e));
                 }
               } catch (err: any) {
-                console.error('[AUTH] Primary profile check query failed:', err);
+                console.error('[AUTH] Profile check query failed:', err);
               }
 
               // Absolute fallback to optimistic user representation
@@ -732,7 +734,7 @@ export const useStore = create<AppState>()(
               username: u.user_metadata?.username || u.user_metadata?.user_name || '',
               avatar: u.user_metadata?.avatar_url || '',
               avatarId: '',
-              onboardingCompleted: true,
+              onboardingCompleted: !!u.user_metadata?.onboarding_completed,
               xp: 0,
               level: 1,
               badges: [],

@@ -2,6 +2,7 @@ import { supabase } from '../lib/supabaseClient';
 import { User, SoloGoal, GroupGoal, Transaction, Notification, StreakData } from '../types';
 
 let cachedUseStore: any = null;
+let getProfileCache: { userId: string; timestamp: number; data: any; error: any } | null = null;
 
 export const supabaseService = {
   // Helpers
@@ -37,6 +38,7 @@ export const supabaseService = {
 
   // Profiles
   async updateProfile(userId: string, updates: Partial<User>) {
+    getProfileCache = null; // Invalidate profile cache upon updates
     const session = await this.ensureSession();
     console.log('[SUPABASE-SVC] Updating profile for:', userId, updates);
     
@@ -48,55 +50,13 @@ export const supabaseService = {
         throw new Error('No authenticated user found');
       }
 
-      // 1. Prepare and apply updates to user_profiles table using verified columns
-      const userProfilesUpdates: any = {
+      // Prepare updates to profiles table
+      const profilesUpdates: any = { 
         id: userId,
         updated_at: new Date().toISOString()
       };
       
       const cleaningUsername = updates.username ? updates.username.toLowerCase().trim() : undefined;
-      
-      if (updates.fullName !== undefined) userProfilesUpdates.full_name = updates.fullName;
-      if (cleaningUsername !== undefined) userProfilesUpdates.username = cleaningUsername;
-      if (updates.phone !== undefined) {
-        userProfilesUpdates.phone_number = updates.phone;
-        if (updates.phone.startsWith('+')) {
-          const match = updates.phone.match(/^(\+\d{1,4})/);
-          if (match) {
-            userProfilesUpdates.country_code = match[1];
-          }
-        } else {
-          userProfilesUpdates.country_code = '+91';
-        }
-      }
-      if (updates.dob !== undefined) userProfilesUpdates.date_of_birth = updates.dob;
-      if (updates.gender !== undefined) userProfilesUpdates.gender = updates.gender;
-      if (updates.avatar !== undefined) userProfilesUpdates.avatar_url = updates.avatar;
-      if (updates.avatarId !== undefined) userProfilesUpdates.avatar_id = updates.avatarId;
-      if (updates.onboardingCompleted !== undefined) userProfilesUpdates.onboarding_completed = updates.onboardingCompleted;
-
-      let userProfilesError = null;
-      try {
-        console.log('[SUPABASE-SVC] Executing upsert on user_profiles:', userProfilesUpdates);
-        const { error: upErr } = await supabase
-          .from('user_profiles')
-          .upsert(userProfilesUpdates)
-          .select();
-        
-        if (upErr) {
-          console.error('[SUPABASE-SVC] Upsert to user_profiles failed:', upErr.message);
-          userProfilesError = upErr;
-        }
-      } catch (err: any) {
-        console.error('[SUPABASE-SVC] Exception upserting to user_profiles:', err);
-        userProfilesError = err;
-      }
-
-      // 2. Prepare and apply updates to profiles table
-      const profilesUpdates: any = { 
-        id: userId,
-        updated_at: new Date().toISOString()
-      };
       
       if (updates.fullName !== undefined) profilesUpdates.full_name = updates.fullName;
       if (cleaningUsername !== undefined) profilesUpdates.username = cleaningUsername;
@@ -120,10 +80,11 @@ export const supabaseService = {
       if (updates.avatarId !== undefined) profilesUpdates.avatar_id = updates.avatarId;
       if (updates.onboardingCompleted !== undefined) profilesUpdates.onboarding_completed = updates.onboardingCompleted;
       if (updates.personalDetailsFilled !== undefined) profilesUpdates.personal_details_filled = updates.personalDetailsFilled;
+      if ((updates as any).savingCategories !== undefined) profilesUpdates.saving_categories = (updates as any).savingCategories;
 
       let profilesError = null;
       let data = null;
-      let maxAttempts = 5;
+      let maxAttempts = 3;
       let attempt = 0;
 
       while (attempt < maxAttempts) {
@@ -165,22 +126,33 @@ export const supabaseService = {
         }
       }
 
-      const finalError = userProfilesError || profilesError;
-      if (userProfilesError) {
-        console.warn('[SUPABASE-SVC] Warning: user_profiles update reported error:', userProfilesError);
-      }
       if (profilesError) {
         console.warn('[SUPABASE-SVC] Warning: profiles update reported error:', profilesError);
       }
 
-      return { data, error: finalError };
+      return { data, error: profilesError };
     } catch (err: any) {
       console.error('[SUPABASE-SVC] Unexpected error in updateProfile:', err);
       return { data: null, error: err };
     }
   },
 
+  setProfileCache(userId: string, data: any) {
+    getProfileCache = {
+      userId,
+      timestamp: Date.now(),
+      data,
+      error: null
+    };
+  },
+
   async getProfile(userId: string) {
+    const now = Date.now();
+    if (getProfileCache && getProfileCache.userId === userId && (now - getProfileCache.timestamp < 10000)) {
+      console.log('[SUPABASE-SVC] Returning cached profile for:', userId);
+      return { data: getProfileCache.data, error: getProfileCache.error };
+    }
+
     await this.ensureSession();
     console.log('[SUPABASE-SVC] Gathering profile for:', userId);
     const { data, error } = await supabase
@@ -189,7 +161,10 @@ export const supabaseService = {
       .eq('id', userId)
       .maybeSingle();
     
-    if (error) console.error('[SUPABASE-SVC] Get profile error:', error);
+    if (error) {
+      console.error('[SUPABASE-SVC] Get profile error:', error);
+      return { data: null, error };
+    }
     
     if (data) {
       console.log('[SUPABASE-SVC] Profile data found:', data.onboarding_completed);
@@ -215,9 +190,17 @@ export const supabaseService = {
         level: data.level || 1,
         preferences: data.preferences
       };
-      return { data: user, error };
+      // Save to cache
+      getProfileCache = {
+        userId,
+        timestamp: now,
+        data: user,
+        error: null
+      };
+      return { data: user, error: null };
     }
-    return { data, error };
+
+    return { data: null, error: null };
   },
 
   // Solo Goals

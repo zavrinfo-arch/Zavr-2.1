@@ -339,7 +339,7 @@ export default function Auth() {
               username: email.split('@')[0],
               user_name: email.split('@')[0],
               full_name: '',
-              onboarding_completed: true
+              onboarding_completed: false
             }
           }
         });

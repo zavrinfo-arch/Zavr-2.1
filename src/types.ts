@@ -21,7 +21,7 @@ export interface User {
   passwordHash?: string;
   phone: string;
   dob: string;
-  gender?: 'Male' | 'Female' | 'Non-binary' | 'Prefer not to say' | 'Other';
+  gender?: 'Male' | 'Female' | 'Non-binary' | 'Prefer not to say' | 'Other' | 'male' | 'female' | 'non_binary' | 'prefer_not_to_say' | 'other' | string;
   genderOther?: string;
   location: string;
   avatar: string;
@@ -29,6 +29,7 @@ export interface User {
   streak: number;
   onboardingCompleted: boolean;
   personalDetailsFilled?: boolean;
+  savingCategories?: string[];
   interests: string[];
   badges: Badge[];
   createdAt: string;

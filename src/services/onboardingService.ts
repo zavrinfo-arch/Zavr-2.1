@@ -86,7 +86,7 @@ export const onboardingService = {
   /**
    * Verifies username availability with a robust check.
    * Compares the lowercase version of the username.
-   * Priority: checks user_profiles. Fallback: checks profiles.
+   * Single Source of Truth: profiles table.
    */
   async checkUsernameAvailability(username: string, signal?: AbortSignal, excludeUserId?: string): Promise<{ available: boolean; error: any }> {
     const cleaned = username.toLowerCase().trim();
@@ -106,9 +106,9 @@ export const onboardingService = {
     checkCount++;
 
     try {
-      // Primary search inside user_profiles table
+      // Primary search inside profiles table
       let query = supabase
-        .from('user_profiles')
+        .from('profiles')
         .select('id')
         .eq('username', cleaned);
 
@@ -130,32 +130,6 @@ export const onboardingService = {
       console.timeEnd("username-check");
 
       if (error) {
-        // Fallback to profiles if user_profiles table is not ready or has different column constraints
-        if (error.code === '42703' || error.code === '42P01' || error.message?.includes('column') || error.message?.includes('relation')) {
-          console.warn('[Username Check Fallback] user_profiles check failed, checking profiles table...', error.message);
-          let fbQuery = supabase
-            .from('profiles')
-            .select('id')
-            .eq('username', cleaned);
-
-          if (excludeUserId) {
-            fbQuery = fbQuery.neq('id', excludeUserId);
-          }
-
-          fbQuery = fbQuery.limit(1);
-
-          if (signal) {
-            fbQuery = fbQuery.abortSignal(signal);
-          }
-
-          const { data: fbData, error: fbError } = await fbQuery.maybeSingle();
-          if (fbError) {
-            return { available: false, error: fbError };
-          }
-          const available = !fbData;
-          usernameCache.set(cacheKey, available);
-          return { available, error: null };
-        }
         return { available: false, error };
       }
 
@@ -177,108 +151,52 @@ export const onboardingService = {
   },
 
   /**
-   * Loads existing profile data from user_profiles table with a bulletproof fallback to profiles.
+   * Loads existing profile data from profiles table.
    */
   async loadUserProfile(userId: string): Promise<{ data: any; error: any }> {
     try {
-      // 1. Fetch from user_profiles
+      // Fetch from profiles
       const { data, error } = await supabase
-        .from('user_profiles')
-        .select('id, full_name, username, country_code, phone_number, date_of_birth, gender, created_at, updated_at')
+        .from('profiles')
+        .select('id, full_name, username, phone, birth_date, dob, gender, created_at, updated_at')
         .eq('id', userId)
         .maybeSingle();
 
       if (error) {
-        // Handle fallback if columns are missing or if table was consolidated
-        if (error.code === '42703' || error.code === '42P01' || error.message?.includes('column') || error.message?.includes('relation')) {
-          console.warn('[Onboarding Service] user_profiles select failed, falling back to profiles table:', error.message);
-          const { data: pData, error: pError } = await supabase
-            .from('profiles')
-            .select('id, full_name, username, phone, birth_date, gender, created_at, updated_at')
-            .eq('id', userId)
-            .maybeSingle();
-
-          if (pError) {
-            return { data: null, error: pError };
-          }
-
-          if (pData) {
-            return {
-              data: {
-                id: pData.id,
-                full_name: pData.full_name || '',
-                username: pData.username || '',
-                country_code: '+91',
-                phone_number: pData.phone || '',
-                date_of_birth: pData.birth_date || '',
-                gender: pData.gender || '',
-                created_at: pData.created_at,
-                updated_at: pData.updated_at
-              },
-              error: null
-            };
-          }
-          return { data: null, error: null };
-        }
         return { data: null, error };
       }
 
-      // 2. Handle missing profile row auto-creation criteria
-      if (!data) {
-        console.log('[Onboarding Service] user_profiles row missing, auto-creating a new row...');
-        const { error: insError } = await supabase
-          .from('user_profiles')
-          .insert({
-            id: userId,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          });
-
-        if (insError) {
-          console.warn('[Onboarding Service] Auto-insertion in user_profiles skipped or failed:', insError.message);
-        }
-
-        // Try reading profiles fallback to populate partial existing details
-        const { data: pData } = await supabase
-          .from('profiles')
-          .select('id, full_name, username, phone, birth_date, gender, created_at, updated_at')
-          .eq('id', userId)
-          .maybeSingle();
-
-        if (pData) {
-          return {
-            data: {
-              id: pData.id,
-              full_name: pData.full_name || '',
-              username: pData.username || '',
-              country_code: '+91',
-              phone_number: pData.phone || '',
-              date_of_birth: pData.birth_date || '',
-              gender: pData.gender || '',
-              created_at: pData.created_at,
-              updated_at: pData.updated_at
-            },
-            error: null
-          };
-        }
-
+      if (data) {
         return {
           data: {
-            id: userId,
-            full_name: '',
-            username: '',
+            id: data.id,
+            full_name: data.full_name || '',
+            username: data.username || '',
             country_code: '+91',
-            phone_number: '',
-            date_of_birth: '',
-            gender: '',
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
+            phone_number: data.phone || '',
+            date_of_birth: data.birth_date || data.dob || '',
+            gender: data.gender || '',
+            created_at: data.created_at,
+            updated_at: data.updated_at
           },
           error: null
         };
       }
 
-      return { data, error: null };
+      return {
+        data: {
+          id: userId,
+          full_name: '',
+          username: '',
+          country_code: '+91',
+          phone_number: '',
+          date_of_birth: '',
+          gender: '',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        },
+        error: null
+      };
     } catch (err: any) {
       console.error('[Onboarding Service] Unexpected crash loading profile:', err);
       return { data: null, error: err };
@@ -286,7 +204,7 @@ export const onboardingService = {
   },
 
   /**
-   * Saves personal details to both user_profiles and profiles.
+   * Saves personal details to profiles table.
    */
   async saveOnboardingProfile(
     userId: string,
@@ -302,45 +220,7 @@ export const onboardingService = {
   ): Promise<{ error: any }> {
     const cleaned = profileData.username.toLowerCase().trim();
 
-    // 1. Sync to public.user_profiles
-    const upPayload = {
-      id: userId,
-      full_name: profileData.fullName || null,
-      username: cleaned || null,
-      country_code: profileData.countryCode || null,
-      phone_number: profileData.phone || null,
-      date_of_birth: profileData.dob || null,
-      gender: profileData.gender || null,
-      updated_at: new Date().toISOString()
-    };
-
-    let upError = null;
-    try {
-      const { error } = await supabase
-        .from('user_profiles')
-        .upsert(upPayload);
-
-      if (error) {
-        console.warn('[Onboarding Service] Upsert to user_profiles failed, seeking fallback:', error.message);
-        upError = error;
-
-        // Try standard reduced payload if schema details aren't matching
-        if (error.code === '42703' || error.message?.includes('column')) {
-          const reducedPayload: any = { id: userId, updated_at: new Date().toISOString() };
-          if (profileData.avatarUrl) reducedPayload.avatar_url = profileData.avatarUrl;
-          reducedPayload.onboarding_completed = true;
-          const { error: redErr } = await supabase.from('user_profiles').upsert(reducedPayload);
-          if (!redErr) {
-            upError = null;
-          }
-        }
-      }
-    } catch (ex: any) {
-      console.error('[Onboarding Service] Exception during user_profiles write:', ex);
-      upError = ex;
-    }
-
-    // 2. Sync to public.profiles to satisfy general isolation and user references
+    // Sync to public.profiles to satisfy general isolation and user references
     try {
       const pPayload: any = {
         id: userId,
@@ -362,21 +242,11 @@ export const onboardingService = {
         .from('profiles')
         .upsert(pPayload);
 
-      if (pErr) {
-        console.warn('[Onboarding Service] Sync to public.profiles failed (non-blocking if user_profiles worked):', pErr.message);
-        if (!upError) {
-          // If user_profiles succeeded, we can proceed without failing
-          console.log('[Onboarding Service] user_profiles save succeeded, bypassing profiles save error.');
-        } else {
-          return { error: pErr };
-        }
-      }
+      return { error: pErr };
     } catch (err: any) {
       console.error('[Onboarding service] Exception during profiles write:', err);
-      if (upError) return { error: err };
+      return { error: err };
     }
-
-    return { error: upError };
   },
 
   /**

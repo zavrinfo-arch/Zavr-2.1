@@ -87,7 +87,23 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   }
   
   if (location.pathname === '/auth') {
+    if (currentUser && !currentUser.onboardingCompleted) {
+      return <Navigate to="/onboarding" replace />;
+    }
     return <Navigate to="/home" replace />;
+  }
+
+  // 2. Auth exists: check onboarding completion status
+  if (currentUser) {
+    const isCompleted = currentUser.onboardingCompleted;
+    if (!isCompleted && location.pathname !== '/onboarding') {
+      console.log('[GUARD] Onboarding not completed. Redirecting to /onboarding');
+      return <Navigate to="/onboarding" replace />;
+    }
+    if (isCompleted && location.pathname === '/onboarding') {
+      console.log('[GUARD] Onboarding already completed. Redirecting to /home');
+      return <Navigate to="/home" replace />;
+    }
   }
 
   return <>{children}</>;
@@ -233,7 +249,12 @@ export default function App() {
               <Route path="/" element={<SplashScreen />} />
               <Route path="/auth" element={<Auth />} />
               
-              <Route path="/onboarding" element={<Navigate to="/home" replace />} />
+              <Route path="/onboarding" element={
+                <ProtectedRoute>
+                  <Onboarding />
+                </ProtectedRoute>
+              } />
+              
               <Route path="/avatar-selection" element={<Navigate to="/home" replace />} />
               
               <Route path="/home" element={
