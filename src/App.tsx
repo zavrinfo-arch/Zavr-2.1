@@ -46,6 +46,17 @@ import PreviewBanner from './components/PreviewBanner';
 import ErrorBoundary from './components/ErrorBoundary';
 import { initSilentSafeLogger } from './utils/debug';
 
+export function generateUUID() {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const currentUser = useStore((state) => state.currentUser);
   const session = useStore((state) => state.session);
@@ -362,11 +373,12 @@ function PlusModal({ action, setAction, onClose, selectedGoal, initialAmount }: 
 
   const handleCreateEmergency = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!currentUser) return toast.error('Please log in first');
     if (!formData.name || !formData.routineAmount) return toast.error('Fill all fields');
     
     addEmergencyGoal({
-      id: Math.random().toString(36).substr(2, 9),
-      userId: currentUser!.id,
+      id: generateUUID(),
+      userId: currentUser.id,
       name: formData.name,
       currentAmount: 0,
       frequency: formData.frequency,
@@ -399,11 +411,12 @@ function PlusModal({ action, setAction, onClose, selectedGoal, initialAmount }: 
 
   const handleCreateSolo = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!currentUser) return toast.error('Please log in first');
     if (!formData.name || !formData.deadline) return toast.error('Fill all fields');
     
     addSoloGoal({
-      id: Math.random().toString(36).substr(2, 9),
-      userId: currentUser!.id,
+      id: generateUUID(),
+      userId: currentUser.id,
       name: formData.name,
       targetAmount: formData.target,
       currentAmount: 0,
@@ -420,22 +433,23 @@ function PlusModal({ action, setAction, onClose, selectedGoal, initialAmount }: 
 
   const handleCreateGroup = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!currentUser) return toast.error('Please log in first');
     if (!formData.name || !formData.deadline) return toast.error('Fill all fields');
     
     const groupId = `ZAVR-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
     
     addGroupGoal({
-      id: Math.random().toString(36).substr(2, 9),
+      id: generateUUID(),
       groupId,
       name: formData.name,
       targetAmount: formData.target,
       memberCount: formData.memberCount,
       password: formData.password,
-      creatorId: currentUser!.id,
+      creatorId: currentUser.id,
       members: [{
-        userId: currentUser!.id,
-        name: currentUser!.fullName,
-        avatar: currentUser!.avatar,
+        userId: currentUser.id,
+        name: currentUser.fullName,
+        avatar: currentUser.avatar,
         contributed: 0,
         joinedAt: new Date().toISOString()
       }],

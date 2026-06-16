@@ -83,11 +83,11 @@ export default function ProfileHeader() {
 
   // 5. If profile query failed/missing, fallback gracefully to auth.user.email and fallback values
   const activeUser = currentUser || {
-    id: session.user.id,
-    fullName: session.user.user_metadata?.full_name || session.user.email || 'User',
-    username: session.user.email?.split('@')[0] || 'user',
-    avatar: session.user.user_metadata?.avatar_url || '',
-    avatarId: session.user.user_metadata?.avatar_id || '',
+    id: session?.user?.id || '',
+    fullName: session?.user?.user_metadata?.full_name || session?.user?.email || 'User',
+    username: session?.user?.email?.split('@')[0] || 'user',
+    avatar: session?.user?.user_metadata?.avatar_url || '',
+    avatarId: session?.user?.user_metadata?.avatar_id || '',
     level: 1,
     streak: 0,
     xp: 0

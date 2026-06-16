@@ -34,8 +34,8 @@ export default function FriendDetail({
   const [actionType, setActionType] = useState<'send' | 'request'>('send');
 
   const filteredZettls = personalZettls.filter(
-    z => (z.fromUserId === currentUser.id && z.toUserId === friend.friendId) ||
-         (z.toUserId === currentUser.id && z.fromUserId === friend.friendId)
+    z => (z.fromUserId === currentUser?.id && z.toUserId === friend.friendId) ||
+         (z.toUserId === currentUser?.id && z.fromUserId === friend.friendId)
   );
 
   // Calculate Net Position
@@ -133,7 +133,7 @@ export default function FriendDetail({
           </div>
         ) : (
           filteredZettls.map((zettl) => {
-            const iAmOwed = zettl.toUserId === currentUser.id;
+            const iAmOwed = zettl.toUserId === currentUser?.id;
             
             return (
               <motion.div 

@@ -114,7 +114,7 @@ export default function Profile() {
   const stats = {
     lifetimeSaved: transactions.reduce((sum, tx) => sum + tx.amount, 0),
     completedGoals: soloGoals.filter(g => g.completed).length,
-    totalBadges: currentUser?.badges.length || 0,
+    totalBadges: currentUser?.badges?.length || 0,
   };
 
   const handleLogout = async () => {

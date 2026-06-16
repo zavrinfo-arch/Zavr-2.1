@@ -29,6 +29,17 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number = 8000, errorMsg:
   });
 }
 
+function generateUUID() {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
 let activeCheckAuthPromise: Promise<void> | null = null;
 let activeRefreshDataPromise: Promise<void> | null = null;
 
@@ -1063,7 +1074,7 @@ export const useStore = create<AppState>()(
 
         // Add Transaction
         const newTransaction: Transaction = {
-          id: Math.random().toString(36).substr(2, 9),
+          id: generateUUID(),
           goalId,
           goalName,
           amount,
@@ -1250,7 +1261,7 @@ export const useStore = create<AppState>()(
 
         // Add Transaction (Negative amount for withdrawal)
         const newTransaction: Transaction = {
-          id: Math.random().toString(36).substr(2, 9),
+          id: generateUUID(),
           goalId,
           goalName,
           amount: -amount,
@@ -1483,7 +1494,7 @@ export const useStore = create<AppState>()(
       addNotification: async (n) => {
         const newNotification = {
           ...n,
-          id: Math.random().toString(36).substr(2, 9),
+          id: generateUUID(),
           timestamp: new Date().toISOString(),
           read: false
         };
@@ -1635,7 +1646,7 @@ export const useStore = create<AppState>()(
         if (!state.currentUser) return;
 
         const newSession: FocusSession = {
-          id: Math.random().toString(36).substr(2, 9),
+          id: generateUUID(),
           userId: state.currentUser.id,
           startTime: new Date().toISOString(),
           duration,

@@ -73,7 +73,7 @@ export default function GroupZettl({
       const perHead = Math.floor(amountVal / memberCount);
       splitsPayload = groupMembers.map((m: any) => ({
         userId: m.user_id,
-        amountOwed: m.user_id === currentUser.id ? 0 : perHead // You don't owe yourself
+        amountOwed: m.user_id === currentUser?.id ? 0 : perHead // You don't owe yourself
       }));
     } else {
       let allocatedTotal = 0;
@@ -82,7 +82,7 @@ export default function GroupZettl({
         allocatedTotal += customVal;
         return {
           userId: m.user_id,
-          amountOwed: m.user_id === currentUser.id ? 0 : customVal
+          amountOwed: m.user_id === currentUser?.id ? 0 : customVal
         };
       });
 
@@ -180,8 +180,8 @@ export default function GroupZettl({
         ) : (
           <div className="space-y-3">
             {expenses.map((exp) => {
-              const mySplit = exp.splits?.find((s: any) => s.user_id === currentUser.id);
-              const paidByMe = exp.paid_by_user_id === currentUser.id;
+              const mySplit = exp.splits?.find((s: any) => s.user_id === currentUser?.id);
+              const paidByMe = exp.paid_by_user_id === currentUser?.id;
               
               // Count settled splits
               const splits = exp.splits || [];
@@ -217,7 +217,7 @@ export default function GroupZettl({
                     <p className="text-[8px] font-black uppercase tracking-[0.1em] opacity-40">Status: {paidCount} of {splits.length} Settle</p>
                     <div className="divide-y divide-foreground/5">
                       {splits.map((s: any) => {
-                        const isSplitOwner = s.user_id === currentUser.id;
+                        const isSplitOwner = s.user_id === currentUser?.id;
                         return (
                           <div key={s.id} className="flex justify-between items-center py-2 text-[10px]">
                             <span className="font-bold opacity-75">

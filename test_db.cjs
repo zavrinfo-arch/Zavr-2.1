@@ -5,19 +5,20 @@ const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI
 
 const supabase = createClient(supabaseUrl, serviceRoleKey);
 
-async function test() {
-  console.log('Testing Supabase connection...');
-  try {
-    // Query a row from profiles
-    const { data: profiles, error: pError } = await supabase.from('profiles').select('*').limit(1);
-    console.log('Profiles select results:', { profiles, pError });
+async function inspectColumns() {
+  console.log('--- EMERGENCY GOALS TEST ---');
+  const { error: errCategory } = await supabase.from('emergency_goals').select('category').limit(1);
+  console.log('emergency_goals.category error:', errCategory);
 
-    // Query a row from user_profiles
-    const { data: userProfiles, error: upError } = await supabase.from('user_profiles').select('*').limit(1);
-    console.log('User Profiles select results:', { userProfiles, upError });
-  } catch (err) {
-    console.error('Exception:', err);
-  }
+  const { error: errDeadline } = await supabase.from('emergency_goals').select('deadline').limit(1);
+  console.log('emergency_goals.deadline error:', errDeadline);
+
+  console.log('\n--- GROUP GOALS TEST ---');
+  const { error: errMembers } = await supabase.from('group_goals').select('members').limit(1);
+  console.log('group_goals.members error:', errMembers);
+
+  const { error: errGrpCategory } = await supabase.from('group_goals').select('category').limit(1);
+  console.log('group_goals.category error:', errGrpCategory);
 }
 
-test();
+inspectColumns();
