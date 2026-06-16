@@ -422,23 +422,23 @@ export const useStore = create<AppState>()(
                 fullName: prof.full_name || prof.fullName || '',
                 username: prof.username || '',
                 email: prof.email || sbSession.user.email || '',
-                phone: prof.phone || prof.phone_number || '',
+                phone: prof.phone || prof.phone_number || prof.phone || '',
                 dob: prof.birth_date || prof.date_of_birth || prof.dob || '',
                 gender: prof.gender || '',
                 location: prof.location || '',
-                avatar: prof.avatar_url || '',
-                avatarId: prof.avatar_id || '',
+                avatar: prof.avatar_url || prof.avatar || '',
+                avatarId: prof.avatar_id || prof.avatarId || '',
                 onboardingCompleted: !!(prof.onboarding_completed || prof.onboardingCompleted),
                 personalDetailsFilled: !!(prof.onboarding_completed || prof.onboardingCompleted),
-                savingCategories: prof.saving_categories || [],
+                savingCategories: prof.saving_categories || prof.savingCategories || [],
                 interests: prof.interests || [],
-                xp: prof.xp || 0,
-                level: prof.level || 1,
+                xp: prof.xp !== undefined ? prof.xp : 0,
+                level: prof.level !== undefined ? prof.level : 1,
                 badges: prof.badges || [],
-                streak: prof.streak || 0,
-                createdAt: prof.created_at,
-                lastLoginDate: prof.last_login_date,
-                streakFreezeCount: prof.streak_freeze_count || 0,
+                streak: prof.streak !== undefined ? prof.streak : 0,
+                createdAt: prof.created_at || prof.createdAt,
+                lastLoginDate: prof.last_login_date || prof.lastLoginDate,
+                streakFreezeCount: prof.streak_freeze_count !== undefined ? prof.streak_freeze_count : (prof.streakFreezeCount !== undefined ? prof.streakFreezeCount : 0),
                 preferences: prof.preferences || {
                   currency: 'INR',
                   notificationsEnabled: true,
@@ -473,10 +473,15 @@ export const useStore = create<AppState>()(
                 preferences: { currency: 'INR', notificationsEnabled: true, reminders: { enabled: true, time: '20:00', frequency: 'daily' } }
               };
 
+              // Satisfy budget of <200ms after auth session is available
+              // Instantly load the optimistic layout options in <15ms
+              set({ currentUser: optimisticUser, isAuthLoading: false });
+
               if (prefetchedProfile) {
                 try {
                   const mappedUser = mapProfileToUser(prefetchedProfile);
                   console.log('[AUTH] Instant pre-fetched profile load, bypassing DB query:', mappedUser.id, 'completeness:', mappedUser.onboardingCompleted);
+                  supabaseService.setProfileCache(sbSession.user.id, mappedUser);
                   set({ currentUser: mappedUser, isAuthLoading: false });
                   get().refreshData().catch(e => console.warn('[AUTH] refreshData after prefetchedProfile failed:', e));
                   activeCheckAuthPromise = null;
@@ -491,66 +496,77 @@ export const useStore = create<AppState>()(
               // Synchronously fetch the user profile ONLY from profiles table (Single Source of Truth)
               try {
                 console.log('[AUTH] Fetching user profile from profiles table...', sbSession.user.id);
-                const profilePromise = Promise.resolve(supabase
-                  .from('profiles')
-                  .select('*')
-                  .eq('id', sbSession.user.id)
-                  .maybeSingle()
-                );
-
-                const { data: profile, error: profileError } = await withTimeout<any>(profilePromise, 8000, 'Profiles table fetch timed out');
-
-                if (profileError) {
-                  console.error('[AUTH] Profiles table fetch error:', profileError.message);
-                }
-
-                if (profile) {
-                  const mappedUser = mapProfileToUser(profile);
-                  supabaseService.setProfileCache(sbSession.user.id, mappedUser);
-                  set({ currentUser: mappedUser });
-                  console.log('[AUTH] Sync profile loaded from Supabase profiles:', mappedUser.id, 'completeness:', mappedUser.onboardingCompleted);
+                // First check supabaseService cache before executing query to eliminate duplicate fetches
+                const cached = await supabaseService.getProfile(sbSession.user.id);
+                if (cached?.data) {
+                  const mappedUser = cached.data;
+                  set({ currentUser: mappedUser, isAuthLoading: false });
+                  console.log('[AUTH] Loaded from memory/service profile cache, layout ready!');
                   profileFetched = true;
-                  get().refreshData().catch(e => console.warn('[AUTH] refreshData after checkAuth failed:', e));
+                  get().refreshData().catch(e => console.warn('[AUTH] refreshData after cached profile load failed:', e));
                 } else {
-                  // Profile is missing from profiles - auto-create it now
-                  console.log('[AUTH] profiles row missing, auto-creating a new row...', sbSession.user.id);
-                  try {
-                    const fallbackUsername = (sbSession.user.email?.split('@')[0] || `user_${sbSession.user.id.substring(0, 8)}`).toLowerCase().replace(/[^a-z0-9_]/g, '');
-                    const newProfileRow = {
-                      id: sbSession.user.id,
-                      email: sbSession.user.email || '',
-                      username: fallbackUsername,
-                      full_name: sbSession.user.user_metadata?.full_name || '',
-                      created_at: new Date().toISOString(),
-                      updated_at: new Date().toISOString()
-                    };
+                  const profilePromise = Promise.resolve(supabase
+                    .from('profiles')
+                    .select('*')
+                    .eq('id', sbSession.user.id)
+                    .maybeSingle()
+                  );
 
-                    const insertPromise = Promise.resolve(supabase
-                      .from('profiles')
-                      .insert(newProfileRow)
-                    );
+                  const { data: profile, error: profileError } = await withTimeout<any>(profilePromise, 8000, 'Profiles table fetch timed out');
 
-                    const { error: insError } = await withTimeout<any>(insertPromise, 8000, 'Profiles auto-insert timed out');
-
-                    if (insError) {
-                      console.warn('[AUTH] Auto-insertion in profiles failed:', insError.message);
-                    }
-                  } catch (insEx: any) {
-                    console.warn('[AUTH] Exception auto-inserting profiles:', insEx.message || insEx);
+                  if (profileError) {
+                    console.error('[AUTH] Profiles table fetch error:', profileError.message);
                   }
 
-                  const defaultUserObject = {
-                    id: sbSession.user.id,
-                    username: (sbSession.user.email?.split('@')[0] || `user_${sbSession.user.id.substring(0, 8)}`).toLowerCase().replace(/[^a-z0-9_]/g, ''),
-                    full_name: sbSession.user.user_metadata?.full_name || '',
-                    created_at: new Date().toISOString(),
-                    updated_at: new Date().toISOString(),
-                  };
+                  if (profile) {
+                    const mappedUser = mapProfileToUser(profile);
+                    supabaseService.setProfileCache(sbSession.user.id, mappedUser);
+                    set({ currentUser: mappedUser, isAuthLoading: false });
+                    console.log('[AUTH] Sync profile loaded from Supabase profiles, layout ready:', mappedUser.id, 'completeness:', mappedUser.onboardingCompleted);
+                    profileFetched = true;
+                    get().refreshData().catch(e => console.warn('[AUTH] refreshData after checkAuth failed:', e));
+                  } else {
+                    // Profile is missing from profiles - auto-create it now
+                    console.log('[AUTH] profiles row missing, auto-creating a new row...', sbSession.user.id);
+                    try {
+                      const fallbackUsername = (sbSession.user.email?.split('@')[0] || `user_${sbSession.user.id.substring(0, 8)}`).toLowerCase().replace(/[^a-z0-9_]/g, '');
+                      const newProfileRow = {
+                        id: sbSession.user.id,
+                        email: sbSession.user.email || '',
+                        username: fallbackUsername,
+                        full_name: sbSession.user.user_metadata?.full_name || '',
+                        created_at: new Date().toISOString(),
+                        updated_at: new Date().toISOString()
+                      };
 
-                  const mappedUser = mapProfileToUser(defaultUserObject);
-                  set({ currentUser: mappedUser });
-                  profileFetched = true;
-                  get().refreshData().catch(e => console.warn('[AUTH] refreshData after fallback setup failed:', e));
+                      const insertPromise = Promise.resolve(supabase
+                        .from('profiles')
+                        .insert(newProfileRow)
+                      );
+
+                      const { error: insError } = await withTimeout<any>(insertPromise, 8000, 'Profiles auto-insert timed out');
+
+                      if (insError) {
+                        console.warn('[AUTH] Auto-insertion in profiles failed:', insError.message);
+                      }
+                    } catch (insEx: any) {
+                      console.warn('[AUTH] Exception auto-inserting profiles:', insEx.message || insEx);
+                    }
+
+                    const defaultUserObject = {
+                      id: sbSession.user.id,
+                      username: (sbSession.user.email?.split('@')[0] || `user_${sbSession.user.id.substring(0, 8)}`).toLowerCase().replace(/[^a-z0-9_]/g, ''),
+                      full_name: sbSession.user.user_metadata?.full_name || '',
+                      created_at: new Date().toISOString(),
+                      updated_at: new Date().toISOString(),
+                    };
+
+                    const mappedUser = mapProfileToUser(defaultUserObject);
+                    supabaseService.setProfileCache(sbSession.user.id, mappedUser);
+                    set({ currentUser: mappedUser, isAuthLoading: false });
+                    profileFetched = true;
+                    get().refreshData().catch(e => console.warn('[AUTH] refreshData after fallback setup failed:', e));
+                  }
                 }
               } catch (err: any) {
                 console.error('[AUTH] Profile check query failed:', err);
@@ -559,7 +575,7 @@ export const useStore = create<AppState>()(
               // Absolute fallback to optimistic user representation
               if (!profileFetched) {
                 console.log('[AUTH] Falling back to optimistic metadata layout.');
-                set({ currentUser: optimisticUser });
+                set({ currentUser: optimisticUser, isAuthLoading: false });
               }
 
               return;
@@ -674,7 +690,7 @@ export const useStore = create<AppState>()(
               // Only re-trigger full check if session changed or was missing (avoid infinite trigger loop)
               const currentSession = get().session;
               if (!currentSession || currentSession.access_token !== session.access_token) {
-                set({ session });
+                set({ session, isAuthLoading: true });
                 await get().checkAuth();
               }
             }
@@ -884,6 +900,8 @@ export const useStore = create<AppState>()(
 
       joinGroupGoal: (groupId, password) => {
         const state = get();
+        if (!state.currentUser) return { success: false, message: 'Not logged in' };
+        
         const goal = state.groupGoals.find(g => g.groupId === groupId);
         
         if (!goal) return { success: false, message: 'Group not found' };
@@ -1579,12 +1597,14 @@ export const useStore = create<AppState>()(
               const completed = newProgress >= q.target;
               if (completed) {
                 get().addXP(q.rewardXP);
-                get().addNotification({
-                  userId: state.currentUser!.id,
-                  title: 'Quest Completed!',
-                  message: `You earned ${q.rewardXP} XP for completing: ${q.title}`,
-                  type: 'achievement'
-                });
+                if (state.currentUser) {
+                  get().addNotification({
+                    userId: state.currentUser.id,
+                    title: 'Quest Completed!',
+                    message: `You earned ${q.rewardXP} XP for completing: ${q.title}`,
+                    type: 'achievement'
+                  });
+                }
               }
               return { ...q, progress: Math.min(newProgress, q.target), completed };
             }
@@ -1635,12 +1655,14 @@ export const useStore = create<AppState>()(
             if (s.id === id && !s.completed) {
               if (s.type === 'study') {
                 get().addXP(10);
-                get().addNotification({
-                  userId: state.currentUser!.id,
-                  title: 'Focus Session Complete!',
-                  message: 'You earned +10 XP for your study session! 🎯',
-                  type: 'achievement'
-                });
+                if (state.currentUser) {
+                  get().addNotification({
+                    userId: state.currentUser.id,
+                    title: 'Focus Session Complete!',
+                    message: 'You earned +10 XP for your study session! 🎯',
+                    type: 'achievement'
+                  });
+                }
               }
               return { ...s, completed: true };
             }
@@ -1674,9 +1696,9 @@ export const useStore = create<AppState>()(
 
         const isCompleted = newProgress >= state.weeklyChallenge.target && state.weeklyChallenge.progress < state.weeklyChallenge.target;
         
-        if (isCompleted) {
+        if (isCompleted && state.currentUser) {
           get().addNotification({
-            userId: state.currentUser!.id,
+            userId: state.currentUser.id,
             title: 'Challenge Completed!',
             message: `You've completed the weekly challenge: ${state.weeklyChallenge.title}`,
             type: 'streak'
