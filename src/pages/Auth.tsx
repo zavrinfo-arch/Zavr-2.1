@@ -7,7 +7,7 @@ import { cn, fetchWithRetry, formatDateSafely } from '../lib/utils';
 import { 
   Mail, Lock, User, Phone, Calendar, MapPin,
   CheckCircle2, AlertCircle, Eye, EyeOff, ArrowRight, AtSign,
-  ShieldCheck, KeyRound, Sparkles, Loader2
+  ShieldCheck, KeyRound, Sparkles, Loader2, Sun, Moon
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { differenceInYears, parseISO, format } from 'date-fns';
@@ -30,6 +30,26 @@ export default function Auth() {
   const [resetPassword, setResetPassword] = useState('');
   const [resetConfirmPassword, setResetConfirmPassword] = useState('');
   const [showResetPassword, setShowResetPassword] = useState(false);
+  const [showForgotModal, setShowForgotModal] = useState(false);
+  const [forgotInput, setForgotInput] = useState('');
+  const [forgotModalLoading, setForgotModalLoading] = useState(false);
+  const [forgotStep, setForgotStep] = useState<'request' | 'verify' | 'new-password'>('request');
+  const [forgotResolvedEmail, setForgotResolvedEmail] = useState('');
+  const [forgotOtpCode, setForgotOtpCode] = useState('');
+  const [forgotNewPassword, setForgotNewPassword] = useState('');
+  const [forgotNewPasswordConfirm, setForgotNewPasswordConfirm] = useState('');
+  const [showForgotNewPassword, setShowForgotNewPassword] = useState(false);
+  const [forgotCountdown, setForgotCountdown] = useState(0);
+
+  useEffect(() => {
+    if (!showForgotModal || forgotStep !== 'verify' || forgotCountdown <= 0) return;
+    
+    const interval = setInterval(() => {
+      setForgotCountdown((prev) => prev - 1);
+    }, 1000);
+    
+    return () => clearInterval(interval);
+  }, [showForgotModal, forgotStep, forgotCountdown]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -43,7 +63,7 @@ export default function Auth() {
   const isSigningUpRef = React.useRef(false);
   
   const navigate = useNavigate();
-  const { currentUser, session, checkAuth, isAuthLoading } = useStore();
+  const { currentUser, session, checkAuth, isAuthLoading, theme, setTheme } = useStore();
 
   useEffect(() => {
     sessionStorage.setItem('auth_is_login', isLogin.toString());
@@ -127,7 +147,7 @@ export default function Auth() {
       return;
     }
     if (!formData.email || !formData.password) {
-      toast.error('Email and password are required');
+      toast.error('Email or Username and password are required');
       return;
     }
 
@@ -139,13 +159,14 @@ export default function Auth() {
     const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout limit for robustness
 
     try {
-      const email = formData.email.trim().toLowerCase();
+      const loginInput = formData.email.trim();
       const response = await fetch('/api/auth/signin', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({ 
-          email,
+          email: loginInput,
+          loginInput,
           password: formData.password
         }),
         signal: controller.signal
@@ -603,7 +624,31 @@ export default function Auth() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col px-8 py-12 bg-background overflow-y-auto">
+    <div className="min-h-screen flex flex-col px-8 py-12 bg-background overflow-y-auto relative">
+      {/* Floating Theme Switcher Button */}
+      <div className="absolute top-6 right-6 z-[90]">
+        <motion.button
+          type="button"
+          onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          className="p-3 rounded-2xl clay bg-surface text-foreground hover:text-[#FF6B6B] transition-colors border border-foreground/5 shadow-md flex items-center justify-center gap-2 cursor-pointer"
+          title={theme === 'dark' ? "Switch to Light Mode" : "Switch to Dark Mode"}
+        >
+          {theme === 'dark' ? (
+            <>
+              <Sun size={16} className="text-amber-500 animate-[spin_10s_linear_infinite]" />
+              <span className="text-[10px] uppercase font-bold tracking-wider select-none hidden sm:inline opacity-80">Light</span>
+            </>
+          ) : (
+            <>
+              <Moon size={16} className="text-indigo-500" />
+              <span className="text-[10px] uppercase font-bold tracking-wider select-none hidden sm:inline opacity-80">Dark</span>
+            </>
+          )}
+        </motion.button>
+      </div>
+
       <AnimatePresence>
         {showWelcome && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center px-6">
@@ -633,6 +678,344 @@ export default function Auth() {
               >
                 Let's Go!
               </button>
+            </motion.div>
+          </div>
+        )}
+
+        {showForgotModal && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center px-6">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => {
+                if (!forgotModalLoading) setShowForgotModal(false);
+              }}
+              className="absolute inset-0 bg-background/80 backdrop-blur-md"
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="relative w-full max-w-sm clay bg-surface p-8 text-center space-y-6"
+            >
+              {forgotStep === 'request' && (
+                <>
+                  <div className="w-16 h-16 mx-auto clay-coral rounded-2xl flex items-center justify-center text-white">
+                    <KeyRound size={28} />
+                  </div>
+                  <div className="space-y-2 text-center">
+                    <h2 className="text-2xl font-black tracking-tight">Forgot Password</h2>
+                    <p className="text-xs opacity-40 leading-relaxed">
+                      Enter your Username or Email Address and we'll send you a 6-digit confirmation code.
+                    </p>
+                  </div>
+                  <div className="space-y-4 text-left">
+                    <Input 
+                      id="forgot-email-username"
+                      icon={AtSign} 
+                      name="forgotInput" 
+                      type="text"
+                      placeholder="Email or Username" 
+                      value={forgotInput} 
+                      onChange={(e: any) => setForgotInput(e.target.value)}
+                    />
+                  </div>
+                  <div className="flex gap-3">
+                    <button 
+                      type="button"
+                      onClick={() => setShowForgotModal(false)}
+                      className="flex-1 py-3 bg-foreground/5 hover:bg-foreground/10 rounded-xl font-bold uppercase tracking-widest text-[10px] transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button 
+                      type="button"
+                      disabled={forgotModalLoading}
+                      onClick={async () => {
+                        const trimmed = forgotInput.trim();
+                        if (!trimmed) {
+                          toast.error('Please enter your email or username');
+                          return;
+                        }
+                        setForgotModalLoading(true);
+                        try {
+                          const response = await fetchWithRetry('/api/auth/reset-password-request', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ loginInput: trimmed })
+                          });
+                          const result = await response.json();
+                          if (!response.ok) {
+                            throw new Error(result.error || 'Failed to send reset code');
+                          }
+                          toast.success(result.message || '6-digit confirmation code sent!');
+                          
+                          // Store resolved email
+                          if (result.email) {
+                            setForgotResolvedEmail(result.email);
+                          } else if (trimmed.includes('@')) {
+                            setForgotResolvedEmail(trimmed);
+                          } else {
+                            setForgotResolvedEmail(trimmed);
+                          }
+                          
+                          setForgotStep('verify');
+                          setForgotCountdown(60);
+                        } catch (err: any) {
+                          toast.error(err.message);
+                        } finally {
+                          setForgotModalLoading(false);
+                        }
+                      }}
+                      className="flex-1 py-3 clay-coral text-white rounded-xl font-bold uppercase tracking-widest text-[10px] flex items-center justify-center gap-1 disabled:opacity-50 cursor-pointer"
+                    >
+                      {forgotModalLoading ? <Loader2 className="animate-spin" size={12} /> : 'Send Code'}
+                    </button>
+                  </div>
+                </>
+              )}
+
+              {forgotStep === 'verify' && (
+                <>
+                  <div className="w-16 h-16 mx-auto clay-coral rounded-2xl flex items-center justify-center text-white">
+                    <ShieldCheck size={28} />
+                  </div>
+                  <div className="space-y-2 text-center">
+                    <h2 className="text-2xl font-black tracking-tight">Verify Code</h2>
+                    <p className="text-xs opacity-40 leading-relaxed">
+                      Enter the 6-digit code sent to:
+                      <span className="block font-semibold opacity-70 mt-1 select-all font-mono">
+                        {forgotResolvedEmail}
+                      </span>
+                    </p>
+                  </div>
+                  <div className="space-y-4 text-left">
+                    <Input 
+                      id="forgot-otp-code"
+                      icon={ShieldCheck} 
+                      name="forgotOtpCode" 
+                      type="text"
+                      placeholder="••••••" 
+                      maxLength={6}
+                      value={forgotOtpCode} 
+                      onChange={(e: any) => {
+                        const val = e.target.value.replace(/[^0-9]/g, '');
+                        setForgotOtpCode(val);
+                      }}
+                      className="font-mono text-center tracking-[0.5em] text-lg pl-[0.25em]"
+                    />
+                    <div className="text-center pt-1">
+                      {forgotCountdown > 0 ? (
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-foreground/40 select-none">
+                          Resend code in {forgotCountdown}s
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          disabled={forgotModalLoading}
+                          onClick={async () => {
+                            if (!forgotResolvedEmail) {
+                              toast.error('Registered email missing. Please go back.');
+                              return;
+                            }
+                            setForgotModalLoading(true);
+                            const id = toast.loading('Resending verification code...');
+                            try {
+                              const response = await fetchWithRetry('/api/auth/resend-code', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ email: forgotResolvedEmail, type: 'recovery' })
+                              });
+                              const result = await response.json();
+                              if (!response.ok) throw new Error(result.error);
+                              toast.success(result.message || 'Verification code resent!', { id });
+                              setForgotCountdown(60);
+                            } catch (err: any) {
+                              toast.error(err.message || 'Failed to resend code', { id });
+                            } finally {
+                              setForgotModalLoading(false);
+                            }
+                          }}
+                          className="text-[10px] font-bold uppercase tracking-widest text-[#FF6B6B] opacity-60 hover:opacity-100 transition-opacity"
+                        >
+                          Resend Code
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex gap-3">
+                    <button 
+                      type="button"
+                      onClick={() => setForgotStep('request')}
+                      className="flex-1 py-3 bg-foreground/5 hover:bg-foreground/10 rounded-xl font-bold uppercase tracking-widest text-[10px] transition-colors"
+                    >
+                      Back
+                    </button>
+                    <button 
+                      type="button"
+                      disabled={forgotModalLoading || forgotOtpCode.length < 6}
+                      onClick={async () => {
+                        setForgotModalLoading(true);
+                        const id = toast.loading('Verifying code...');
+                        try {
+                          const response = await fetchWithRetry('/api/auth/verify', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ 
+                              email: forgotResolvedEmail,
+                              token: forgotOtpCode,
+                              type: 'recovery'
+                            })
+                          });
+                          const result = await response.json();
+                          if (!response.ok) {
+                            throw new Error(result.error || 'Invalid verification code');
+                          }
+                          toast.success('Code verified successfully!', { id });
+                          setForgotStep('new-password');
+                        } catch (err: any) {
+                          toast.error(err.message || 'Incorrect verification code', { id });
+                        } finally {
+                          setForgotModalLoading(false);
+                        }
+                      }}
+                      className="flex-1 py-3 clay-coral text-white rounded-xl font-bold uppercase tracking-widest text-[10px] flex items-center justify-center gap-1 disabled:opacity-50 cursor-pointer"
+                    >
+                      {forgotModalLoading ? <Loader2 className="animate-spin" size={12} /> : 'Verify'}
+                    </button>
+                  </div>
+                </>
+              )}
+
+              {forgotStep === 'new-password' && (
+                <>
+                  <div className="w-16 h-16 mx-auto clay-coral rounded-2xl flex items-center justify-center text-white">
+                    <Lock size={28} />
+                  </div>
+                  <div className="space-y-2 text-center">
+                    <h2 className="text-2xl font-black tracking-tight">New Password</h2>
+                    <p className="text-xs opacity-40 leading-relaxed">
+                      A secure password must be at least 8 characters and contain mixed case, numbers, and symbols.
+                    </p>
+                  </div>
+                  <div className="space-y-4 text-left">
+                    <div className="relative">
+                      <Input 
+                        id="forgot-new-password"
+                        icon={Lock} 
+                        name="forgotNewPassword" 
+                        type={showForgotNewPassword ? 'text' : 'password'} 
+                        placeholder="New Password" 
+                        value={forgotNewPassword} 
+                        onChange={(e: any) => setForgotNewPassword(e.target.value)}
+                      />
+                      <button 
+                        type="button"
+                        onClick={() => setShowForgotNewPassword(!showForgotNewPassword)}
+                        className="absolute right-4 top-1/2 -translate-y-1/2 opacity-40 hover:opacity-100"
+                      >
+                        {showForgotNewPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                      </button>
+                    </div>
+
+                    {forgotNewPassword && (
+                      <div className="flex items-center gap-2 px-1">
+                        <div className="flex-1 h-1 rounded-full bg-foreground/10 overflow-hidden">
+                          <motion.div 
+                            initial={{ width: 0 }}
+                            animate={{ 
+                              width: validatePassword(forgotNewPassword) === 'Weak' ? '33%' : validatePassword(forgotNewPassword) === 'Medium' ? '66%' : '100%',
+                              backgroundColor: validatePassword(forgotNewPassword) === 'Weak' ? '#ef4444' : validatePassword(forgotNewPassword) === 'Medium' ? '#f59e0b' : '#10b981'
+                            }}
+                            className="h-full"
+                          />
+                        </div>
+                        <span className={cn(
+                          "text-[10px] font-bold uppercase tracking-wider",
+                          validatePassword(forgotNewPassword) === 'Weak' ? "text-red-500" : validatePassword(forgotNewPassword) === 'Medium' ? "text-amber-500" : "text-emerald-500"
+                        )}>
+                          {validatePassword(forgotNewPassword)}
+                        </span>
+                      </div>
+                    )}
+
+                    <Input 
+                      id="forgot-new-password-confirm"
+                      icon={Lock} 
+                      name="forgotNewPasswordConfirm" 
+                      type="password" 
+                      placeholder="Confirm New Password" 
+                      value={forgotNewPasswordConfirm} 
+                      onChange={(e: any) => setForgotNewPasswordConfirm(e.target.value)}
+                    />
+                  </div>
+                  <div className="flex gap-3">
+                    <button 
+                      type="button"
+                      onClick={() => setShowForgotModal(false)}
+                      className="flex-1 py-3 bg-foreground/5 hover:bg-foreground/10 rounded-xl font-bold uppercase tracking-widest text-[10px] transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button 
+                      type="button"
+                      disabled={forgotModalLoading}
+                      onClick={async () => {
+                        if (!forgotNewPassword) {
+                          toast.error('Password is required');
+                          return;
+                        }
+                        if (forgotNewPassword !== forgotNewPasswordConfirm) {
+                          toast.error('Passwords do not match');
+                          return;
+                        }
+                        const strength = validatePassword(forgotNewPassword);
+                        if (strength !== 'Strong') {
+                          toast.error('Password must be strong (8+ characters with uppercase, numbers, and symbols)');
+                          return;
+                        }
+
+                        setForgotModalLoading(true);
+                        const id = toast.loading('Updating your password...');
+                        try {
+                          const { data, error } = await supabase.auth.updateUser({
+                            password: forgotNewPassword
+                          });
+
+                          if (error) {
+                            throw error;
+                          }
+
+                          toast.success('Password updated successfully!', { id });
+
+                          try {
+                            const { data: sessionData } = await supabase.auth.getSession();
+                            await fetch('/api/auth/session', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ session: sessionData.session })
+                            });
+                          } catch (err) {
+                            console.warn('[AUTH] Background session sync error:', err);
+                          }
+
+                          await checkAuth();
+                          setShowForgotModal(false);
+                          navigate('/home', { replace: true });
+                        } catch (err: any) {
+                          toast.error(err.message || 'Failed to update password', { id });
+                        } finally {
+                          setForgotModalLoading(false);
+                        }
+                      }}
+                      className="flex-1 py-3 clay-coral text-white rounded-xl font-bold uppercase tracking-widest text-[10px] flex items-center justify-center gap-1 disabled:opacity-50 cursor-pointer"
+                    >
+                      {forgotModalLoading ? <Loader2 className="animate-spin" size={12} /> : 'Save Password'}
+                    </button>
+                  </div>
+                </>
+              )}
             </motion.div>
           </div>
         )}
@@ -767,10 +1150,11 @@ export default function Auth() {
             className="space-y-4"
           >
             <Input 
+              id="login-email-username"
               icon={Mail} 
               name="email" 
-              type="email"
-              placeholder="Email Address" 
+              type="text"
+              placeholder="Email or Username" 
               value={formData.email} 
               onChange={handleInputChange}
             />
@@ -791,29 +1175,18 @@ export default function Auth() {
                 {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
               </button>
             </div>
-            <div className="flex justify-end px-1">
+             <div className="flex justify-end px-1">
               <button 
                 type="button"
-                onClick={async () => {
-                  if (!formData.email) {
-                    toast.error('Enter your email first');
-                    return;
-                  }
-                  setLoading(true);
-                  try {
-                    const response = await fetchWithRetry('/api/auth/reset-password-request', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ email: formData.email })
-                    });
-                    const result = await response.json();
-                    if (!response.ok) throw new Error(result.error);
-                    toast.success('Reset email sent!');
-                  } catch (err: any) {
-                    toast.error(err.message);
-                  } finally {
-                    setLoading(false);
-                  }
+                onClick={() => {
+                  setForgotInput(formData.email);
+                  setForgotStep('request');
+                  setForgotOtpCode('');
+                  setForgotNewPassword('');
+                  setForgotNewPasswordConfirm('');
+                  setForgotResolvedEmail('');
+                  setForgotCountdown(0);
+                  setShowForgotModal(true);
                 }}
                 className="text-[10px] uppercase font-bold tracking-widest text-[#FF6B6B] opacity-60 hover:opacity-100 transition-opacity"
               >
@@ -1062,7 +1435,7 @@ export default function Auth() {
   );
 }
 
-function Input({ icon: Icon, error, ...props }: any) {
+function Input({ icon: Icon, error, className, ...props }: any) {
   return (
     <div className="space-y-1.5">
       <div className={cn(
@@ -1074,7 +1447,7 @@ function Input({ icon: Icon, error, ...props }: any) {
         </div>
         <input 
           {...props}
-          className="w-full py-4 px-3 bg-transparent outline-none text-sm text-foreground placeholder:opacity-10"
+          className={cn("w-full py-4 px-3 bg-transparent outline-none text-sm text-foreground placeholder:opacity-10", className)}
         />
       </div>
       {props.type === 'date' && props.value && (

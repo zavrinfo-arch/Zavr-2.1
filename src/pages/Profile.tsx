@@ -13,7 +13,8 @@ import {
   User, Settings, Bell, Globe, 
   Download, LogOut, Flame, Trophy, 
   CheckCircle2, Star, Shield, Zap,
-  Camera, Clock, Calendar, X, Check, Lock
+  Camera, Clock, Calendar, X, Check, Lock,
+  Sun, Moon
 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
@@ -33,7 +34,8 @@ export default function Profile() {
   const navigate = useNavigate();
   const { 
     currentUser, streakData, soloGoals, 
-    transactions, setCurrentUser, updateUser, signOut
+    transactions, setCurrentUser, updateUser, signOut,
+    theme, setTheme
   } = useStore();
 
   const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false);
@@ -507,6 +509,37 @@ export default function Profile() {
                 <option value="USD">$ USD</option>
                 <option value="EUR">€ EUR</option>
               </select>
+            </div>
+
+            <div className="p-5 flex items-center justify-between clay-inset rounded-2xl bg-foreground/5">
+              <div className="flex items-center gap-4">
+                <div className={cn(
+                  "w-10 h-10 rounded-xl clay-inset flex items-center justify-center transition-colors",
+                  theme === 'dark' ? "text-amber-400" : "text-[#FF6B6B]"
+                )}>
+                  {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
+                </div>
+                <span className="text-sm font-bold opacity-80">App Theme</span>
+              </div>
+              <button 
+                onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+                className={cn(
+                  "px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest relative clay shadow divide-x flex items-center gap-2 cursor-pointer transition-colors duration-150",
+                  theme === 'dark' ? "bg-zinc-800 text-amber-400 hover:text-amber-300" : "bg-white text-zinc-900 border border-zinc-200 hover:bg-zinc-50"
+                )}
+              >
+                {theme === 'dark' ? (
+                  <>
+                    <Sun size={12} className="animate-[spin_8s_linear_infinite]" />
+                    <span>Dark</span>
+                  </>
+                ) : (
+                  <>
+                    <Moon size={12} />
+                    <span>Light</span>
+                  </>
+                )}
+              </button>
             </div>
 
             <div className="p-5 flex items-center justify-between clay-inset rounded-2xl bg-foreground/5">

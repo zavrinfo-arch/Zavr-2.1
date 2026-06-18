@@ -6,19 +6,21 @@ const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI
 const supabase = createClient(supabaseUrl, serviceRoleKey);
 
 async function inspectColumns() {
-  console.log('--- EMERGENCY GOALS TEST ---');
-  const { error: errCategory } = await supabase.from('emergency_goals').select('category').limit(1);
-  console.log('emergency_goals.category error:', errCategory);
-
-  const { error: errDeadline } = await supabase.from('emergency_goals').select('deadline').limit(1);
-  console.log('emergency_goals.deadline error:', errDeadline);
-
-  console.log('\n--- GROUP GOALS TEST ---');
-  const { error: errMembers } = await supabase.from('group_goals').select('members').limit(1);
-  console.log('group_goals.members error:', errMembers);
-
-  const { error: errGrpCategory } = await supabase.from('group_goals').select('category').limit(1);
-  console.log('group_goals.category error:', errGrpCategory);
+  console.log('--- PROFILES SAFE SELECT TEST ---');
+  const verifiedColumns = [
+    'id', 'full_name', 'username', 'email', 'phone', 'birth_date', 'dob',
+    'avatar_url', 'avatar_id', 'onboarding_completed', 'created_at', 'last_login_at'
+  ];
+  const { data, error } = await supabase
+    .from('profiles')
+    .select(verifiedColumns.join(','))
+    .limit(1);
+  if (error) {
+    console.error('Error fetching safe select fields from profiles:', error);
+  } else {
+    console.log('Success fetching safe select fields!');
+    console.log('Profile record:', data);
+  }
 }
 
 inspectColumns();

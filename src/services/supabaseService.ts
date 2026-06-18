@@ -155,11 +155,43 @@ export const supabaseService = {
 
     await this.ensureSession();
     console.log('[SUPABASE-SVC] Gathering profile for:', userId);
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from('profiles')
       .select('id,full_name,username,email,phone,birth_date,dob,location,avatar_url,avatar_id,streak,onboarding_completed,interests,badges,created_at,last_login_date,streak_freeze_count,xp,level,preferences')
       .eq('id', userId)
       .maybeSingle();
+    
+    // Fallback if some columns are missing from the DB schema
+    if (error && (error.message?.includes('column') || error.code === '42703')) {
+      console.warn('[SUPABASE-SVC] Profiles column missing error, falling back to verified columns query...');
+      const fallbackQuery = await supabase
+        .from('profiles')
+        .select('id,full_name,username,email,phone,birth_date,dob,avatar_url,avatar_id,onboarding_completed,created_at,last_login_at')
+        .eq('id', userId)
+        .maybeSingle();
+      
+      if (fallbackQuery.data) {
+        data = {
+          ...fallbackQuery.data,
+          location: '',
+          streak: 0,
+          xp: 0,
+          level: 1,
+          streak_freeze_count: 0,
+          interests: [],
+          badges: [],
+          preferences: {
+            currency: "INR",
+            notificationsEnabled: true,
+            reminders: {enabled: true, time: "20:00", frequency: "daily"}
+          },
+          last_login_date: (fallbackQuery.data as any).last_login_at
+        };
+        error = null;
+      } else {
+        error = fallbackQuery.error || error;
+      }
+    }
     
     if (error) {
       console.error('[SUPABASE-SVC] Get profile error:', error);
@@ -184,7 +216,7 @@ export const supabaseService = {
         interests: data.interests || [],
         badges: data.badges || [],
         createdAt: data.created_at,
-        lastLoginDate: data.last_login_date,
+        lastLoginDate: data.last_login_date || (data as any).last_login_at,
         streakFreezeCount: data.streak_freeze_count || 0,
         xp: data.xp || 0,
         level: data.level || 1,
@@ -233,22 +265,45 @@ export const supabaseService = {
   // Emergency Goals
   async getEmergencyGoals(userId: string) {
     await this.ensureSession();
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from('emergency_goals')
       .select('id,user_id,name,target_amount,current_amount,category,frequency,created_at,completed,completed_at,routine_amount')
       .eq('user_id', userId);
     
+    // Fallback if columns like category/routine_amount are missing from database
+    if (error && (error.message?.includes('column') || error.code === '42703')) {
+      console.warn('[SUPABASE] Emergency goals column missing error, using minimal fallback query...');
+      const fallbackQuery = await supabase
+        .from('emergency_goals')
+        .select('id,user_id,name,target_amount,current_amount,created_at')
+        .eq('user_id', userId);
+      
+      if (fallbackQuery.data) {
+        data = fallbackQuery.data.map((g: any) => ({
+          ...g,
+          category: 'Emergency',
+          frequency: 'weekly',
+          routine_amount: 100,
+          completed: false,
+          completed_at: null
+        }));
+        error = null;
+      } else {
+        error = fallbackQuery.error;
+      }
+    }
+
     if (data) {
       const mapped = data.map((g: any) => ({
         id: g.id,
         userId: g.user_id,
         name: g.name,
-        currentAmount: g.current_amount,
-        frequency: g.frequency,
-        routineAmount: g.routine_amount,
+        currentAmount: g.current_amount || 0,
+        frequency: g.frequency || 'weekly',
+        routineAmount: g.routine_amount || 100,
         createdAt: g.created_at,
-        completed: g.completed,
-        completedAt: g.completed_at
+        completed: g.completed || false,
+        completedAt: g.completed_at || null
       }));
       return { data: mapped, error };
     }
@@ -281,7 +336,7 @@ export const supabaseService = {
 
   async saveEmergencyGoal(goal: any) {
     await this.ensureSession();
-    const dbGoal: any = {
+    const fullDbGoal: any = {
       id: goal.id,
       user_id: goal.userId,
       name: goal.name,
@@ -296,11 +351,31 @@ export const supabaseService = {
       routine_amount: goal.routineAmount
     };
 
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from('emergency_goals') 
-      .upsert(dbGoal)
+      .upsert(fullDbGoal)
       .select()
       .maybeSingle();
+
+    // Fallback if columns are missing
+    if (error && (error.message?.includes('column') || error.code === '42703')) {
+      console.warn('[SUPABASE] Save emergency goal failed due to column mismatch, falling back to minimal schema insertion...');
+      const minimalDbGoal = {
+        id: goal.id,
+        user_id: goal.userId,
+        name: goal.name,
+        target_amount: goal.targetAmount,
+        current_amount: goal.currentAmount,
+        created_at: goal.createdAt
+      };
+      const fallback = await supabase
+        .from('emergency_goals')
+        .upsert(minimalDbGoal)
+        .select()
+        .maybeSingle();
+      data = fallback.data;
+      error = fallback.error;
+    }
     return { data, error };
   },
 
@@ -325,26 +400,56 @@ export const supabaseService = {
   // Group Goals
   async getGroupGoals() {
     await this.ensureSession();
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from('group_goals')
       .select('id,group_id,name,target_amount,member_count,password,creator_id,members,total_collected,created_at,deadline,frequency,completed,completed_at');
     
+    // Fallback if columns like group_id or members are missing
+    if (error && (error.message?.includes('column') || error.code === '42703')) {
+      console.warn('[SUPABASE] Group goals column missing error, using minimal fallback query...');
+      const fallbackQuery = await supabase
+        .from('group_goals')
+        .select('id,name,target_amount,current_amount,deadline,created_at,completed');
+      
+      if (fallbackQuery.data) {
+        data = fallbackQuery.data.map((g: any) => ({
+          id: g.id,
+          group_id: g.code || `ZAVR-${g.id.substring(0,6).toUpperCase()}`,
+          name: g.name,
+          target_amount: g.target_amount,
+          member_count: 1,
+          password: '',
+          creator_id: null,
+          members: [],
+          total_collected: g.current_amount || 0,
+          created_at: g.created_at,
+          deadline: g.deadline,
+          frequency: 'weekly',
+          completed: g.completed,
+          completed_at: null
+        }));
+        error = null;
+      } else {
+        error = fallbackQuery.error;
+      }
+    }
+
     if (data) {
       const mapped = data.map((g: any) => ({
         id: g.id,
-        groupId: g.group_id,
+        groupId: g.group_id || g.groupId || `ZAVR-${g.id.substring(0,6).toUpperCase()}`,
         name: g.name,
         targetAmount: g.target_amount,
-        memberCount: g.member_count,
-        password: g.password,
-        creatorId: g.creator_id,
-        members: g.members,
-        totalCollected: g.total_collected,
+        memberCount: g.member_count || 1,
+        password: g.password || '',
+        creatorId: g.creator_id || null,
+        members: g.members || [],
+        totalCollected: g.total_collected || g.current_amount || 0,
         createdAt: g.created_at,
         deadline: g.deadline,
-        frequency: g.frequency,
-        completed: g.completed,
-        completedAt: g.completed_at
+        frequency: g.frequency || 'weekly',
+        completed: g.completed || false,
+        completedAt: g.completed_at || null
       }));
       return { data: mapped, error };
     }
@@ -353,7 +458,7 @@ export const supabaseService = {
 
   async saveGroupGoal(goal: GroupGoal) {
     await this.ensureSession();
-    const dbGoal: any = {
+    const fullDbGoal: any = {
       id: goal.id,
       group_id: goal.groupId,
       name: goal.name,
@@ -370,11 +475,33 @@ export const supabaseService = {
       completed_at: goal.completedAt
     };
 
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from('group_goals')
-      .upsert(dbGoal)
+      .upsert(fullDbGoal)
       .select()
       .maybeSingle();
+
+    // Fallback if columns are missing
+    if (error && (error.message?.includes('column') || error.code === '42703')) {
+      console.warn('[SUPABASE] Save group goal failed due to column mismatch, falling back to minimal original columns...');
+      const minimalDbGoal = {
+        id: goal.id,
+        name: goal.name,
+        target_amount: goal.targetAmount,
+        current_amount: goal.totalCollected,
+        deadline: goal.deadline,
+        code: goal.groupId || `ZAVR-${goal.id.substring(0,6).toUpperCase()}`,
+        created_at: goal.createdAt,
+        completed: goal.completed
+      };
+      const fallback = await supabase
+        .from('group_goals')
+        .upsert(minimalDbGoal)
+        .select()
+        .maybeSingle();
+      data = fallback.data;
+      error = fallback.error;
+    }
     return { data, error };
   },
 

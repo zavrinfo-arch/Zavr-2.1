@@ -396,18 +396,62 @@ app.post('/api/auth/resend-code', otpLimiter, async (req, res) => {
   }
 });
 
-// 2.2 Password Reset Request
+// 2.2 Password Reset Request (Supports Email or Username)
 app.post('/api/auth/reset-password-request', async (req, res) => {
-  const { email: rawEmail } = req.body;
-  if (!rawEmail) return res.status(400).json({ error: 'Email is required' });
-  const email = rawEmail.trim().toLowerCase();
+  const { email: rawEmail, loginInput } = req.body;
+  const input = (loginInput || rawEmail || '').trim();
+  if (!input) return res.status(400).json({ error: 'Email or Username is required' });
 
-  const { error } = await supabaseAuth.auth.resetPasswordForEmail(email, {
-    redirectTo: `${process.env.APP_URL || 'http://localhost:3000'}/auth?reset=true`,
-  });
+  try {
+    let email = '';
+    const isEmail = input.includes('@');
+    if (isEmail) {
+      email = input.toLowerCase();
+    } else {
+      console.log(`[API-AUTH] Reset request lookup by username: ${input}`);
+      const { data: profileData, error: profileErr } = await supabaseAdmin
+        .from('profiles')
+        .select('email')
+        .eq('username', input.toLowerCase())
+        .maybeSingle();
 
-  if (error) return res.status(error.status || 500).json({ error: error.message });
-  res.json({ message: 'Password reset instructions sent to your email.' });
+      if (profileErr) {
+        console.error('[API-AUTH] Error looking up email on profiles for reset:', profileErr);
+      }
+
+      if (!profileData || !profileData.email) {
+        return res.status(404).json({
+          error: `The username "${input}" does not exist. Please check your spelling or enter your email address.`,
+          code: 'USER_NOT_FOUND'
+        });
+      }
+
+      email = profileData.email.toLowerCase();
+      console.log(`[API-AUTH] Username "${input}" resolved to email "${email}" for reset`);
+    }
+
+    const { error } = await supabaseAuth.auth.resetPasswordForEmail(email, {
+      redirectTo: `${process.env.APP_URL || 'http://localhost:3000'}/auth?reset=true`,
+    });
+
+    if (error) {
+      console.error('[API-AUTH] Reset password for email failed:', error);
+      return res.status(error.status || 500).json({ error: error.message });
+    }
+
+    // Obfuscate the email slightly if resolved from username, to prevent user scanning
+    const displayEmail = isEmail 
+      ? email 
+      : email.replace(/^([^@]{2})[^@]+(@.*)$/, '$1***$2');
+
+    res.json({ 
+      message: `Password reset instructions sent to ${displayEmail}.`,
+      email: email 
+    });
+  } catch (err: any) {
+    console.error('[API-AUTH] Error in reset password request:', err);
+    res.status(500).json({ error: err.message || 'Internal server error' });
+  }
 });
 
 // 3. Complete Profile
@@ -480,13 +524,42 @@ app.post('/api/auth/complete-profile', async (req, res) => {
   }
 });
 
-// 4. Sign In (Email + Password)
+// 4. Sign In (Email Address OR Username + Password)
 app.post('/api/auth/signin', signinLimiter, async (req, res) => {
-  const { email: rawEmail, password } = req.body;
-  if (!rawEmail || !password) return res.status(400).json({ error: 'Email and password are required' });
-  const email = rawEmail.trim().toLowerCase();
+  const { email: rawEmail, loginInput, password } = req.body;
+  const loginId = (loginInput || rawEmail || '').trim();
+  if (!loginId || !password) {
+    return res.status(400).json({ error: 'Email/Username and password are required' });
+  }
 
   try {
+    let email = '';
+    const isEmail = loginId.includes('@');
+    if (isEmail) {
+      email = loginId.toLowerCase();
+    } else {
+      console.log(`[API-AUTH] Signin lookup by username: ${loginId}`);
+      const { data: profileData, error: profileErr } = await supabaseAdmin
+        .from('profiles')
+        .select('email')
+        .eq('username', loginId.toLowerCase())
+        .maybeSingle();
+
+      if (profileErr) {
+        console.error('[API-AUTH] Error looking up email on profiles:', profileErr);
+      }
+
+      if (!profileData || !profileData.email) {
+        return res.status(401).json({
+          error: `The username "${loginId}" does not exist. Please check your spelling or sign in with your email address.`,
+          code: 'INVALID_CREDENTIALS'
+        });
+      }
+
+      email = profileData.email.toLowerCase();
+      console.log(`[API-AUTH] Username "${loginId}" mapped to email "${email}"`);
+    }
+
     // Sign in with email directly using the standard auth client
     const { data, error } = await supabaseAuth.auth.signInWithPassword({
       email,
@@ -501,13 +574,12 @@ app.post('/api/auth/signin', signinLimiter, async (req, res) => {
       });
       
       // Detailed feedback for common issues
-      let userMessage = 'Invalid email or password. Please try again.';
+      let userMessage = 'Invalid email/username or password. Please try again.';
       
       if (error.message.includes('Email not confirmed')) {
         userMessage = 'Please confirm your email address. Check your inbox for the verification code we sent during signup.';
       } else if (error.message.includes('Invalid login credentials')) {
-        // This is the most common error. It can mean wrong creds OR unconfirmed email (depending on Supabase settings)
-        userMessage = 'Invalid email or password. If you just signed up, please make sure you verified your email using the code we sent.';
+        userMessage = 'Invalid email/username or password. If you just signed up, please make sure you verified your email using the code we sent.';
       } else {
         userMessage = error.message;
       }
@@ -540,14 +612,37 @@ app.post('/api/auth/signin', signinLimiter, async (req, res) => {
     let profile = null;
     if (data.user) {
       try {
-        console.log('[API-AUTH] Elevating to check database profile for user:', data.user.id);
-        const { data: pData } = await supabaseAdmin
+        const nowISO = new Date().toISOString();
+        console.log('[API-AUTH] Updating profiles collection last_login_at and retrieving for user:', data.user.id);
+        
+        // Update last_login_at (requested column of profiles) and email
+        const { data: pData, error: updateError } = await supabaseAdmin
           .from('profiles')
-          .select('*')
+          .update({
+            last_login_at: nowISO,
+            email: email // ensure email is saved
+          })
           .eq('id', data.user.id)
+          .select()
           .maybeSingle();
-        profile = pData;
-        console.log('[API-AUTH] Profile retrieval completed on signin. Found:', !!pData);
+
+        if (updateError) {
+          console.error('[API-AUTH] Failed to update last_login_at, fetching current profile instead:', updateError);
+          // Fallback to simple select
+          const { data: fallbackData } = await supabaseAdmin
+            .from('profiles')
+            .select('*')
+            .eq('id', data.user.id)
+            .maybeSingle();
+          profile = fallbackData;
+        } else {
+          profile = pData;
+        }
+
+        // Add compatibility mapping so client can reference last_login_date seamlessly
+        if (profile) {
+          profile.last_login_date = profile.last_login_at || nowISO;
+        }
       } catch (profileErr) {
         console.warn('[API-AUTH] Failed to fetch profile on signin:', profileErr);
       }
