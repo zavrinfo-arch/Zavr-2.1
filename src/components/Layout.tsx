@@ -65,9 +65,13 @@ export function BottomNav({ onPlusClick }: { onPlusClick: () => void }) {
 
 export function Layout({ children, onPlusClick }: { children: React.ReactNode, onPlusClick: () => void }) {
   const location = useLocation();
+  const hasProfileHeader = !location.pathname.includes('/zettl/chat/');
 
   return (
-    <div className="min-h-screen pb-24 pt-20 max-w-md mx-auto relative overflow-x-hidden">
+    <div className={cn(
+      "min-h-screen pb-24 max-w-md mx-auto relative overflow-x-hidden",
+      hasProfileHeader ? "pt-28" : "pt-4"
+    )}>
       <ProfileHeader />
       <main key={location.pathname} className="px-6 page-transition">
         {children}

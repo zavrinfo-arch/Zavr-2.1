@@ -8,8 +8,11 @@ import toast from 'react-hot-toast';
 import { cn } from '../lib/utils';
 import { 
   Bell, Search, UserPlus, Check, X, Home, Target, History, Wallet, Users, Loader2, 
-  ArrowUpCircle, ArrowDownCircle, Send, UserCheck, Clock, AlertCircle, Sparkles, CheckCircle, Plus
+  ArrowUpCircle, ArrowDownCircle, Send, UserCheck, Clock, AlertCircle, Sparkles, CheckCircle, Plus,
+  Flame, Moon, Sun
 } from 'lucide-react';
+import { useStore } from '../store/useStore';
+import { AVATARS_50 } from '../constants/avatars';
 
 // Animated Counter Component using requestAnimationFrame
 function AnimatedCounter({ value, duration = 1000 }) {
@@ -52,31 +55,28 @@ function FriendRequestBell({ userId, pendingRequests, onAccept, onDecline, loadi
 
   return (
     <div className="relative font-sans pointer-events-auto" ref={containerRef} id="friend-request-bell-container">
-      <button
+      <motion.button
+        whileHover={{ scale: 1.05 }}
+        whileTap={{ scale: 0.95 }}
         onClick={() => setIsOpen(!isOpen)}
-        className="relative p-2.5 rounded-xl bg-zinc-800/80 border border-white/5 hover:bg-zinc-800 focus:outline-none transition-all duration-200 cursor-pointer text-white/80 block shadow-inner active:scale-95"
+        className="w-10 h-10 clay-inset flex items-center justify-center text-foreground/70 relative cursor-pointer"
         id="bell-button"
       >
-        <Bell className="w-4 h-4" />
+        <Bell size={18} className="text-purple-400" />
         {pendingRequests.length > 0 && (
           <span 
-            className="absolute -top-1 -right-1 bg-[#FF6B6B] text-white text-[9px] font-black rounded-full w-4 h-4 flex items-center justify-center shadow-lg animate-pulse"
+            className="absolute top-2.5 right-2.5 w-2 h-2 bg-[#FF6B6B] rounded-full animate-ping"
             id="bell-badge"
-          >
-            {pendingRequests.length}
-          </span>
+          />
         )}
-      </button>
+      </motion.button>
 
       {isOpen && (
         <div 
-          className="absolute right-0 mt-2 w-72 bg-[#1E1E1E] rounded-2xl shadow-2xl border border-white/5 p-4 z-50 transform origin-top-right transition-all duration-200"
-          style={{
-            boxShadow: 'inset 2px 2px 5px rgba(255, 255, 255, 0.06), inset -3px -3px 6px rgba(0, 0, 0, 0.7), 0px 12px 24px rgba(0, 0, 0, 0.4)'
-          }}
+          className="absolute right-0 mt-2 w-72 clay p-4 z-50 transform origin-top-right transition-all duration-200"
           id="bell-dropdown"
         >
-          <div className="flex items-center justify-between border-b border-white/5 pb-2 mb-3">
+          <div className="flex items-center justify-between border-b border-border pb-2 mb-3">
             <span className="text-[10px] font-black text-gray-400 uppercase tracking-wider">
               Link Invitations
             </span>
@@ -97,16 +97,16 @@ function FriendRequestBell({ userId, pendingRequests, onAccept, onDecline, loadi
             <div className="space-y-3 max-h-64 overflow-y-auto pr-1" id="bell-items">
               {pendingRequests.map((req) => (
                 <div 
-                  key={req.id} 
-                  className="flex items-center justify-between p-2.5 bg-black/30 rounded-xl border border-white/5"
-                  id={`friend-req-${req.id}`}
+                   key={req.id} 
+                   className="flex items-center justify-between p-2.5 bg-surface-light rounded-xl border border-border"
+                   id={`friend-req-${req.id}`}
                 >
                   <div className="flex items-center gap-2 min-w-0">
-                    <div className="w-8 h-8 rounded-full bg-zinc-800 text-white/95 font-black flex items-center justify-center text-[10px] uppercase shadow-inner border border-white/5 shrink-0 select-none">
+                    <div className="w-8 h-8 rounded-full bg-surface text-foreground font-black flex items-center justify-center text-[10px] uppercase shadow-inner border border-border shrink-0 select-none">
                       {req.sender_profile?.username?.charAt(0) || 'U'}
                     </div>
                     <div className="flex flex-col min-w-0">
-                      <span className="text-xs font-bold text-white truncate">@{req.sender_profile?.username || 'user'}</span>
+                      <span className="text-xs font-bold text-foreground truncate">@{req.sender_profile?.username || 'user'}</span>
                       <span className="text-[9px] text-[#8E8E93] truncate">{req.sender_profile?.full_name || 'Zavr User'}</span>
                     </div>
                   </div>
@@ -123,7 +123,7 @@ function FriendRequestBell({ userId, pendingRequests, onAccept, onDecline, loadi
                     <button
                       onClick={() => onDecline(req.id)}
                       disabled={loading}
-                      className="bg-zinc-800 hover:bg-zinc-700 text-white/60 rounded-lg px-2 py-1 transition-all font-black text-[9px] flex items-center gap-1 cursor-pointer active:scale-95 uppercase tracking-wider border border-white/5"
+                      className="bg-surface-light hover:bg-surface border border-border text-foreground/60 rounded-lg px-2 py-1 transition-all font-black text-[9px] flex items-center gap-1 cursor-pointer active:scale-95 uppercase tracking-wider"
                       id={`decline-btn-${req.id}`}
                     >
                       <X className="w-3 h-3" /> Decline
@@ -149,10 +149,10 @@ function BalanceCard({ title, amount, onClick, isFiltered, icon: Icon, colorThem
       whileTap={{ scale: 0.98 }}
       onClick={onClick}
       className={cn(
-        "relative overflow-hidden p-5 rounded-[24px] clay-card bg-[#1E1E1E] transition-all duration-200 cursor-pointer select-none border",
+        "relative overflow-hidden p-5 rounded-[24px] clay-card bg-surface transition-all duration-200 cursor-pointer select-none border",
         isFiltered 
-          ? (isOwed ? 'border-[#4ECDC4] shadow-[0_0_15px_rgba(78,205,196,0.15)] bg-[#1e1e1e]/90' : 'border-[#FF6B6B] shadow-[0_0_15px_rgba(255,107,107,0.15)] bg-[#1e1e1e]/90')
-          : 'border-white/[0.02]'
+          ? (isOwed ? 'border-[#4ECDC4] shadow-[0_0_15px_rgba(78,205,196,0.15)] bg-surface/90' : 'border-[#FF6B6B] shadow-[0_0_15px_rgba(255,107,107,0.15)] bg-surface/90')
+          : 'border-border'
       )}
       id={`balance-card-${title.toLowerCase().replace(/\s+/g, '-')}`}
     >
@@ -168,7 +168,7 @@ function BalanceCard({ title, amount, onClick, isFiltered, icon: Icon, colorThem
       )}>
         <AnimatedCounter value={amount} />
       </h3>
-      <div className="mt-4 flex items-center justify-between text-[8px] font-black uppercase tracking-widest text-[#8E8E93] border-t border-white/[0.04] pt-2">
+      <div className="mt-4 flex items-center justify-between text-[8px] font-black uppercase tracking-widest text-[#8E8E93] border-t border-border pt-2">
         <span>{isFiltered ? 'Active Filter' : 'Click to filter'}</span>
         <span className={cn(isOwed ? "text-[#4ECDC4]" : "text-[#FF6B6B]")}>
           {isFiltered ? '●' : '→'}
@@ -281,7 +281,7 @@ function ContactSearch({ userId, onAddFriend, onFocusInput, searchInputRef }) {
   return (
     <div className="relative space-y-3.5 font-sans" ref={containerRef} id="contact-search-block">
       <div className="relative">
-        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-white/30">
+        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-foreground/30">
           <Search className="w-4 h-4" />
         </span>
         <input
@@ -294,13 +294,13 @@ function ContactSearch({ userId, onAddFriend, onFocusInput, searchInputRef }) {
           }}
           onFocus={() => setShowDropdown(true)}
           placeholder="Search Gen Z usernames..."
-          className="w-full clay-inset bg-[#0D0D0D] border-0 rounded-2xl px-4 py-3.5 pl-11 pr-10 focus:ring-1 focus:ring-[#FF6B6B]/30 outline-none transition-all duration-200 text-white placeholder-white/20 text-xs font-medium"
+          className="w-full clay-inset bg-transparent border-0 rounded-2xl px-4 py-3.5 pl-11 pr-10 focus:ring-1 focus:ring-[#FF6B6B]/30 outline-none transition-all duration-200 text-foreground placeholder-[#8E8E93]/60 text-xs font-medium"
           id="contact-search-input"
         />
         {query && (
           <button
             onClick={() => { setQuery(''); setResults([]); }}
-            className="absolute right-4 top-1/2 -translate-y-1/2 text-white/30 hover:text-white transition-colors cursor-pointer"
+            className="absolute right-4 top-1/2 -translate-y-1/2 text-foreground/30 hover:text-foreground transition-colors cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
@@ -315,7 +315,7 @@ function ContactSearch({ userId, onAddFriend, onFocusInput, searchInputRef }) {
       {/* Recent searches display block */}
       {recentSearches.length > 0 && !query && (
         <div className="flex flex-wrap items-center gap-1.5 pt-1" id="recent-searches">
-          <span className="text-[8px] font-black uppercase tracking-[0.1em] text-white/20 mr-1">
+          <span className="text-[8px] font-black uppercase tracking-[0.1em] text-foreground/20 mr-1">
             Recents:
           </span>
           {recentSearches.map((term) => (
@@ -325,7 +325,7 @@ function ContactSearch({ userId, onAddFriend, onFocusInput, searchInputRef }) {
                 setQuery(term);
                 setShowDropdown(true);
               }}
-              className="flex items-center gap-1.5 px-3 py-1 bg-[#0D0D0D] hover:bg-black/40 text-[#8E8E93] rounded-full text-[10px] font-bold cursor-pointer transition-colors duration-150 border border-white/[0.02]"
+              className="flex items-center gap-1.5 px-3 py-1 bg-surface-light hover:bg-surface border border-border text-[#8E8E93] rounded-full text-[10px] font-bold cursor-pointer transition-colors duration-150"
               id={`recent-term-${term}`}
             >
               <span>@{term}</span>
@@ -344,18 +344,15 @@ function ContactSearch({ userId, onAddFriend, onFocusInput, searchInputRef }) {
       {/* Results Dropdown */}
       {showDropdown && query && (
         <div 
-          className="absolute left-0 right-0 mt-2 bg-[#1E1E1E] rounded-2xl shadow-2xl border border-white/5 p-4 z-40 max-h-72 overflow-y-auto transform origin-top transition-all duration-200"
-          style={{
-            boxShadow: 'inset 2px 2px 5px rgba(255, 255, 255, 0.06), inset -3px -3px 6px rgba(0, 0, 0, 0.7), 0px 12px 24px rgba(0, 0, 0, 0.4)'
-          }}
+          className="absolute left-0 right-0 mt-2 clay p-4 z-40 max-h-72 overflow-y-auto transform origin-top transition-all duration-200"
           id="search-results-dropdown"
         >
-          <div className="text-[9px] uppercase font-black tracking-widest text-[#8E8E93] mb-3 border-b border-white/[0.04] pb-1.5">
+          <div className="text-[9px] uppercase font-black tracking-widest text-[#8E8E93] mb-3 border-b border-border pb-1.5">
             Discovered Zavr Profiles
           </div>
 
           {results.length === 0 && !loading ? (
-            <div className="text-center py-6 text-white/30 font-black text-[10px] uppercase tracking-wider" id="results-empty">
+            <div className="text-center py-6 text-foreground/30 font-black text-[10px] uppercase tracking-wider" id="results-empty">
               No matching profiles found
             </div>
           ) : (
@@ -363,15 +360,15 @@ function ContactSearch({ userId, onAddFriend, onFocusInput, searchInputRef }) {
               {results.map((profile) => (
                 <div
                   key={profile.id}
-                  className="flex items-center justify-between p-2 hover:bg-zinc-800/40 rounded-xl transition-all duration-150"
+                  className="flex items-center justify-between p-2 hover:bg-surface-light rounded-xl transition-all duration-150"
                   id={`profile-card-${profile.id}`}
                 >
                   <div className="flex items-center gap-2.5 min-w-0">
-                    <div className="w-9 h-9 rounded-full bg-zinc-805 border border-white/[0.04] flex items-center justify-center font-black text-white/95 text-xs uppercase shadow-inner select-none shrink-0">
+                    <div className="w-9 h-9 rounded-full bg-surface-light border border-border flex items-center justify-center font-black text-foreground/90 text-xs uppercase shadow-inner select-none shrink-0 border-border">
                       {profile.username?.charAt(0) || 'U'}
                     </div>
                     <div className="flex flex-col min-w-0">
-                      <span className="text-xs font-bold text-white truncate">@{profile.username}</span>
+                      <span className="text-xs font-bold text-foreground truncate">@{profile.username}</span>
                       <span className="text-[9px] text-[#8E8E93] truncate">{profile.full_name || 'Zavr Friend'}</span>
                     </div>
                   </div>
@@ -403,10 +400,10 @@ function DebtList({ debts, userId, onSettle, loading }) {
   return (
     <div className="space-y-4 font-sans" id="debt-list-block">
       <div className="flex items-center justify-between">
-        <h3 className="text-xl font-bold tracking-tight text-white serif-heading">
+        <h3 className="text-xl font-bold tracking-tight text-foreground serif-heading">
           Settlement Ledgers
         </h3>
-        <span className="px-2.5 py-1 rounded-lg clay-inset bg-foreground/5 text-[8px] font-black text-white/50 uppercase tracking-widest">
+        <span className="px-2.5 py-1 rounded-lg clay-inset bg-foreground/5 text-[8px] font-black text-foreground/50 uppercase tracking-widest">
           {debts.length} Records
         </span>
       </div>
@@ -422,25 +419,25 @@ function DebtList({ debts, userId, onSettle, loading }) {
             <motion.div
               layout
               key={item.id}
-              className="clay-card p-4.5 bg-surface flex flex-col gap-3 border border-white/[0.02]"
+              className="clay-card p-4.5 bg-surface flex flex-col gap-3 border border-border"
               id={`debt-row-${item.id}`}
             >
               {/* Header: User Profile Details + Amount */}
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-10 h-10 rounded-xl clay-inset flex items-center justify-center text-white/90 font-black text-xs shrink-0 select-none">
+                  <div className="w-10 h-10 rounded-xl clay-inset flex items-center justify-center text-foreground/90 font-black text-xs shrink-0 select-none">
                     {partnerProfile?.username?.charAt(0)?.toUpperCase() || 'U'}
                   </div>
                   <div className="min-w-0">
                     <div className="flex items-baseline gap-1.5 flex-wrap">
-                      <span className="text-sm font-bold text-white truncate">
+                      <span className="text-sm font-bold text-foreground truncate">
                         {partnerProfile?.full_name || 'Zavr Member'}
                       </span>
-                      <span className="text-[10px] text-white/30 truncate">
+                      <span className="text-[10px] text-foreground/40 truncate">
                         @{partnerProfile?.username || 'user'}
                       </span>
                     </div>
-                    <p className="text-xs text-white/60 font-medium truncate mt-0.5">
+                    <p className="text-xs text-foreground/60 font-medium truncate mt-0.5">
                       {item.purpose || 'No description listed'}
                     </p>
                   </div>
@@ -453,21 +450,21 @@ function DebtList({ debts, userId, onSettle, loading }) {
                   )}>
                     {isLent ? '+' : '-'} ₹{Number(item.amount).toLocaleString('en-IN')}
                   </span>
-                  <span className="text-[8px] text-white/30 uppercase tracking-wider block mt-0.5">
+                  <span className="text-[8px] text-foreground/40 uppercase tracking-wider block mt-0.5">
                     {isLent ? 'owes you' : 'you owe'}
                   </span>
                 </div>
               </div>
 
               {/* Footer: Date Info + Action / Status badges */}
-              <div className="flex items-center justify-between gap-4 pt-3 border-t border-white/[0.04] mt-1">
+              <div className="flex items-center justify-between gap-4 pt-3 border-t border-border mt-1">
                 <div>
                   {item.due_date ? (
                     <span className="text-[9px] text-[#8E8E93] font-mono">
                       DUE: {new Date(item.due_date).toLocaleDateString()}
                     </span>
                   ) : (
-                    <span className="text-[8px] text-white/20 font-mono uppercase tracking-widest">
+                    <span className="text-[8px] text-foreground/20 font-mono uppercase tracking-widest">
                       No Deadline
                     </span>
                   )}
@@ -475,15 +472,15 @@ function DebtList({ debts, userId, onSettle, loading }) {
 
                 <div className="flex items-center gap-2 flex-shrink-0">
                   {settled ? (
-                    <span className="text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 text-[8px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider">
+                    <span className="text-emerald-500 bg-emerald-500/10 border border-emerald-500/20 text-[8px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider">
                       Paid
                     </span>
                   ) : overdue ? (
-                    <span className="text-red-400 bg-red-500/10 border border-red-500/20 text-[8px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider animate-pulse">
+                    <span className="text-red-500 bg-red-500/10 border border-red-500/20 text-[8px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider animate-pulse">
                       Overdue
                     </span>
                   ) : (
-                    <span className="text-amber-400 bg-amber-500/10 border border-amber-500/20 text-[8px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider">
+                    <span className="text-amber-500 bg-amber-500/10 border border-amber-500/20 text-[8px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider">
                       Pending
                     </span>
                   )}
@@ -492,7 +489,7 @@ function DebtList({ debts, userId, onSettle, loading }) {
                     <button
                       onClick={() => onSettle(item.id)}
                       disabled={loading}
-                      className="clay-inset bg-foreground/5 hover:bg-foreground/10 text-white border border-white/5 rounded-xl px-3 py-1.5 text-[9px] font-black transition-all cursor-pointer shadow-md active:scale-95 flex items-center gap-1 shrink-0 uppercase tracking-wider"
+                      className="clay-inset bg-surface hover:bg-surface-light text-foreground border border-border rounded-xl px-3 py-1.5 text-[9px] font-black transition-all cursor-pointer shadow-md active:scale-95 flex items-center gap-1 shrink-0 uppercase tracking-wider"
                     >
                       {loading ? (
                         <Loader2 className="w-3 h-3 animate-spin text-[#FF6B6B]" />
@@ -515,24 +512,24 @@ function DebtList({ debts, userId, onSettle, loading }) {
 function EmptyDebtState({ onLinkContactsClick }) {
   return (
     <div 
-      className="clay-card p-12 text-center flex flex-col items-center justify-center space-y-4 bg-surface/40 border border-white/[0.01]"
+      className="clay-card p-12 text-center flex flex-col items-center justify-center space-y-4 bg-surface/40 border border-border"
       id="empty-debt-state"
     >
-      <div className="w-12 h-12 rounded-xl clay-inset flex items-center justify-center text-white/30">
+      <div className="w-12 h-12 rounded-xl clay-inset flex items-center justify-center text-foreground/30">
         <Wallet size={24} />
       </div>
       <div className="space-y-1">
-        <h4 className="text-white font-bold text-sm">
+        <h4 className="text-foreground font-bold text-sm">
           No Active Debts
         </h4>
-        <p className="text-xs text-white/30 font-medium">
+        <p className="text-xs text-foreground/30 font-medium">
           Your settlement boards are perfectly clear.
         </p>
       </div>
       <button
         type="button"
         onClick={onLinkContactsClick}
-        className="px-5 py-2.5 clay-inset bg-foreground/5 hover:bg-foreground/10 text-white border border-white/5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all cursor-pointer shadow-md"
+        className="px-5 py-2.5 clay-inset bg-surface hover:bg-surface-light text-foreground border border-border rounded-xl text-[9px] font-black uppercase tracking-widest transition-all cursor-pointer shadow-md"
         id="link-contacts-button"
       >
         Link Contacts
@@ -544,15 +541,15 @@ function EmptyDebtState({ onLinkContactsClick }) {
 // Skeleton Card component during load state
 function SkeletonCard() {
   return (
-    <div className="clay-card p-4.5 bg-surface animate-pulse flex items-center justify-between border border-white/[0.01]">
+    <div className="clay-card p-4.5 bg-surface animate-pulse flex items-center justify-between border border-border">
       <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-xl bg-zinc-800/40 clay-inset"></div>
+        <div className="w-10 h-10 rounded-xl clay-inset"></div>
         <div className="space-y-2">
-          <div className="h-3 w-20 bg-[#0D0D0D] rounded"></div>
-          <div className="h-2 w-28 bg-[#0D0D0D] rounded"></div>
+          <div className="h-3 w-20 bg-surface-light rounded"></div>
+          <div className="h-2 w-28 bg-surface-light rounded"></div>
         </div>
       </div>
-      <div className="h-4 w-12 bg-[#0D0D0D] rounded-lg"></div>
+      <div className="h-4 w-12 bg-surface-light rounded-lg"></div>
     </div>
   );
 }
@@ -571,7 +568,7 @@ function BottomNavigation({ onPlusClick }) {
   ];
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-40 px-6 py-6 bg-[#1A1A1A]/85 backdrop-blur-2xl flex items-center justify-around border-t border-white/[0.02]" id="bottom-navigation-bar">
+    <nav className="fixed bottom-0 left-0 right-0 z-40 px-6 py-6 bg-surface/85 backdrop-blur-2xl flex items-center justify-around border-t border-border" id="bottom-navigation-bar">
       {navItems.map((item, i) => {
         if (i === 2) {
           return (
@@ -581,7 +578,7 @@ function BottomNavigation({ onPlusClick }) {
                 whileTap={{ scale: 1.08, rotate: 45 }}
                 transition={{ type: "tween", duration: 0.2 }}
                 onClick={onPlusClick}
-                className="absolute -top-16 left-1/2 -translate-x-1/2 w-16 h-16 clay-coral rounded-2xl flex items-center justify-center text-white border-4 border-[#121212] shadow-2xl cursor-pointer"
+                className="absolute -top-16 left-1/2 -translate-x-1/2 w-16 h-16 clay-coral rounded-2xl flex items-center justify-center text-white border-4 border-background shadow-2xl cursor-pointer"
                 id="zettl-nav-plus-button"
               >
                 <Plus className="w-8 h-8" />
@@ -618,6 +615,17 @@ export default function ZettlPage() {
   const { user, userId, loading: authLoading } = useAuth();
   const [loading, setLoading] = useState(false);
   const [profile, setProfile] = useState(null);
+
+  const currentUser = useStore((state) => state.currentUser);
+  const theme = useStore((state) => state.theme);
+  const setTheme = useStore((state) => state.setTheme);
+
+  const getTimeGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return 'GOOD MORNING';
+    if (hour < 17) return 'GOOD AFTERNOON';
+    return 'GOOD EVENING';
+  };
 
   // Core domain data states
   const [friendRequests, setFriendRequests] = useState([]);
@@ -1007,48 +1015,85 @@ export default function ZettlPage() {
     .filter(d => (d.status === 'pending' || d.settled === false))
     .reduce((sum, d) => sum + Number(d.amount), 0);
 
+  const activeUser = currentUser || {
+    id: userId || '',
+    fullName: profile?.full_name || user?.email || 'User',
+    username: profile?.username || user?.email?.split('@')[0] || 'user',
+    avatar: profile?.avatar_url || '',
+    avatarId: '',
+    level: 1,
+    streak: 0
+  };
+
+  const avatarUrl = activeUser.avatar || 
+    AVATARS_50.find(a => a.id === activeUser.avatarId?.toString())?.url || 
+    `https://api.dicebear.com/7.x/lorelei/svg?seed=${activeUser.username}`;
+
   return (
-    <div className="min-h-screen bg-background text-foreground pb-36 font-sans max-w-md mx-auto relative overflow-x-hidden px-6 pt-24" id="zettl-page-container">
+    <div className="min-h-screen bg-background text-foreground pb-36 font-sans max-w-md mx-auto relative overflow-x-hidden px-6 pt-28" id="zettl-page-container">
       
       {/* FIXED POSITION HEADER SECTION FLOATING COMPONENT - Matches Layout.tsx ProfileHeader */}
       <div className="fixed top-0 left-0 right-0 z-[95] px-4 pt-4 pointer-events-none" id="zettl-header">
         <div 
-          className="w-full max-w-md mx-auto flex pointer-events-auto justify-between items-center px-4 py-3 bg-[#1E1E1E] rounded-[24px] border border-white/[0.03] shadow-2xl relative"
-          style={{
-            boxShadow: 'inset 2px 2px 5px rgba(255, 255, 255, 0.06), inset -3px -3px 6px rgba(0, 0, 0, 0.7), 0px 12px 24px rgba(0, 0, 0, 0.4)',
-          }}
+          className="w-full max-w-md mx-auto flex pointer-events-auto justify-between items-center p-4 clay relative"
         >
           {/* Profile Left */}
           <div className="flex items-center gap-3 min-w-0 cursor-pointer" onClick={() => navigate('/profile')}>
             <div className="relative flex-shrink-0">
-              <div className="w-11 h-11 rounded-full p-0.5 flex items-center justify-center overflow-hidden bg-zinc-800 animate-fade-in" style={{ boxShadow: 'inset 1px 1px 3px rgba(255, 255, 255, 0.1)' }}>
+              <div className="w-12 h-12 rounded-full p-0.5 flex items-center justify-center overflow-hidden bg-surface-light border border-border animate-fade-in">
                 <img 
-                  src={profile?.avatar_url || `https://api.dicebear.com/7.x/lorelei/svg?seed=${profile?.username || 'zavr'}`} 
+                  src={avatarUrl} 
                   alt="Profile Avatar" 
                   className="w-full h-full object-cover rounded-full"
                 />
               </div>
+              <div className="absolute -bottom-1 -right-1 w-5 h-5 clay-coral rounded-lg flex items-center justify-center text-[8px] font-black text-white border-2 border-surface">
+                {activeUser.level || 1}
+              </div>
             </div>
             
-            <div className="flex flex-col min-w-0">
+            <div className="flex flex-col min-w-0 font-sans">
               <p className="text-[9px] font-black text-[#8E8E93] tracking-[0.2em] uppercase truncate">
-                HELLO!
+                {getTimeGreeting()}
               </p>
-              <h2 className="text-xs font-black text-white tracking-tight leading-none truncate mt-0.5" style={{ letterSpacing: '-0.02em' }}>
-                @{profile?.username || user?.email?.split('@')[0] || 'zavr'}
+              <h2 className="text-sm font-black text-foreground tracking-tight leading-none truncate mt-0.5" style={{ letterSpacing: '-0.02em' }}>
+                {(activeUser.fullName || '').split(' ')[0] || 'User'}
               </h2>
+              <p className="text-[9px] text-[#8E8E93] font-medium truncate mt-0.5">
+                @{activeUser.username}
+              </p>
             </div>
           </div>
 
           {/* Right Controls */}
-          <div className="flex items-center gap-2">
-            <FriendRequestBell
-              userId={userId}
-              pendingRequests={friendRequests}
-              onAccept={handleAcceptFriendRequest}
-              onDecline={handleDeclineFriendRequest}
-              loading={bellLoading || settledLoading}
-            />
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {/* Streak Counter */}
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-surface-light border border-border shadow-inner">
+              <Flame size={14} className={cn(
+                "transition-all",
+                (activeUser.streak || 0) > 0 ? "text-orange-500 animate-pulse" : "text-foreground/20"
+              )} />
+              <span className="text-xs font-black text-foreground">{activeUser.streak || 0}</span>
+            </div>
+
+            {/* Theme Toggle */}
+            <button
+              onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+              className="p-2.5 rounded-xl bg-surface-light hover:bg-surface border border-border hover:text-[#FF6B6B] text-foreground/70 transition-all active:scale-95 cursor-pointer flex items-center justify-center"
+            >
+              {theme === 'dark' ? <Sun size={14} /> : <Moon size={14} />}
+            </button>
+
+            {/* Friend Request Bell */}
+            <div className="text-foreground hover:text-[#FF6B6B] flex items-center">
+              <FriendRequestBell
+                userId={userId}
+                pendingRequests={friendRequests}
+                onAccept={handleAcceptFriendRequest}
+                onDecline={handleDeclineFriendRequest}
+                loading={bellLoading || settledLoading}
+              />
+            </div>
           </div>
         </div>
       </div>
@@ -1065,7 +1110,7 @@ export default function ZettlPage() {
           <span className="text-[10px] font-black text-[#FF6B6B] uppercase tracking-[0.2em]">
             Split System
           </span>
-          <h2 className="text-2xl font-black tracking-tight text-white leading-tight serif-heading">
+          <h2 className="text-2xl font-black tracking-tight text-foreground leading-tight serif-heading">
             Settle up, avoid awkward ledger alerts.
           </h2>
         </div>
@@ -1091,22 +1136,22 @@ export default function ZettlPage() {
         </div>
 
         {/* STATISTICS SUMMARY BAR */}
-        <div className="clay-inset p-4 flex justify-between items-center bg-[#0D0D0D]" id="zettl-stats-bar">
+        <div className="clay-inset p-4 flex justify-between items-center" id="zettl-stats-bar">
           <div className="flex items-center gap-2.5 min-w-0">
             <CheckCircle className="w-4 h-4 text-[#4ECDC4] flex-shrink-0" />
             <div className="flex flex-col min-w-0 text-left">
               <span className="text-[8px] font-black text-[#8E8E93] uppercase tracking-wider">Settled</span>
-              <span className="text-xs font-black text-white truncate">
+              <span className="text-xs font-black text-foreground truncate">
                 ₹{totalSettledThisMonth.toLocaleString('en-IN')}
               </span>
             </div>
           </div>
-          <div className="h-6 w-px bg-white/[0.04] self-center mx-2" />
+          <div className="h-6 w-px bg-border self-center mx-2" />
           <div className="flex items-center gap-2.5 min-w-0 text-left">
             <Clock className="w-4 h-4 text-[#E2B05E] flex-shrink-0" />
             <div className="flex flex-col min-w-0 text-left">
               <span className="text-[8px] font-black text-[#8E8E93] uppercase tracking-wider">Pending</span>
-              <span className="text-xs font-black text-white truncate">
+              <span className="text-xs font-black text-foreground truncate">
                 ₹{totalPendingOwed.toLocaleString('en-IN')}
               </span>
             </div>
