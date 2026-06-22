@@ -43,6 +43,37 @@ function generateUUID() {
 let activeCheckAuthPromise: Promise<void> | null = null;
 let activeRefreshDataPromise: Promise<void> | null = null;
 
+export function mapDbProfileToUser(prof: any, emailFallback?: string): User {
+  return {
+    id: prof.id,
+    fullName: prof.full_name || prof.fullName || '',
+    username: prof.username || '',
+    email: prof.email || emailFallback || '',
+    phone: prof.phone || prof.phone_number || prof.phone || '',
+    dob: prof.birth_date || prof.date_of_birth || prof.dob || '',
+    gender: prof.gender || '',
+    location: prof.location || '',
+    avatar: prof.avatar_url || prof.avatar || '',
+    avatarId: prof.avatar_id || prof.avatarId || '',
+    onboardingCompleted: !!(prof.onboarding_completed || prof.onboardingCompleted),
+    personalDetailsFilled: !!(prof.onboarding_completed || prof.onboardingCompleted),
+    savingCategories: prof.saving_categories || prof.savingCategories || [],
+    interests: prof.interests || [],
+    xp: prof.xp !== undefined ? prof.xp : 0,
+    level: prof.level !== undefined ? prof.level : 1,
+    badges: prof.badges || [],
+    streak: prof.streak !== undefined ? prof.streak : 0,
+    createdAt: prof.created_at || prof.createdAt,
+    lastLoginDate: prof.last_login_date || prof.lastLoginDate,
+    streakFreezeCount: prof.streak_freeze_count !== undefined ? prof.streak_freeze_count : (prof.streakFreezeCount !== undefined ? prof.streakFreezeCount : 0),
+    preferences: prof.preferences || {
+      currency: 'INR',
+      notificationsEnabled: true,
+      reminders: { enabled: true, time: '20:00', frequency: 'daily' }
+    }
+  };
+}
+
 interface AppState {
   users: User[];
   currentUser: User | null;
@@ -428,34 +459,7 @@ export const useStore = create<AppState>()(
               console.log('[AUTH] Session found for user:', sbSession.user.id);
               set({ session: sbSession });
 
-              const mapProfileToUser = (prof: any): User => ({
-                id: prof.id,
-                fullName: prof.full_name || prof.fullName || '',
-                username: prof.username || '',
-                email: prof.email || sbSession.user.email || '',
-                phone: prof.phone || prof.phone_number || prof.phone || '',
-                dob: prof.birth_date || prof.date_of_birth || prof.dob || '',
-                gender: prof.gender || '',
-                location: prof.location || '',
-                avatar: prof.avatar_url || prof.avatar || '',
-                avatarId: prof.avatar_id || prof.avatarId || '',
-                onboardingCompleted: !!(prof.onboarding_completed || prof.onboardingCompleted),
-                personalDetailsFilled: !!(prof.onboarding_completed || prof.onboardingCompleted),
-                savingCategories: prof.saving_categories || prof.savingCategories || [],
-                interests: prof.interests || [],
-                xp: prof.xp !== undefined ? prof.xp : 0,
-                level: prof.level !== undefined ? prof.level : 1,
-                badges: prof.badges || [],
-                streak: prof.streak !== undefined ? prof.streak : 0,
-                createdAt: prof.created_at || prof.createdAt,
-                lastLoginDate: prof.last_login_date || prof.lastLoginDate,
-                streakFreezeCount: prof.streak_freeze_count !== undefined ? prof.streak_freeze_count : (prof.streakFreezeCount !== undefined ? prof.streakFreezeCount : 0),
-                preferences: prof.preferences || {
-                  currency: 'INR',
-                  notificationsEnabled: true,
-                  reminders: { enabled: true, time: '20:00', frequency: 'daily' }
-                }
-              });
+              const mapProfileToUser = (prof: any): User => mapDbProfileToUser(prof, sbSession.user.email);
 
               // Construct an optimistic fallback as the default so the UI works as fallback
               const metadata = sbSession.user.user_metadata || {};
@@ -1405,7 +1409,7 @@ export const useStore = create<AppState>()(
             console.timeEnd("notifications-load");
 
             set({
-              currentUser: profile ? { ...state.currentUser, ...profile } : state.currentUser,
+              currentUser: profile ? mapDbProfileToUser(profile, state.currentUser.email) : state.currentUser,
               soloGoals: soloGoals || state.soloGoals,
               groupGoals: groupGoals || state.groupGoals,
               emergencyGoals: emergencyGoals || state.emergencyGoals,

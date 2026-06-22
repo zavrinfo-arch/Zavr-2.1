@@ -81,6 +81,9 @@ export default function ProfileHeader() {
     xp: 0
   };
 
+  const headerFullName = activeUser.fullName?.trim() || session?.user?.email?.split('@')[0] || 'User';
+  const headerUsername = activeUser.username?.trim() || session?.user?.email?.split('@')[0] || 'user';
+
   const toggleDarkMode = () => {
     setTheme(theme === 'dark' ? 'light' : 'dark');
   };
@@ -125,10 +128,10 @@ export default function ProfileHeader() {
               {getTimeGreeting()}
             </p>
             <h2 className="text-sm font-black text-foreground tracking-tight leading-none truncate" style={{ zIndex: 10, letterSpacing: '-0.02em' }}>
-              {(activeUser.fullName || '').split(' ')[0] || 'User'}
+              {headerFullName.includes('@') ? headerFullName.split('@')[0] : headerFullName.split(' ')[0]}
             </h2>
             <p className="text-[9px] text-[#8E8E93] font-medium truncate mt-0.5" style={{ zIndex: 10 }}>
-              @{activeUser.username}
+              @{headerUsername}
             </p>
           </div>
         </div>

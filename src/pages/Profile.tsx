@@ -35,7 +35,7 @@ export default function Profile() {
   const { 
     currentUser, streakData, soloGoals, 
     transactions, setCurrentUser, updateUser, signOut,
-    theme, setTheme
+    theme, setTheme, session
   } = useStore();
 
   const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false);
@@ -45,6 +45,19 @@ export default function Profile() {
     username: currentUser?.username || '',
     location: currentUser?.location || '',
   });
+
+  React.useEffect(() => {
+    if (currentUser) {
+      setEditData({
+        fullName: currentUser.fullName || '',
+        username: currentUser.username || '',
+        location: currentUser.location || '',
+      });
+    }
+  }, [currentUser]);
+
+  const displayFullName = currentUser?.fullName?.trim() || session?.user?.email?.split('@')[0] || 'User';
+  const displayUsername = currentUser?.username?.trim() || session?.user?.email?.split('@')[0] || 'user';
 
   const handleSaveProfile = async () => {
     if (!editData.fullName || !editData.username) {
@@ -226,15 +239,34 @@ export default function Profile() {
           ) : (
             <>
               <div className="flex flex-col items-center">
-                <h2 className="text-3xl font-bold tracking-tight">{currentUser?.fullName}</h2>
+                <h2 className="text-3xl font-bold tracking-tight text-foreground">{displayFullName}</h2>
                 <div className="flex items-center gap-3 mt-2">
-                  <p className="opacity-30 text-xs font-bold uppercase tracking-widest">@{currentUser?.username}</p>
-                  <span className="w-1 h-1 rounded-full bg-foreground/10" />
+                  <p className="opacity-50 text-xs font-bold uppercase tracking-widest text-[#8E8E93]">@{displayUsername}</p>
+                  <span className="w-1.5 h-1.5 rounded-full bg-foreground/20" />
                   <p className="text-[#4ECDC4] text-[10px] font-black uppercase tracking-[0.2em]">{streakData.tier} Tier</p>
                 </div>
+
+                {/* Email and Joined database Date info */}
+                <div className="mt-3 flex flex-col items-center gap-1">
+                  <p className="text-xs font-semibold text-[#8E8E93] lowercase tracking-wide opacity-80">
+                    {currentUser?.email || session?.user?.email || 'user@zavr.app'}
+                  </p>
+                  <p className="text-[9px] font-black text-[#8E8E93]/60 uppercase tracking-[0.12em] mt-0.5">
+                    Member Since: {(() => {
+                      const rawJoinDate = currentUser?.createdAt || session?.user?.created_at;
+                      if (!rawJoinDate) return 'Recently';
+                      try {
+                        return format(parseISO(rawJoinDate), 'dd MMMM yyyy');
+                      } catch (e) {
+                        return 'Recently';
+                      }
+                    })()}
+                  </p>
+                </div>
+
                 <button 
                   onClick={() => setIsEditing(true)}
-                  className="mt-4 px-6 py-2 clay-inset rounded-full text-[10px] font-black uppercase tracking-[0.2em] opacity-40 hover:opacity-100 transition-all"
+                  className="mt-5 px-6 py-2 clay-inset rounded-full text-[10px] font-black uppercase tracking-[0.2em] opacity-50 hover:opacity-100 transition-all cursor-pointer"
                 >
                   Edit Profile
                 </button>

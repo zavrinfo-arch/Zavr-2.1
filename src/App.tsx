@@ -266,7 +266,11 @@ export default function App() {
                 </ProtectedRoute>
               } />
               
-              <Route path="/avatar-selection" element={<Navigate to="/home" replace />} />
+              <Route path="/avatar-selection" element={
+                <ProtectedRoute>
+                  <AvatarSelection />
+                </ProtectedRoute>
+              } />
               
               <Route path="/home" element={
                 <ProtectedRoute>

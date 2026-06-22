@@ -1057,7 +1057,7 @@ export default function ZettlPage() {
                 {getTimeGreeting()}
               </p>
               <h2 className="text-sm font-black text-foreground tracking-tight leading-none truncate mt-0.5" style={{ letterSpacing: '-0.02em' }}>
-                {(activeUser.fullName || '').split(' ')[0] || 'User'}
+                {activeUser.fullName.includes('@') ? activeUser.fullName.split('@')[0] : activeUser.fullName.split(' ')[0] || 'User'}
               </h2>
               <p className="text-[9px] text-[#8E8E93] font-medium truncate mt-0.5">
                 @{activeUser.username}
