@@ -36,7 +36,7 @@ export interface CreateRequestData {
   friend_id: string;
   amount: number;
   purpose: string;
-  due_date?: string;
+  due_date?: string | null;
 }
 
 export interface CreatePaymentData {

@@ -53,11 +53,11 @@ export const zettlService = {
       const profileMap = new Map<string, any>();
       (profiles || []).forEach(p => profileMap.set(p.id, p));
 
-      // 3. Fetch all personal_zettls for transactions
+      // 3. Fetch all zettl_transactions for these chats
       const { data: transactions, error: tErr } = await supabase
-        .from('personal_zettls')
+        .from('zettl_transactions')
         .select('*')
-        .or(`from_user_id.eq.${userId},to_user_id.eq.${userId}`)
+        .or(`sender_id.eq.${userId},receiver_id.eq.${userId}`)
         .order('created_at', { ascending: false });
 
       if (tErr) throw tErr;
@@ -72,8 +72,8 @@ export const zettlService = {
 
         // Get transactions with this friend
         const friendTxTimes = (transactions || []).filter((t: any) => 
-          (t.from_user_id === userId && t.to_user_id === fId) ||
-          (t.from_user_id === fId && t.to_user_id === userId)
+          (t.sender_id === userId && t.receiver_id === fId) ||
+          (t.sender_id === fId && t.receiver_id === userId)
         );
 
         // Sort by created_at descending just in case
@@ -82,15 +82,18 @@ export const zettlService = {
         );
 
         // Compute net outstanding balance
-        // friend owes me (+) if to_user_id === userId and not settled
-        // I owe friend (-) if from_user_id === userId and not settled
+        // friend owes me (+) if I am creditor and not settled
+        // I owe friend (-) if I am debtor and not settled
         let net_balance = 0;
         sortedTx.forEach((t: any) => {
-          if (!t.is_revealed && !t.is_settled) {
+          if (!t.is_settled && t.amount > 0) {
+            const debtorId = t.type === 'owe_you' ? t.sender_id : t.receiver_id;
+            const creditorId = t.type === 'owe_you' ? t.receiver_id : t.sender_id;
             const amt = Number(t.amount || 0);
-            if (t.to_user_id === userId) {
+
+            if (creditorId === userId) {
               net_balance += amt;
-            } else if (t.from_user_id === userId) {
+            } else if (debtorId === userId) {
               net_balance -= amt;
             }
           }
@@ -105,24 +108,27 @@ export const zettlService = {
           const newest = sortedTx[0];
           last_message_time = newest.created_at;
 
+          const newestDebtorId = newest.type === 'owe_you' ? newest.sender_id : newest.receiver_id;
+          const newestCreditorId = newest.type === 'owe_you' ? newest.receiver_id : newest.sender_id;
+
           if (newest.amount > 0) {
             const isRequest = !newest.is_settled;
             if (isRequest) {
-              last_message = newest.to_user_id === userId 
-                ? `Requested ₹${newest.amount}: ${newest.note || 'Debt'}`
-                : `Asked for ₹${newest.amount}: ${newest.note || 'Debt'}`;
+              last_message = newestCreditorId === userId 
+                ? `Requested ₹${newest.amount}: ${newest.message_text || 'Debt'}`
+                : `Asked for ₹${newest.amount}: ${newest.message_text || 'Debt'}`;
             } else {
-              last_message = newest.from_user_id === userId
-                ? `Paid ₹${newest.amount} for ${newest.note || 'Debt'}`
+              last_message = newestDebtorId === userId
+                ? `Paid ₹${newest.amount} for ${newest.message_text || 'Debt'}`
                 : `Received ₹${newest.amount}`;
             }
           } else {
-            last_message = newest.note || newest.message || 'New message';
+            last_message = newest.message_text || 'New message';
           }
 
           // Compute unread count for incoming messages that we haven't read
           sortedTx.forEach((t: any) => {
-            const isIncoming = t.to_user_id === userId || (t.amount === 0 && t.from_user_id === fId);
+            const isIncoming = t.sender_id !== userId;
             if (isIncoming && !readMessages[t.id]) {
               unread_count++;
             }
@@ -152,11 +158,11 @@ export const zettlService = {
     if (!userId || !friendId) return [];
 
     try {
-      // Fetch zettls involving these two users
+      // Fetch zettl transactions involving these two users
       const { data: rows, error } = await supabase
-        .from('personal_zettls')
+        .from('zettl_transactions')
         .select('*')
-        .or(`from_user_id.eq.${userId},to_user_id.eq.${userId}`)
+        .or(`sender_id.eq.${userId},receiver_id.eq.${userId}`)
         .order('created_at', { ascending: true });
 
       if (error) throw error;
@@ -179,36 +185,30 @@ export const zettlService = {
       rows.forEach((row: any) => {
         // Double check this is actually between the two target people
         const involvesBoth = 
-          (row.from_user_id === userId && row.to_user_id === friendId) ||
-          (row.from_user_id === friendId && row.to_user_id === userId);
+          (row.sender_id === userId && row.receiver_id === friendId) ||
+          (row.sender_id === friendId && row.receiver_id === userId);
 
         if (!involvesBoth) return;
-
-        const isMyOutput = row.from_user_id === userId; 
-        // Wait, wait: 
-        // For standard "request" or "payment" we define direction from current user view.
-        // If row has zero amount, it is a text message.
-        // If row has positive amount:
-        // A request outgoing means I am asking for money (to_user_id is me, from_user_id is friend)
-        // A request incoming means friend is asking (to_user_id is friend, from_user_id is me)
-        const directionValue = (row.to_user_id === userId) ? 'incoming' : 'outgoing';
 
         let msgType: 'request' | 'payment' | 'text' = 'text';
         let direct: 'incoming' | 'outgoing' = 'outgoing';
 
         if (row.amount > 0) {
+          const debtorId = row.type === 'owe_you' ? row.sender_id : row.receiver_id;
+          const creditorId = row.type === 'owe_you' ? row.receiver_id : row.sender_id;
+
           if (!row.is_settled) {
             msgType = 'request';
-            // If I owe, it means the friend requested it from me. That is incoming
-            direct = row.from_user_id === userId ? 'incoming' : 'outgoing';
+            // If I owe, it means friend requested it or I recorded that I owe. That is incoming request
+            direct = debtorId === userId ? 'incoming' : 'outgoing';
           } else {
             msgType = 'payment';
-            // If I paid, it means outgoing payment
-            direct = row.from_user_id === userId ? 'outgoing' : 'incoming';
+            // If I paid, it is outgoing payment
+            direct = debtorId === userId ? 'outgoing' : 'incoming';
           }
         } else {
           msgType = 'text';
-          direct = row.from_user_id === userId ? 'outgoing' : 'incoming';
+          direct = row.sender_id === userId ? 'outgoing' : 'incoming';
         }
 
         const isRead = !!readMap[row.id] || direct === 'outgoing';
@@ -218,10 +218,10 @@ export const zettlService = {
           type: msgType,
           direction: direct,
           amount: row.amount,
-          purpose: row.note || row.category || 'General splitting',
-          due_date: row.due_date || undefined,
+          purpose: row.message_text || 'General splitting',
+          due_date: row.deadline || undefined,
           status: row.is_settled ? 'paid' : 'pending',
-          message: row.note || row.message,
+          message: row.message_text,
           created_at: row.created_at,
           read: isRead,
           friend_id: friendId,
@@ -238,33 +238,31 @@ export const zettlService = {
   },
 
   /**
-   * sendRequest(data) - creates debt record in personal_zettls
+   * sendRequest(data) - creates debt record in zettl_transactions
    */
   async sendRequest(data: CreateRequestData, userId: string): Promise<ChatMessage> {
     const friendId = data.friend_id;
     const amount = Math.round(data.amount);
     const purpose = data.purpose;
-    const due = data.due_date;
+    const due = data.due_date; // This is the deadline date string or null
 
-    // A request from ME means I am the creditor (to_user_id = me), 
-    // and my friend is the debtor (from_user_id = friend)
+    // A request from ME means I am the creditor (they owe me), so type is 'you_owe_me'
     const { data: record, error } = await supabase
-      .from('personal_zettls')
+      .from('zettl_transactions')
       .insert({
-        from_user_id: friendId,
-        to_user_id: userId,
+        sender_id: userId,
+        receiver_id: friendId,
         amount,
-        currency: 'INR',
-        note: purpose,
-        due_date: due || null,
-        is_settled: false,
-        message: `/request ${amount} for ${purpose}`
+        type: 'you_owe_me',
+        message_text: purpose,
+        deadline: due || null,
+        is_settled: false
       })
       .select('*')
       .single();
 
     if (error) {
-      console.error('[ZETTL-SERVICE] Failed inserting personal request:', error);
+      console.error('[ZETTL-SERVICE] Failed inserting transaction request:', error);
       throw error;
     }
 
@@ -298,7 +296,7 @@ export const zettlService = {
       direction: 'outgoing',
       amount,
       purpose,
-      due_date: due,
+      due_date: due || undefined,
       status: 'pending',
       message: purpose,
       created_at: record.created_at,
@@ -321,7 +319,7 @@ export const zettlService = {
     if (debtId) {
       // 1. Settle an existing pending debt record
       const { error: updError } = await supabase
-        .from('personal_zettls')
+        .from('zettl_transactions')
         .update({
           is_settled: true,
           settled_at: new Date().toISOString()
@@ -369,18 +367,17 @@ export const zettlService = {
         debt_id: debtId
       };
     } else {
-      // 2. Log a spontaneous new payment (I paid friend: from_user_id = me, to_user_id = friend, is_settled = true)
+      // 2. Log a spontaneous new payment (I paid friend: sender_id = user, receiver_id = friend, type = 'owe_you' (I owe you and I paid), is_settled = true)
       const { data: record, error } = await supabase
-        .from('personal_zettls')
+        .from('zettl_transactions')
         .insert({
-          from_user_id: userId,
-          to_user_id: friendId,
+          sender_id: userId,
+          receiver_id: friendId,
           amount,
-          currency: 'INR',
-          note: purpose,
+          type: 'owe_you',
+          message_text: purpose,
           is_settled: true,
-          settled_at: new Date().toISOString(),
-          message: `/pay ${amount} for ${purpose}`
+          settled_at: new Date().toISOString()
         })
         .select('*')
         .single();
@@ -428,19 +425,18 @@ export const zettlService = {
   },
 
   /**
-   * sendTextMessage(friendId, message) - stores text message as zero amount zettl
+   * sendTextMessage(friendId, message) - stores text message as zero amount transaction
    */
   async sendTextMessage(friendId: string, messageText: string, userId: string): Promise<ChatMessage> {
     const { data: record, error } = await supabase
-      .from('personal_zettls')
+      .from('zettl_transactions')
       .insert({
-        from_user_id: userId,
-        to_user_id: friendId,
+        sender_id: userId,
+        receiver_id: friendId,
         amount: 0,
-        currency: 'INR',
-        note: messageText,
-        is_settled: true,
-        message: messageText
+        type: 'text_only',
+        message_text: messageText,
+        is_settled: true
       })
       .select('*')
       .single();
@@ -513,19 +509,19 @@ export const zettlService = {
       };
     }
 
-    // Subscribe to Postgres changes on 'personal_zettls' table
+    // Subscribe to Postgres changes on 'zettl_transactions' table
     const channel = supabase
       .channel(`zettl-chat-room-${friendId}`)
       .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'personal_zettls'
-        },
-        () => {
-          callback();
-        }
+         'postgres_changes',
+         {
+           event: '*',
+           schema: 'public',
+           table: 'zettl_transactions'
+         },
+         () => {
+           callback();
+         }
       )
       .subscribe();
 

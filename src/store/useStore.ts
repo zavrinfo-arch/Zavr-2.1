@@ -64,7 +64,7 @@ export function mapDbProfileToUser(prof: any, emailFallback?: string): User {
     badges: prof.badges || [],
     streak: prof.streak !== undefined ? prof.streak : 0,
     createdAt: prof.created_at || prof.createdAt,
-    lastLoginDate: prof.last_login_date || prof.lastLoginDate,
+    lastLoginDate: prof.last_login || prof.last_login_date || prof.lastLoginDate,
     streakFreezeCount: prof.streak_freeze_count !== undefined ? prof.streak_freeze_count : (prof.streakFreezeCount !== undefined ? prof.streakFreezeCount : 0),
     preferences: prof.preferences || {
       currency: 'INR',

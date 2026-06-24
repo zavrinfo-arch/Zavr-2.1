@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { AVATARS_50 } from '../constants/avatars';
+import { shouldDisableHeavyFeatures } from '../utils/previewFix';
 
 // Animated Counter Component using requestAnimationFrame
 function AnimatedCounter({ value, duration = 1000 }) {
@@ -293,7 +294,7 @@ function ContactSearch({ userId, onAddFriend, onFocusInput, searchInputRef }) {
             setShowDropdown(true);
           }}
           onFocus={() => setShowDropdown(true)}
-          placeholder="Search Gen Z usernames..."
+          placeholder=" Enter username "
           className="w-full clay-inset bg-transparent border-0 rounded-2xl px-4 py-3.5 pl-11 pr-10 focus:ring-1 focus:ring-[#FF6B6B]/30 outline-none transition-all duration-200 text-foreground placeholder-[#8E8E93]/60 text-xs font-medium"
           id="contact-search-input"
         />
@@ -643,6 +644,7 @@ export default function ZettlPage() {
 
   // Modal control states
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [isContactBookOpen, setIsContactBookOpen] = useState(false);
 
   const searchInputRef = useRef(null);
 
@@ -888,10 +890,12 @@ export default function ZettlPage() {
 
   // Focus Search Input helper
   const handleFocusSearch = () => {
-    if (searchInputRef.current) {
-      searchInputRef.current.focus();
-      searchInputRef.current.scrollIntoView({ behavior: 'smooth' });
-    }
+    setIsContactBookOpen(true);
+    setTimeout(() => {
+      if (searchInputRef.current) {
+        searchInputRef.current.focus();
+      }
+    }, 150);
   };
 
   // onSendMoney (Pay/repay)
@@ -944,6 +948,11 @@ export default function ZettlPage() {
       fetchProfileDetails();
       fetchLedgersAndFriendsData();
       fetchFriends();
+
+      if (shouldDisableHeavyFeatures()) {
+        console.info('[PREVIEW] Bypassing Zettl.jsx real-time subscriptions inside AI Studio preview.');
+        return;
+      }
 
       // Real-time channel listeners for friend_requests and debts
       const reqsChannel = supabase
@@ -1105,18 +1114,8 @@ export default function ZettlPage() {
         transition={{ duration: 0.35, ease: 'easeOut' }}
         className="space-y-6"
       >
-        {/* HERO TITLE & SPLIT THEME */}
-        <div className="space-y-1 pt-4 text-left" id="hero-zettl-intro">
-          <span className="text-[10px] font-black text-[#FF6B6B] uppercase tracking-[0.2em]">
-            Split System
-          </span>
-          <h2 className="text-2xl font-black tracking-tight text-foreground leading-tight serif-heading">
-            Settle up, avoid awkward ledger alerts.
-          </h2>
-        </div>
-
         {/* BALANCE SUMMARY CARDS GRID */}
-        <div className="grid grid-cols-2 gap-4" id="zettl-balance-grid">
+        <div className="grid grid-cols-2 gap-4 pt-2" id="zettl-balance-grid">
           <BalanceCard
             title="Friends Owe You"
             amount={totalFinOwed}
@@ -1133,29 +1132,6 @@ export default function ZettlPage() {
             icon={ArrowDownCircle}
             colorTheme="coral"
           />
-        </div>
-
-        {/* STATISTICS SUMMARY BAR */}
-        <div className="clay-inset p-4 flex justify-between items-center" id="zettl-stats-bar">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <CheckCircle className="w-4 h-4 text-[#4ECDC4] flex-shrink-0" />
-            <div className="flex flex-col min-w-0 text-left">
-              <span className="text-[8px] font-black text-[#8E8E93] uppercase tracking-wider">Settled</span>
-              <span className="text-xs font-black text-foreground truncate">
-                ₹{totalSettledThisMonth.toLocaleString('en-IN')}
-              </span>
-            </div>
-          </div>
-          <div className="h-6 w-px bg-border self-center mx-2" />
-          <div className="flex items-center gap-2.5 min-w-0 text-left">
-            <Clock className="w-4 h-4 text-[#E2B05E] flex-shrink-0" />
-            <div className="flex flex-col min-w-0 text-left">
-              <span className="text-[8px] font-black text-[#8E8E93] uppercase tracking-wider">Pending</span>
-              <span className="text-xs font-black text-foreground truncate">
-                ₹{totalPendingOwed.toLocaleString('en-IN')}
-              </span>
-            </div>
-          </div>
         </div>
 
         {/* Filter Indicator Banner */}
@@ -1176,25 +1152,6 @@ export default function ZettlPage() {
             </button>
           </div>
         )}
-
-        {/* CONTACT FINDER SEARCH ZONE */}
-        <div className="clay-card p-6 bg-surface space-y-5 text-left" id="search-section-box">
-          <div className="flex flex-col">
-            <span className="text-[10px] font-black text-[#FF6B6B] uppercase tracking-[0.2em]">
-              Find New Connections
-            </span>
-            <span className="text-xs text-[#8E8E93] font-medium mt-1 leading-relaxed">
-              Link with Zavr contacts to build active debt boards.
-            </span>
-          </div>
-
-          <ContactSearch
-            userId={userId}
-            onAddFriend={handleAddFriend}
-            onFocusInput={handleFocusSearch}
-            searchInputRef={searchInputRef}
-          />
-        </div>
 
         {/* DYNAMIC SETTLEMENT LIST */}
         <div className="space-y-4 text-left" id="settlement-ledger-box">
@@ -1227,9 +1184,78 @@ export default function ZettlPage() {
             onRequestMoney={handleRequestMoney}
             onSendMoney={handleSendMoney}
             onCreateGroup={handleCreateGroupStub}
+            userId={userId}
+            onSuccess={fetchLedgersAndFriendsData}
           />
         )}
       </AnimatePresence>
+
+      {/* CONTACT BOOK MODAL */}
+      <AnimatePresence>
+        {isContactBookOpen && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm" id="contact-book-modal">
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-slate-900 border border-slate-800/85 w-full max-w-sm rounded-3xl overflow-hidden shadow-2xl relative p-6 space-y-4 text-left"
+            >
+              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                <div className="flex items-center gap-2">
+                  <Users size={20} className="text-[#FF6B6B]" />
+                  <h3 className="text-base font-black tracking-wider text-slate-100">Add friend</h3>
+                </div>
+                <button 
+                  type="button"
+                  onClick={() => setIsContactBookOpen(false)}
+                  className="p-1 text-slate-400 hover:text-white hover:bg-white/5 rounded-lg transition-colors cursor-pointer"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <p className="text-xs text-slate-400 font-medium">
+                Search for and link with standard Zavr contacts to build active debt boards.
+              </p>
+
+              <ContactSearch
+                userId={userId}
+                onAddFriend={(targetId) => {
+                  handleAddFriend(targetId);
+                  setIsContactBookOpen(false);
+                }}
+                onFocusInput={handleFocusSearch}
+                searchInputRef={searchInputRef}
+              />
+
+              <div className="pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsContactBookOpen(false)}
+                  className="w-full py-3 bg-slate-800 hover:bg-slate-750 text-slate-200 font-bold text-xs rounded-2xl transition-colors cursor-pointer text-center"
+                >
+                  Close
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* FLOATING ACTION BUTTON (FAB) FOR CONTACTS */}
+      <div className="fixed bottom-28 left-0 right-0 z-50 pointer-events-none" id="contact-fab-container">
+        <div className="w-full max-w-md mx-auto relative px-6 flex justify-end">
+          <motion.button
+            whileHover={{ scale: 1.1 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={() => setIsContactBookOpen(true)}
+            className="w-14 h-14 rounded-full bg-[#FF6B6B] hover:bg-[#FF6B6B]/90 text-white flex items-center justify-center shadow-xl shadow-[#FF6B6B]/30 cursor-pointer pointer-events-auto transition-all"
+            id="open-contact-book-fab"
+          >
+            <UserPlus size={22} />
+          </motion.button>
+        </div>
+      </div>
 
       {/* FIXED BOTTOM NAVIGATION BAR REDESIGNED */}
       <BottomNavigation onPlusClick={() => setIsCreateOpen(true)} />

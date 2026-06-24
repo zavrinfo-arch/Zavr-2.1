@@ -7,7 +7,7 @@ interface RequestModalProps {
   friendName: string;
   isOpen: boolean;
   onClose: () => void;
-  onSubmit: (data: { friend_id: string; amount: number; purpose: string; due_date?: string }) => Promise<void>;
+  onSubmit: (data: { friend_id: string; amount: number; purpose: string; due_date?: string | null }) => Promise<void>;
 }
 
 export default function RequestModal({ friendId, friendName, isOpen, onClose, onSubmit }: RequestModalProps) {
@@ -38,7 +38,7 @@ export default function RequestModal({ friendId, friendName, isOpen, onClose, on
         friend_id: friendId,
         amount: numericalAmount,
         purpose: purpose.trim(),
-        due_date: dueDate || undefined
+        due_date: dueDate || null
       });
       toast.success(`Request sent to ${friendName}!`);
       onClose();

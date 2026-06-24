@@ -262,6 +262,17 @@ export default function Profile() {
                       }
                     })()}
                   </p>
+                  <p className="text-[9px] font-black text-[#8E8E93]/60 uppercase tracking-[0.12em] mt-0.5">
+                    Last Login: {(() => {
+                      const rawLoginDate = currentUser?.lastLoginDate || (currentUser as any)?.last_login;
+                      if (!rawLoginDate) return 'Now';
+                      try {
+                        return format(parseISO(rawLoginDate), 'dd MMMM yyyy, HH:mm');
+                      } catch (e) {
+                        return 'Now';
+                      }
+                    })()}
+                  </p>
                 </div>
 
                 <button 
@@ -292,7 +303,7 @@ export default function Profile() {
       <div className="grid grid-cols-2 gap-5">
         {[
           { icon: Flame, label: 'Current Streak', value: `${streakData.currentStreak} Days`, color: 'text-[#FF6B6B]', bg: 'bg-[#FF6B6B]/10' },
-          { icon: Star, label: 'Lifetime Saved', value: formatCurrency(stats.lifetimeSaved, currentUser?.preferences.currency), color: 'text-[#FF6B6B]', bg: 'bg-[#FF6B6B]/10' },
+          { icon: Star, label: 'Lifetime Saved', value: formatCurrency(stats.lifetimeSaved, currentUser?.preferences?.currency || 'INR'), color: 'text-[#FF6B6B]', bg: 'bg-[#FF6B6B]/10' },
           { icon: CheckCircle2, label: 'Goals Completed', value: stats.completedGoals, color: 'text-[#4ECDC4]', bg: 'bg-[#4ECDC4]/10' },
           { icon: Trophy, label: 'Badges Earned', value: stats.totalBadges, color: 'text-[#E2B05E]', bg: 'bg-[#E2B05E]/10' },
         ].map((stat, i) => (
@@ -325,13 +336,13 @@ export default function Profile() {
           </span>
         </div>
         <div className="grid grid-cols-3 gap-4">
-          {currentUser?.badges.length === 0 ? (
+          {!currentUser?.badges || currentUser.badges.length === 0 ? (
             <div className="col-span-3 clay p-16 text-center opacity-20">
               <Trophy className="w-12 h-12 mx-auto mb-4" />
               <p className="text-[10px] font-bold uppercase tracking-widest">Keep saving to unlock badges!</p>
             </div>
           ) : (
-            currentUser?.badges.map((badge) => (
+            currentUser.badges.map((badge) => (
               <motion.div 
                 key={badge.id}
                 whileHover={{ scale: 1.05, y: -5 }}
@@ -343,7 +354,14 @@ export default function Profile() {
                 <div>
                   <p className="text-[10px] font-black leading-tight opacity-100 uppercase tracking-widest">{badge.name}</p>
                   <p className="text-[8px] opacity-20 mt-2 font-bold uppercase tracking-wider">
-                    {format(parseISO(badge.unlockedAt), 'dd/MM/yyyy')}
+                    {(() => {
+                      if (!badge.unlockedAt) return 'Unlocked';
+                      try {
+                        return format(parseISO(badge.unlockedAt), 'dd/MM/yyyy');
+                      } catch (e) {
+                        return 'Unlocked';
+                      }
+                    })()}
                   </p>
                 </div>
               </motion.div>

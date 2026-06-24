@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabaseClient';
 import { subMonths, format, startOfMonth, endOfMonth, parseISO, isWithinInterval, isAfter } from 'date-fns';
 import { formatCurrency } from '../lib/utils';
 import toast from 'react-hot-toast';
+import { shouldDisableHeavyFeatures } from '../utils/previewFix';
 
 export interface FriendDebtDetail {
   friendId: string;
@@ -92,6 +93,13 @@ export function useDashboardStats(): DebtSummaryStats {
     }
 
     loadData();
+
+    if (shouldDisableHeavyFeatures()) {
+      console.info('[PREVIEW] Bypassing dashboard stats real-time subscribe channel in preview mode.');
+      return () => {
+        active = false;
+      };
+    }
 
     // Subscribe to debts/personal_zettls table changes for real-time updates
     const channel = supabase
