@@ -280,8 +280,8 @@ function ContactSearch({ userId, onAddFriend, onFocusInput, searchInputRef }) {
   };
 
   return (
-    <div className="relative space-y-3.5 font-sans" ref={containerRef} id="contact-search-block">
-      <div className="relative">
+    <div className="relative flex flex-col flex-1 min-h-0 font-sans space-y-3.5" ref={containerRef} id="contact-search-block">
+      <div className="relative shrink-0">
         <span className="absolute left-4 top-1/2 -translate-y-1/2 text-foreground/30">
           <Search className="w-4 h-4" />
         </span>
@@ -315,7 +315,7 @@ function ContactSearch({ userId, onAddFriend, onFocusInput, searchInputRef }) {
 
       {/* Recent searches display block */}
       {recentSearches.length > 0 && !query && (
-        <div className="flex flex-wrap items-center gap-1.5 pt-1" id="recent-searches">
+        <div className="flex flex-wrap items-center gap-1.5 pt-1 shrink-0" id="recent-searches">
           <span className="text-[8px] font-black uppercase tracking-[0.1em] text-foreground/20 mr-1">
             Recents:
           </span>
@@ -342,22 +342,22 @@ function ContactSearch({ userId, onAddFriend, onFocusInput, searchInputRef }) {
         </div>
       )}
 
-      {/* Results Dropdown */}
+      {/* Results Section */}
       {showDropdown && query && (
         <div 
-          className="absolute left-0 right-0 mt-2 clay p-4 z-40 max-h-72 overflow-y-auto transform origin-top transition-all duration-200"
+          className="flex-1 min-h-0 flex flex-col clay p-4 overflow-hidden transform origin-top transition-all duration-200 mt-2"
           id="search-results-dropdown"
         >
-          <div className="text-[9px] uppercase font-black tracking-widest text-[#8E8E93] mb-3 border-b border-border pb-1.5">
+          <div className="text-[9px] uppercase font-black tracking-widest text-[#8E8E93] mb-3 border-b border-border pb-1.5 shrink-0">
             Discovered Zavr Profiles
           </div>
 
           {results.length === 0 && !loading ? (
-            <div className="text-center py-6 text-foreground/30 font-black text-[10px] uppercase tracking-wider" id="results-empty">
+            <div className="text-center py-6 text-foreground/30 font-black text-[10px] uppercase tracking-wider shrink-0" id="results-empty">
               No matching profiles found
             </div>
           ) : (
-            <div className="space-y-3" id="results-items">
+            <div className="space-y-3 overflow-y-auto no-scrollbar flex-1 min-h-0" id="results-items">
               {results.map((profile) => (
                 <div
                   key={profile.id}
@@ -365,8 +365,17 @@ function ContactSearch({ userId, onAddFriend, onFocusInput, searchInputRef }) {
                   id={`profile-card-${profile.id}`}
                 >
                   <div className="flex items-center gap-2.5 min-w-0">
-                    <div className="w-9 h-9 rounded-full bg-surface-light border border-border flex items-center justify-center font-black text-foreground/90 text-xs uppercase shadow-inner select-none shrink-0 border-border">
-                      {profile.username?.charAt(0) || 'U'}
+                    <div className="w-9 h-9 rounded-full bg-surface-light border border-border flex items-center justify-center font-black text-foreground/90 text-xs uppercase shadow-inner select-none shrink-0 border-border overflow-hidden">
+                      {profile.avatar_url ? (
+                        <img
+                          src={profile.avatar_url}
+                          alt=""
+                          className="w-full h-full object-cover"
+                          referrerPolicy="no-referrer"
+                        />
+                      ) : (
+                        profile.username?.charAt(0) || 'U'
+                      )}
                     </div>
                     <div className="flex flex-col min-w-0">
                       <span className="text-xs font-bold text-foreground truncate">@{profile.username}</span>
@@ -1198,9 +1207,9 @@ export default function ZettlPage() {
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-slate-900 border border-slate-800/85 w-full max-w-sm rounded-3xl overflow-hidden shadow-2xl relative p-6 space-y-4 text-left"
+              className="bg-slate-900 border border-slate-800/85 w-full max-w-sm rounded-3xl overflow-hidden shadow-2xl relative p-6 flex flex-col h-[75vh] md:h-[580px] max-h-[85vh] md:max-h-[640px] space-y-4 text-left"
             >
-              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-3 shrink-0">
                 <div className="flex items-center gap-2">
                   <Users size={20} className="text-[#FF6B6B]" />
                   <h3 className="text-base font-black tracking-wider text-slate-100">Add friend</h3>
@@ -1214,7 +1223,7 @@ export default function ZettlPage() {
                 </button>
               </div>
 
-              <p className="text-xs text-slate-400 font-medium">
+              <p className="text-xs text-slate-400 font-medium shrink-0">
                 Search for and link with standard Zavr contacts to build active debt boards.
               </p>
 
@@ -1228,7 +1237,7 @@ export default function ZettlPage() {
                 searchInputRef={searchInputRef}
               />
 
-              <div className="pt-2">
+              <div className="pt-2 shrink-0">
                 <button
                   type="button"
                   onClick={() => setIsContactBookOpen(false)}

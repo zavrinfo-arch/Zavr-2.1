@@ -8,40 +8,94 @@ import toast from 'react-hot-toast';
 
 export default function FriendSystem() {
   const { currentUser } = useStore();
-  const { friends, acceptFriend, rejectFriend, sendFriendRequest } = useZettlContext();
+  const { friends, acceptFriend, rejectFriend, sendFriendRequest, fetchData } = useZettlContext();
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedQuery, setDebouncedQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
+  // Track action loading and requested states to make transitions immediate
+  const [actionLoading, setActionLoading] = useState<Record<string, boolean>>({});
+  const [requestedUserIds, setRequestedUserIds] = useState<Record<string, boolean>>({});
+
+  // Search cache using useRef to avoid reset on render
+  const searchCache = React.useRef<Record<string, any[]>>({});
+
   const pendingIncoming = friends.filter(f => f.status === 'pending' && f.type === 'incoming');
   const activeFriends = friends.filter(f => f.status === 'accepted');
 
-  const handleSearch = async (val: string) => {
-    setSearchQuery(val);
-    if (!val.trim()) {
+  // Debounce the searchQuery to debouncedQuery
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedQuery(searchQuery);
+    }, 300);
+
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [searchQuery]);
+
+  // Perform the search when debouncedQuery changes
+  useEffect(() => {
+    const trimmed = debouncedQuery.trim();
+    
+    // Clear results immediately if query is too short
+    if (trimmed.length < 2) {
       setSearchResults([]);
+      setLoading(false);
       return;
     }
-    
-    setLoading(true);
-    try {
-      const results = await friendService.searchUsers(val, currentUser?.id);
-      setSearchResults(results);
-    } catch (err: any) {
-      console.error(err);
-    } finally {
+
+    // Check if results are cached
+    const normalized = trimmed.toLowerCase();
+    if (searchCache.current[normalized]) {
+      setSearchResults(searchCache.current[normalized]);
       setLoading(false);
+      return;
     }
-  };
+
+    setLoading(true);
+    const controller = new AbortController();
+
+    const fetchSearch = async () => {
+      try {
+        const results = await friendService.searchUsers(trimmed, currentUser?.id, controller.signal);
+        
+        // Filter out current user if any just in case
+        const filtered = (results || []).filter((u: any) => u.id !== currentUser?.id);
+        
+        // Cache the results
+        searchCache.current[normalized] = filtered;
+        
+        setSearchResults(filtered);
+      } catch (err: any) {
+        if (err.name !== 'AbortError') {
+          console.error('[FRIEND-SYSTEM] Search error:', err);
+        }
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchSearch();
+
+    return () => {
+      controller.abort();
+    };
+  }, [debouncedQuery, currentUser?.id]);
 
   const handleSendRequest = async (friendId: string) => {
+    setActionLoading(prev => ({ ...prev, [friendId]: true }));
     try {
       await sendFriendRequest(friendId);
-      // Re-trigger search to refresh button state
-      handleSearch(searchQuery);
+      // Mark as requested immediately so the button disables and displays "Requested"
+      setRequestedUserIds(prev => ({ ...prev, [friendId]: true }));
     } catch (err: any) {
+      console.error('[FRIEND-SYSTEM] Connect failed:', err);
       toast.error('Failed to send connection request');
+    } finally {
+      setActionLoading(prev => ({ ...prev, [friendId]: false }));
     }
   };
 
@@ -76,88 +130,129 @@ export default function FriendSystem() {
           <input
             type="text"
             value={searchQuery}
-            onChange={(e) => handleSearch(e.target.value)}
+            onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Type username (e.g. John)..."
             className="w-full clay-inset bg-foreground/5 p-3 pl-10 text-xs font-black tracking-widest outline-none focus:ring-2 focus:ring-purple-600/40 rounded-xl placeholder:opacity-40 text-foreground"
           />
         </div>
 
-        {/* Search Results */}
+        {/* Search Results Area - Glassmorphism Card */}
         <AnimatePresence>
-          {searchQuery && (
+          {searchQuery.trim().length >= 2 && (
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 10 }}
-              className="mt-4 space-y-2 max-h-60 overflow-y-auto no-scrollbar"
+              className="mt-4 p-4 rounded-2xl bg-white/[0.02] backdrop-blur-xl border border-white/[0.05] shadow-[0_8px_32px_0_rgba(0,0,0,0.37)] space-y-3 max-h-64 overflow-y-auto no-scrollbar"
             >
-              <p className="text-[8px] font-black uppercase text-purple-400 tracking-widest">Search Results</p>
-              
+              <div className="flex items-center justify-between border-b border-white/[0.04] pb-2">
+                <span className="text-[9px] uppercase font-bold text-purple-400 tracking-widest font-mono">
+                  Search Results
+                </span>
+                <span className="text-[8px] text-foreground/30 font-black uppercase tracking-widest font-mono">
+                  {loading ? 'Searching...' : `${searchResults.length} found`}
+                </span>
+              </div>
+
               {loading ? (
-                <div className="flex items-center justify-center p-4">
-                  <Loader2 size={16} className="animate-spin text-purple-500" />
+                /* Loading Skeleton */
+                <div className="space-y-3 pt-1">
+                  {[1, 2, 3].map((i) => (
+                    <div key={i} className="flex items-center justify-between p-2 animate-pulse rounded-xl bg-white/[0.01]">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-lg bg-white/5" />
+                        <div className="space-y-1.5">
+                          <div className="h-2.5 w-20 bg-white/10 rounded" />
+                          <div className="h-2 w-14 bg-white/5 rounded" />
+                        </div>
+                      </div>
+                      <div className="h-7 w-20 bg-white/5 rounded-lg" />
+                    </div>
+                  ))}
                 </div>
               ) : searchResults.length === 0 ? (
-                <p className="text-[10px] opacity-40 font-bold py-2 uppercase tracking-wide">No matched profiles discovered</p>
+                /* No users found text */
+                <div className="py-6 text-center">
+                  <p className="text-[10px] opacity-40 font-bold uppercase tracking-widest">
+                    No users found
+                  </p>
+                </div>
               ) : (
-                searchResults.map((user) => {
-                  const existingFriend = friends.find(f => f.friendId === user.id);
-                  const isAccepted = existingFriend?.status === 'accepted';
-                  const isPending = existingFriend?.status === 'pending';
-                  const isIncoming = existingFriend?.type === 'incoming';
+                /* Results List */
+                <div className="space-y-2 pt-1">
+                  {searchResults.map((user) => {
+                    const existingFriend = friends.find(f => f.friendId === user.id);
+                    const isAccepted = existingFriend?.status === 'accepted';
+                    const isPending = existingFriend?.status === 'pending';
+                    const isIncoming = existingFriend?.type === 'incoming';
 
-                  return (
-                    <div
-                      key={user.id}
-                      className="clay-inset p-3 bg-foreground/1 flex items-center justify-between rounded-xl border border-foreground/5"
-                    >
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <div className="w-8 h-8 rounded-lg min-w-[32px] overflow-hidden clay-inset">
-                          <img
-                            src={user.avatar}
-                            alt=""
-                            className="w-full h-full object-cover"
-                            referrerPolicy="no-referrer"
-                          />
+                    return (
+                      <div
+                        key={user.id}
+                        className="p-3 bg-white/[0.01] hover:bg-white/[0.03] flex items-center justify-between rounded-xl border border-white/[0.03] transition-colors"
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div className="w-8 h-8 rounded-lg min-w-[32px] overflow-hidden clay-inset">
+                            <img
+                              src={user.avatar}
+                              alt=""
+                              className="w-full h-full object-cover"
+                              referrerPolicy="no-referrer"
+                            />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-xs font-black italic">@{user.username}</p>
+                            <p className="text-[8px] opacity-35 font-bold uppercase truncate">{user.fullName}</p>
+                          </div>
                         </div>
-                        <div className="min-w-0">
-                          <p className="text-xs font-black italic">@{user.username}</p>
-                          <p className="text-[8px] opacity-35 font-bold uppercase truncate">{user.fullName}</p>
-                        </div>
-                      </div>
 
-                      <div className="shrink-0">
-                        {isAccepted ? (
-                          <span className="text-[8px] font-black text-purple-400 uppercase tracking-widest flex items-center gap-1">
-                            <UserCheck size={10} /> Linked
-                          </span>
-                        ) : isPending ? (
-                          isIncoming ? (
+                        <div className="shrink-0 pl-2">
+                          {isAccepted ? (
                             <button
-                              onClick={() => {
-                                if (existingFriend) acceptFriend(existingFriend.id);
-                              }}
-                              className="px-2.5 py-1.5 bg-purple-600 text-white text-[8px] font-black uppercase tracking-widest rounded-lg clay active:scale-95 transition-transform"
+                              disabled
+                              className="px-2.5 py-1.5 bg-emerald-500/10 text-emerald-400 text-[8px] font-black uppercase tracking-widest rounded-lg flex items-center gap-1 cursor-not-allowed border border-emerald-500/20"
                             >
-                              Accept Invitation
+                              <Check size={10} /> Friends
                             </button>
+                          ) : (isPending || requestedUserIds[user.id]) ? (
+                            isIncoming && !requestedUserIds[user.id] ? (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (existingFriend) acceptFriend(existingFriend.id);
+                                }}
+                                className="px-2.5 py-1.5 bg-purple-600 text-white text-[8px] font-black uppercase tracking-widest rounded-lg clay active:scale-95 transition-transform hover:bg-purple-700"
+                              >
+                                Accept Invite
+                              </button>
+                            ) : (
+                              <button
+                                disabled
+                                className="px-2.5 py-1.5 bg-amber-500/10 text-amber-500 text-[8px] font-black uppercase tracking-widest rounded-lg flex items-center gap-1 cursor-not-allowed border border-amber-500/20"
+                              >
+                                <Hourglass size={10} className="animate-pulse" /> {requestedUserIds[user.id] ? 'Requested' : 'Pending'}
+                              </button>
+                            )
                           ) : (
-                            <span className="text-[8px] font-black text-amber-500 uppercase tracking-widest flex items-center gap-1">
-                              <Loader2 size={10} className="animate-spin" /> Pending
-                            </span>
-                          )
-                        ) : (
-                          <button
-                            onClick={() => handleSendRequest(user.id)}
-                            className="px-2.5 py-1.5 bg-foreground/10 text-foreground hover:bg-purple-600 hover:text-white text-[8px] font-black uppercase tracking-widest rounded-lg clay-inset border border-foreground/5 active:scale-95 transition-transform flex items-center gap-1"
-                          >
-                            <UserPlus size={10} /> Connect
-                          </button>
-                        )}
+                            <button
+                              onClick={() => handleSendRequest(user.id)}
+                              disabled={actionLoading[user.id]}
+                              className="px-2.5 py-1.5 bg-foreground/10 text-foreground hover:bg-purple-600 hover:text-white text-[8px] font-black uppercase tracking-widest rounded-lg clay-inset border border-foreground/5 active:scale-95 transition-transform flex items-center gap-1"
+                            >
+                              {actionLoading[user.id] ? (
+                                <Loader2 size={10} className="animate-spin" />
+                              ) : (
+                                <>
+                                  <UserPlus size={10} /> Add Friend
+                                </>
+                              )}
+                            </button>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  );
-                })
+                    );
+                  })}
+                </div>
               )}
             </motion.div>
           )}

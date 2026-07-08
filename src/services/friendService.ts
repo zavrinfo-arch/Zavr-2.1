@@ -4,11 +4,11 @@ export const friendService = {
   /**
    * Search users by username (excluding current user)
    */
-  async searchUsers(query: string, currentUserId?: string): Promise<User[]> {
+  async searchUsers(query: string, currentUserId?: string, signal?: AbortSignal): Promise<User[]> {
     if (!query || query.trim() === '') return [];
     
     try {
-      const response = await fetch(`/api/users/search?q=${encodeURIComponent(query.trim())}`);
+      const response = await fetch(`/api/users/search?q=${encodeURIComponent(query.trim())}`, { signal });
       if (!response.ok) {
         throw new Error('Search request failed');
       }

@@ -3,12 +3,25 @@ import { User, SoloGoal, GroupGoal, Transaction, Notification, StreakData } from
 
 let cachedUseStore: any = null;
 let getProfileCache: { userId: string; timestamp: number; data: any; error: any } | null = null;
+let activeSessionCache: any = null;
 
 export const supabaseService = {
+  // Synchronously update the active session cache from the store
+  setActiveSession(session: any) {
+    activeSessionCache = session;
+  },
+
   // Helpers
   async ensureSession() {
-    // Attempt to get session from store first to avoid unnecessary gotrue calls
-    // which can trigger "Lock stolen" errors in some environments
+    // Attempt to get session from the cached local variable first (instant and 100% synchronous)
+    if (activeSessionCache && activeSessionCache.expires_at) {
+      const now = Math.floor(Date.now() / 1000);
+      const isExpired = activeSessionCache.expires_at <= (now + 60);
+      if (!isExpired) {
+        return activeSessionCache;
+      }
+    }
+
     try {
       if (!cachedUseStore) {
         // Cache the dynamic store import to run once in application lifecycle
@@ -23,6 +36,7 @@ export const supabaseService = {
         const now = Math.floor(Date.now() / 1000);
         const isExpired = storeSession.expires_at <= (now + 60);
         if (!isExpired) {
+          activeSessionCache = storeSession;
           return storeSession;
         }
       }
@@ -33,6 +47,7 @@ export const supabaseService = {
     const { data: { session }, error } = await supabase.auth.getSession();
     if (error) throw error;
     if (!session) throw new Error('Invalid session: Please log in again.');
+    activeSessionCache = session;
     return session;
   },
 

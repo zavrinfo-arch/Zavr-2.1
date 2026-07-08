@@ -384,9 +384,19 @@ export const useStore = create<AppState>()(
         }
 
         activeCheckAuthPromise = (async () => {
-          // Prevent clearing loading state too early if check is in progress
-          set({ isAuthLoading: true });
-          console.log('[AUTH] Checking authentication status...', { isInitial });
+          console.time('[TIMER] Session Restoration');
+          console.time('[TIMER] Dashboard Navigation');
+
+          const existingSession = get().session;
+          const isSessionExpired = existingSession?.expires_at ? existingSession.expires_at <= (Math.floor(Date.now() / 1000)) : true;
+          
+          if (!existingSession || isSessionExpired) {
+            set({ isAuthLoading: true });
+          } else {
+            set({ isAuthLoading: false });
+          }
+
+          console.log('[AUTH] Checking authentication status...', { isInitial, hasCachedSession: !isSessionExpired });
           
           try {
             let sbSession: Session | null = null;
@@ -404,6 +414,7 @@ export const useStore = create<AppState>()(
               
               // Sync with server cookies in the background, non-blocking
               if (sbSession) {
+                supabaseService.setActiveSession(sbSession);
                 fetchWithRetry('/api/auth/session', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
@@ -428,6 +439,7 @@ export const useStore = create<AppState>()(
                   const syncData = await syncRes.json();
                   if (syncData.session) {
                     sbSession = syncData.session;
+                    supabaseService.setActiveSession(sbSession);
                     // Hydrate local SDK to keep them in sync
                     try {
                       const { data: { session: localSession } } = await supabase.auth.getSession();
@@ -455,42 +467,53 @@ export const useStore = create<AppState>()(
               }
             }
             
+            console.timeEnd('[TIMER] Session Restoration');
+
             if (sbSession) {
               console.log('[AUTH] Session found for user:', sbSession.user.id);
+              supabaseService.setActiveSession(sbSession);
               set({ session: sbSession });
 
               const mapProfileToUser = (prof: any): User => mapDbProfileToUser(prof, sbSession.user.email);
 
               // Construct an optimistic fallback as the default so the UI works as fallback
               const metadata = sbSession.user.user_metadata || {};
-              const optimisticUser: User = {
-                id: sbSession.user.id,
-                fullName: metadata.full_name || '',
-                username: metadata.username || sbSession.user.email?.split('@')[0] || 'user',
-                email: sbSession.user.email || '',
-                phone: metadata.phone || '',
-                dob: metadata.dob || '',
-                gender: metadata.gender || '',
-                location: metadata.location || '',
-                avatar: metadata.avatar_url || `https://api.dicebear.com/7.x/lorelei/svg?seed=${sbSession.user.id}`,
-                avatarId: metadata.avatar_id || '1',
-                onboardingCompleted: false,
-                personalDetailsFilled: false,
-                savingCategories: [],
-                interests: [],
-                xp: metadata.xp || 0,
-                level: metadata.level || 1,
-                badges: [],
-                streak: 0,
-                createdAt: sbSession.user.created_at,
-                lastLoginDate: new Date().toISOString(),
-                streakFreezeCount: 0,
-                preferences: { currency: 'INR', notificationsEnabled: true, reminders: { enabled: true, time: '20:00', frequency: 'daily' } }
-              };
+              const existingUser = get().currentUser;
+              const optimisticUser: User = ((existingUser && existingUser.id === sbSession.user.id)
+                ? existingUser
+                : {
+                    id: sbSession.user.id,
+                    fullName: metadata.full_name || '',
+                    username: metadata.username || sbSession.user.email?.split('@')[0] || 'user',
+                    email: sbSession.user.email || '',
+                    phone: metadata.phone || '',
+                    dob: metadata.dob || '',
+                    gender: metadata.gender || '',
+                    location: metadata.location || '',
+                    avatar: metadata.avatar_url || `https://api.dicebear.com/7.x/lorelei/svg?seed=${sbSession.user.id}`,
+                    avatarId: metadata.avatar_id || '1',
+                    onboardingCompleted: false,
+                    personalDetailsFilled: false,
+                    savingCategories: [],
+                    interests: [],
+                    xp: metadata.xp || 0,
+                    level: metadata.level || 1,
+                    badges: [],
+                    streak: 0,
+                    createdAt: sbSession.user.created_at,
+                    lastLoginDate: new Date().toISOString(),
+                    streakFreezeCount: 0,
+                    preferences: { currency: 'INR' as Currency, notificationsEnabled: true, reminders: { enabled: true, time: '20:00', frequency: 'daily' } }
+                  }) as User;
 
-              // Satisfy budget of <200ms after auth session is available
-              // Instantly load the optimistic layout options in <15ms
-              set({ currentUser: optimisticUser, isAuthLoading: false });
+              // Instantly load the optimistic layout options
+              if (!existingUser || existingUser.id !== sbSession.user.id) {
+                set({ currentUser: optimisticUser, isAuthLoading: false });
+              } else {
+                set({ isAuthLoading: false });
+              }
+
+              console.timeEnd('[TIMER] Dashboard Navigation');
 
               if (prefetchedProfile) {
                 try {
@@ -507,6 +530,7 @@ export const useStore = create<AppState>()(
               }
 
               let profileFetched = false;
+              console.time('[TIMER] Profile Fetching');
 
               // Synchronously fetch the user profile ONLY from profiles table (Single Source of Truth)
               try {
@@ -518,6 +542,7 @@ export const useStore = create<AppState>()(
                   set({ currentUser: mappedUser, isAuthLoading: false });
                   console.log('[AUTH] Loaded from memory/service profile cache, layout ready!');
                   profileFetched = true;
+                  console.timeEnd('[TIMER] Profile Fetching');
                   get().refreshData().catch(e => console.warn('[AUTH] refreshData after cached profile load failed:', e));
                 } else {
                   const profilePromise = Promise.resolve(supabase
@@ -539,6 +564,7 @@ export const useStore = create<AppState>()(
                     set({ currentUser: mappedUser, isAuthLoading: false });
                     console.log('[AUTH] Sync profile loaded from Supabase profiles, layout ready:', mappedUser.id, 'completeness:', mappedUser.onboardingCompleted);
                     profileFetched = true;
+                    console.timeEnd('[TIMER] Profile Fetching');
                     get().refreshData().catch(e => console.warn('[AUTH] refreshData after checkAuth failed:', e));
                   } else {
                     // Profile is missing from profiles - auto-create it now
@@ -580,11 +606,13 @@ export const useStore = create<AppState>()(
                     supabaseService.setProfileCache(sbSession.user.id, mappedUser);
                     set({ currentUser: mappedUser, isAuthLoading: false });
                     profileFetched = true;
+                    console.timeEnd('[TIMER] Profile Fetching');
                     get().refreshData().catch(e => console.warn('[AUTH] refreshData after fallback setup failed:', e));
                   }
                 }
               } catch (err: any) {
                 console.error('[AUTH] Profile check query failed:', err);
+                console.timeEnd('[TIMER] Profile Fetching');
               }
 
               // Absolute fallback to optimistic user representation
@@ -596,6 +624,8 @@ export const useStore = create<AppState>()(
               return;
             } else {
               console.log('[AUTH] No session found.');
+              console.timeEnd('[TIMER] Session Restoration');
+              console.timeEnd('[TIMER] Dashboard Navigation');
               set({ currentUser: null, session: null });
             }
           } catch (error: any) {
@@ -705,7 +735,10 @@ export const useStore = create<AppState>()(
               // Only re-trigger full check if session changed or was missing (avoid infinite trigger loop)
               const currentSession = get().session;
               if (!currentSession || currentSession.access_token !== session.access_token) {
-                set({ session, isAuthLoading: true });
+                // Determine if we should show a full screen loader. If a user is already loaded, 
+                // we DO NOT want to disrupt their experience with a full-screen loading spinner.
+                const shouldShowLoading = !get().currentUser;
+                set({ session, isAuthLoading: shouldShowLoading });
                 await get().checkAuth();
               }
             }
@@ -1732,6 +1765,8 @@ export const useStore = create<AppState>()(
       name: 'zavr-storage',
       partialize: (state) => ({
         theme: state.theme,
+        session: state.session,
+        currentUser: state.currentUser,
       }),
     }
   )

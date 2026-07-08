@@ -108,10 +108,10 @@ export const ZettlProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
 
   const fetchData = useCallback(async () => {
-    let activeUserId = currentUser?.id;
+    let activeUserId = currentUser?.id || useStore.getState().session?.user?.id;
     if (!activeUserId) {
-      const { data: { user } } = await supabase.auth.getUser();
-      activeUserId = user?.id;
+      const { data: { session } } = await supabase.auth.getSession();
+      activeUserId = session?.user?.id;
     }
 
     if (!activeUserId) {
@@ -222,10 +222,10 @@ export const ZettlProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, []);
 
   const handleSendFriendRequest = async (friendId: string) => {
-    let activeUserId = currentUser?.id;
+    let activeUserId = currentUser?.id || useStore.getState().session?.user?.id;
     if (!activeUserId) {
-      const { data: { user } } = await supabase.auth.getUser();
-      activeUserId = user?.id;
+      const { data: { session } } = await supabase.auth.getSession();
+      activeUserId = session?.user?.id;
     }
     if (!activeUserId) throw new Error('Not authenticated');
 
@@ -235,10 +235,10 @@ export const ZettlProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const handleAcceptFriend = async (requestId: string) => {
-    let activeUserId = currentUser?.id;
+    let activeUserId = currentUser?.id || useStore.getState().session?.user?.id;
     if (!activeUserId) {
-      const { data: { user } } = await supabase.auth.getUser();
-      activeUserId = user?.id;
+      const { data: { session } } = await supabase.auth.getSession();
+      activeUserId = session?.user?.id;
     }
 
     await friendService.acceptFriendRequest(requestId, activeUserId);
@@ -253,10 +253,10 @@ export const ZettlProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const handleRequestMoney = async (friendId: string, amount: number, note: string, dueDate?: string) => {
-    let activeUserId = currentUser?.id;
+    let activeUserId = currentUser?.id || useStore.getState().session?.user?.id;
     if (!activeUserId) {
-      const { data: { user } } = await supabase.auth.getUser();
-      activeUserId = user?.id;
+      const { data: { session } } = await supabase.auth.getSession();
+      activeUserId = session?.user?.id;
     }
     if (!activeUserId) throw new Error('Not authenticated');
 
@@ -266,10 +266,10 @@ export const ZettlProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const handlePayDebt = async (debtId: string) => {
-    let activeUserId = currentUser?.id;
+    let activeUserId = currentUser?.id || useStore.getState().session?.user?.id;
     if (!activeUserId) {
-      const { data: { user } } = await supabase.auth.getUser();
-      activeUserId = user?.id;
+      const { data: { session } } = await supabase.auth.getSession();
+      activeUserId = session?.user?.id;
     }
     if (!activeUserId) throw new Error('Not authenticated');
 
@@ -279,10 +279,10 @@ export const ZettlProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const handleSendReminder = async (debtId: string) => {
-    let activeUserId = currentUser?.id;
+    let activeUserId = currentUser?.id || useStore.getState().session?.user?.id;
     if (!activeUserId) {
-      const { data: { user } } = await supabase.auth.getUser();
-      activeUserId = user?.id;
+      const { data: { session } } = await supabase.auth.getSession();
+      activeUserId = session?.user?.id;
     }
     if (!activeUserId) throw new Error('Not authenticated');
 
@@ -297,10 +297,10 @@ export const ZettlProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const handleMarkAllNotificationsRead = async () => {
-    let activeUserId = currentUser?.id;
+    let activeUserId = currentUser?.id || useStore.getState().session?.user?.id;
     if (!activeUserId) {
-      const { data: { user } } = await supabase.auth.getUser();
-      activeUserId = user?.id;
+      const { data: { session } } = await supabase.auth.getSession();
+      activeUserId = session?.user?.id;
     }
     if (!activeUserId) return;
 

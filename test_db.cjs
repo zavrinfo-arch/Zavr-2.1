@@ -6,20 +6,21 @@ const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI
 const supabase = createClient(supabaseUrl, serviceRoleKey);
 
 async function inspectColumns() {
-  console.log('--- PROFILES SAFE SELECT TEST ---');
-  const verifiedColumns = [
-    'id', 'full_name', 'username', 'email', 'phone', 'birth_date', 'dob',
-    'avatar_url', 'avatar_id', 'onboarding_completed', 'created_at', 'last_login_at'
-  ];
+  console.log('--- PROFILES COMPLETE SELECT TEST ---');
   const { data, error } = await supabase
     .from('profiles')
-    .select(verifiedColumns.join(','))
+    .select('*')
     .limit(1);
   if (error) {
-    console.error('Error fetching safe select fields from profiles:', error);
+    console.error('Error fetching profiles:', error);
   } else {
-    console.log('Success fetching safe select fields!');
-    console.log('Profile record:', data);
+    console.log('Success fetching first profile!');
+    if (data && data.length > 0) {
+      console.log('Profile columns:', Object.keys(data[0]));
+      console.log('Profile record:', data[0]);
+    } else {
+      console.log('No profiles found, but query succeeded.');
+    }
   }
 }
 

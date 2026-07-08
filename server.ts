@@ -302,7 +302,10 @@ app.post('/api/auth/signup', signinLimiter, async (req, res) => {
   if (!rawEmail || !password) return res.status(400).json({ error: 'Email and password are required' });
   const email = rawEmail.trim().toLowerCase();
 
+  console.log(`[API-AUTH] Attempting server-side signup for: ${email}`);
+
   if (!supabaseUrl || !supabaseAnonKey) {
+    console.error('[API-AUTH] Supabase server configuration is missing.');
     return res.status(500).json({ error: 'Supabase configuration is missing on the server.' });
   }
 
@@ -312,7 +315,16 @@ app.post('/api/auth/signup', signinLimiter, async (req, res) => {
       password,
     });
 
-    if (error) return res.status(error.status || 500).json({ error: error.message });
+    if (error) {
+      console.error(`[API-AUTH] Supabase signUp failed for ${email}:`, {
+        message: error.message,
+        status: error.status,
+        errorObject: error
+      });
+      return res.status(error.status || 500).json({ error: error.message });
+    }
+
+    console.log(`[API-AUTH] Supabase signUp returned success for ${email}. User ID: ${data.user?.id}`);
 
     // Handle case where user is already registered but unconfirmed
     if (data.user && data.user.identities && data.user.identities.length === 0) {
@@ -548,6 +560,96 @@ app.post('/api/auth/complete-profile', async (req, res) => {
   }
 });
 
+// --- HELPER FUNCTIONS FOR AUTHENTICATION SYSTEM ---
+
+/**
+ * Checks if an account exists in the profiles table by email or username.
+ * Optimized with exact indexing and clean select parameters.
+ */
+async function checkAccountExists(emailOrUsername: string): Promise<{ exists: boolean; email?: string; profile: any | null }> {
+  try {
+    const isEmail = emailOrUsername.includes('@');
+    const cleanedInput = emailOrUsername.toLowerCase().trim();
+
+    let query = supabaseAdmin
+      .from('profiles')
+      .select('id, email, username, full_name, avatar_url, onboarding_completed, last_login_at, last_active_at, login_count, created_at, updated_at');
+
+    if (isEmail) {
+      query = query.eq('email', cleanedInput);
+    } else {
+      query = query.eq('username', cleanedInput);
+    }
+
+    const { data, error } = await query.maybeSingle();
+
+    if (error) {
+      console.error('[authService.checkAccountExists] DB Error:', error);
+      throw new Error(error.message);
+    }
+
+    if (!data) {
+      return { exists: false, profile: null };
+    }
+
+    return {
+      exists: true,
+      email: data.email || undefined,
+      profile: data
+    };
+  } catch (err: any) {
+    console.error('[authService.checkAccountExists] Error:', err.message || err);
+    throw err;
+  }
+}
+
+/**
+ * Authenticates user using email and password.
+ */
+async function loginWithEmail(email: string, password: string) {
+  return await supabaseAuth.auth.signInWithPassword({
+    email: email.toLowerCase().trim(),
+    password
+  });
+}
+
+/**
+ * Resolves a username to an email and authenticates.
+ */
+async function loginWithUsername(username: string, password: string) {
+  const account = await checkAccountExists(username);
+  if (!account.exists || !account.email) {
+    throw new Error('Account not found. Please sign up.');
+  }
+  return await loginWithEmail(account.email, password);
+}
+
+/**
+ * Updates profiles stats: last_login_at, last_active_at, and increments login_count
+ */
+async function updateLoginStats(userId: string, currentLoginCount: number): Promise<any> {
+  const nowISO = new Date().toISOString();
+  const nextCount = (currentLoginCount || 0) + 1;
+
+  const { data, error } = await supabaseAdmin
+    .from('profiles')
+    .update({
+      last_login_at: nowISO,
+      last_active_at: nowISO,
+      login_count: nextCount
+    })
+    .eq('id', userId)
+    .select()
+    .maybeSingle();
+
+  if (error) {
+    console.error('[authService.updateLoginStats] Error updating login stats:', error);
+    throw error;
+  }
+
+  return data;
+}
+
 // 4. Sign In (Email Address OR Username + Password)
 app.post('/api/auth/signin', signinLimiter, async (req, res) => {
   const { email: rawEmail, loginInput, password } = req.body;
@@ -558,68 +660,50 @@ app.post('/api/auth/signin', signinLimiter, async (req, res) => {
 
   try {
     let email = '';
-    const isEmail = loginId.includes('@');
-    if (isEmail) {
-      email = loginId.toLowerCase();
-    } else {
-      console.log(`[API-AUTH] Signin lookup by username: ${loginId}`);
-      const { data: profileData, error: profileErr } = await supabaseAdmin
-        .from('profiles')
-        .select('email')
-        .eq('username', loginId.toLowerCase())
-        .maybeSingle();
+    let profileToUse = null;
 
-      if (profileErr) {
-        console.error('[API-AUTH] Error looking up email on profiles:', profileErr);
-      }
-
-      if (!profileData || !profileData.email) {
-        return res.status(401).json({
-          error: `The username "${loginId}" does not exist. Please check your spelling or sign in with your email address.`,
-          code: 'INVALID_CREDENTIALS'
-        });
-      }
-
-      email = profileData.email.toLowerCase();
-      console.log(`[API-AUTH] Username "${loginId}" mapped to email "${email}"`);
+    // 1 & 2. Detect input type & retrieve account details using checkAccountExists
+    const accountResult = await checkAccountExists(loginId);
+    
+    // 3. Validate account existence
+    if (!accountResult.exists) {
+      return res.status(404).json({
+        error: "Account not found. Please sign up.",
+        code: "USER_NOT_FOUND"
+      });
     }
 
-    // Auto-confirm the user's email administratively if a service key is available,
-    // ensuring the login will not fail due to unconfirmed email status.
-    if (hasServiceKey) {
-      try {
-        const { data: profileData } = await supabaseAdmin
-          .from('profiles')
-          .select('id')
-          .eq('email', email)
-          .maybeSingle();
+    email = accountResult.email!.toLowerCase();
+    profileToUse = accountResult.profile;
 
-        if (profileData && profileData.id) {
-          console.log(`[API-AUTH] Administrative check: confirming email on login for ${email} (${profileData.id})`);
-          await supabaseAdmin.auth.admin.updateUserById(profileData.id, {
-            email_confirm: true
-          });
-        } else {
-          // Fallback check in case the profile row hasn't been created yet or isn't populated
-          const { data: userData } = await supabaseAdmin.auth.admin.listUsers();
-          const userObj = (userData?.users as any[])?.find((u: any) => u.email?.toLowerCase() === email.toLowerCase());
-          if (userObj) {
-            console.log(`[API-AUTH] Administrative check: found user in auth list for ${email}. Confirming email...`);
-            await supabaseAdmin.auth.admin.updateUserById(userObj.id, {
-              email_confirm: true
-            });
-          }
+    // 4. Validate email confirmation by checking auth.users email_confirmed_at
+    let isConfirmed = true;
+    try {
+      const { data: userData, error: listError } = await supabaseAdmin.auth.admin.listUsers({
+        perPage: 1000
+      });
+      if (listError) throw listError;
+      
+      const authUser = userData?.users?.find((u: any) => u.email?.toLowerCase() === email.toLowerCase());
+      if (authUser) {
+        if (!authUser.email_confirmed_at) {
+          isConfirmed = false;
         }
-      } catch (adminErr: any) {
-        console.warn('[API-AUTH] Ignored administrative auto-confirm checker error:', adminErr.message || adminErr);
       }
+    } catch (adminCheckErr: any) {
+      console.warn('[API-AUTH] Administrative verification check warning:', adminCheckErr.message || adminCheckErr);
     }
 
-    // Sign in with email directly using the standard auth client
-    const { data, error } = await supabaseAuth.auth.signInWithPassword({
-      email,
-      password
-    });
+    if (!isConfirmed) {
+      return res.status(401).json({
+        error: "Please verify your email before logging in.",
+        code: "EMAIL_NOT_CONFIRMED"
+      });
+    }
+
+    // 5. Authenticate using signInWithPassword() via helper functions
+    const loginResult = await loginWithEmail(email, password);
+    const { data, error } = loginResult;
 
     if (error) {
       console.error('Signin AuthApiError:', {
@@ -631,8 +715,8 @@ app.post('/api/auth/signin', signinLimiter, async (req, res) => {
       // Detailed feedback for common issues
       let userMessage = 'Invalid email/username or password. Please try again.';
       
-      if (error.message.includes('Email not confirmed')) {
-        userMessage = 'Please confirm your email address. Check your inbox for the verification code we sent during signup.';
+      if (error.message.includes('Email not confirmed') || error.message.includes('not confirmed')) {
+        userMessage = 'Please verify your email before logging in.';
       } else if (error.message.includes('Invalid login credentials')) {
         userMessage = 'Invalid email/username or password. If you just signed up, please make sure you verified your email using the code we sent.';
       } else {
@@ -645,7 +729,7 @@ app.post('/api/auth/signin', signinLimiter, async (req, res) => {
       });
     }
 
-    // Set session cookie
+    // 8. Store session properly (Set session cookies)
     if (data.session) {
       console.log('Setting session cookies after signin for user:', data.user?.id);
       res.cookie('sb-access-token', data.session.access_token, {
@@ -664,49 +748,28 @@ app.post('/api/auth/signin', signinLimiter, async (req, res) => {
       });
     }
 
+    // 6 & 7. Update profiles table and load profile in a single query
     let profile = null;
     if (data.user) {
       try {
-        const nowISO = new Date().toISOString();
-        console.log('[API-AUTH] Updating profiles collection last_login_at and retrieving for user:', data.user.id);
-        
-        // Update last_login_at (requested column of profiles) and email
-        const { data: pData, error: updateError } = await supabaseAdmin
-          .from('profiles')
-          .update({
-            last_login_at: nowISO,
-            email: email // ensure email is saved
-          })
-          .eq('id', data.user.id)
-          .select()
-          .maybeSingle();
-
-        if (updateError) {
-          console.error('[API-AUTH] Failed to update last_login_at, fetching current profile instead:', updateError);
-          // Fallback to simple select
-          const { data: fallbackData } = await supabaseAdmin
-            .from('profiles')
-            .select('*')
-            .eq('id', data.user.id)
-            .maybeSingle();
-          profile = fallbackData;
-        } else {
-          profile = pData;
-        }
+        console.log('[API-AUTH] Updating profiles collection last_login_at/last_active_at/login_count and retrieving for user:', data.user.id);
+        profile = await updateLoginStats(data.user.id, profileToUse?.login_count || 0);
 
         // Add compatibility mapping so client can reference last_login_date seamlessly
         if (profile) {
-          profile.last_login_date = profile.last_login_at || nowISO;
+          profile.last_login_date = profile.last_login_at;
         }
       } catch (profileErr) {
-        console.warn('[API-AUTH] Failed to fetch profile on signin:', profileErr);
+        console.warn('[API-AUTH] Failed to update login stats, fetching current profile instead:', profileErr);
+        // Fallback to existing loaded profile
+        profile = profileToUse;
       }
     }
 
     res.json({ user: data.user, session: data.session, profile });
-  } catch (err) {
+  } catch (err: any) {
     console.error('Signin error:', err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: err.message || 'Internal server error' });
   }
 });
 

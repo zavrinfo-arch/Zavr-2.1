@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
-import { useStore } from '../store/useStore';
+import { useStore, mapDbProfileToUser } from '../store/useStore';
 import { supabase, isConfigured } from '../lib/supabaseClient';
+import { supabaseService } from '../services/supabaseService';
 import { cn, fetchWithRetry, formatDateSafely } from '../lib/utils';
 import { 
   Mail, Lock, User, Phone, Calendar, MapPin,
@@ -152,6 +153,11 @@ export default function Auth() {
     }
 
     setLoading(true);
+    
+    // Begin Console Timers as requested:
+    console.time('login');
+    console.time('dashboard_navigation');
+
     const startTime = Date.now();
     console.log('[AUTH] Starting login performance tracking...');
     
@@ -182,43 +188,65 @@ export default function Auth() {
         throw new Error(result.error || 'Login failed');
       }
       
-      const { session } = result;
+      const { session, profile } = result;
       if (!session) throw new Error('Authentication failed: No session returned.');
 
-      // 2. Synchronize Supabase Client session & Check Auth
+      // console.time('login') represents the login request to session completion
+      console.timeEnd('login');
+
+      // Save session in Supabase Client & cache
       if (isConfigured) {
-        const sessionStart = Date.now();
         try {
-          const { error: setSessionErr } = await supabase.auth.setSession(session);
-          if (setSessionErr) {
-            console.error('[AUTH] Set session error:', setSessionErr.message);
-            if (setSessionErr.message?.includes('Refresh Token Not Found') || setSessionErr.message?.includes('Invalid Refresh Token')) {
-              localStorage.removeItem('zavr-auth-token');
-            }
-          }
+          await supabase.auth.setSession(session);
+          supabaseService.setActiveSession(session);
         } catch (setSessionErr: any) {
           console.warn('[AUTH] setSession exception caught gracefully:', setSessionErr);
         }
-        // Trigger checkAuth immediately, seeding with pre-fetched profile to run at 0 extra cost
-        await checkAuth(false, result.profile);
-        console.log(`[AUTH] Session synchronization completed in ${Date.now() - sessionStart}ms`);
       }
 
-      const totalTime = Date.now() - startTime;
-      console.log(`[PERFORMANCE] Perfect! Total login sequence completed in ${totalTime}ms (under 2 seconds limit)`);
+      // Populate User and Session in the store synchronously to unblock ProtectedRoute guard instantly
+      const mappedUser = profile ? mapDbProfileToUser(profile, session.user.email) : null;
+      useStore.setState({
+        session,
+        currentUser: mappedUser,
+        isAuthLoading: false
+      });
+
+      // Clear the local spinner in Auth.tsx
+      setLoading(false);
 
       toast.success('Welcome back!');
       
-      // Redirect directly to dashboard home
+      // Navigate to Dashboard Immediately
       navigate('/home', { replace: true });
+      console.timeEnd('dashboard_navigation');
+
+      // Trigger Background Loading for Profile, Goals, and Notifications
+      console.time('background_loading');
+      (async () => {
+        try {
+          await useStore.getState().refreshData();
+          console.log('[AUTH] Background loading of profile, goals, and notifications completed successfully');
+        } catch (bgErr) {
+          console.warn('[AUTH] Background loading failed (non-blocking for login):', bgErr);
+        } finally {
+          console.timeEnd('background_loading');
+        }
+      })();
+
     } catch (error: any) {
       clearTimeout(timeoutId);
       const totalTime = Date.now() - startTime;
       console.error(`[AUTH] Login sequence failed after ${totalTime}ms:`, error);
       
+      // Clean up timers in case of failure
+      try { console.timeEnd('login'); } catch (_) {}
+      try { console.timeEnd('dashboard_navigation'); } catch (_) {}
+      try { console.timeEnd('background_loading'); } catch (_) {}
+
       let message = error.message;
       if (error.name === 'AbortError') {
-        message = 'Request timed out (3s limit). Please check your internet connection and try again.';
+        message = 'Request timed out (10s limit). Please check your internet connection and try again.';
       }
       
       const lowerMessage = message.toLowerCase();
@@ -369,9 +397,13 @@ export default function Auth() {
         console.log(`[PERFORMANCE] Supabase auth.signUp completed in ${signupDuration}ms`);
 
         if (error) {
-          console.error("SIGNUP ERROR:", error.message);
+          console.error("[AUTH] Supabase signUp failed:", {
+            message: error.message,
+            status: error.status,
+            errorObject: error
+          });
           if (error.message.includes('Database error saving new user')) {
-            toast.error('The server encountered a database error during signup. Please try again or contact support.');
+            toast.error(`The server encountered a database error during signup: ${error.message}. Please verify that the database triggers and functions are correctly configured.`);
           } else {
             toast.error(error.message);
           }
