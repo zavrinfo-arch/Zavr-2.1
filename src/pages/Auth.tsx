@@ -41,6 +41,8 @@ export default function Auth() {
   const [forgotNewPasswordConfirm, setForgotNewPasswordConfirm] = useState('');
   const [showForgotNewPassword, setShowForgotNewPassword] = useState(false);
   const [forgotCountdown, setForgotCountdown] = useState(0);
+  const [accountStatus, setAccountStatus] = useState<'idle' | 'loading' | 'valid' | 'invalid'>('idle');
+  const [resolvedEmail, setResolvedEmail] = useState<string>('');
 
   useEffect(() => {
     if (!showForgotModal || forgotStep !== 'verify' || forgotCountdown <= 0) return;
@@ -101,6 +103,60 @@ export default function Auth() {
       sessionStorage.setItem('auth_email', formData.email);
     }
   }, [formData.email]);
+
+  useEffect(() => {
+    // We only perform the account validation check if we are in Login mode
+    if (!isLogin || isResetMode || showForgotModal) {
+      setAccountStatus('idle');
+      setResolvedEmail('');
+      return;
+    }
+
+    const input = formData.email.trim();
+    if (!input) {
+      setAccountStatus('idle');
+      setResolvedEmail('');
+      return;
+    }
+
+    setAccountStatus('loading');
+    console.log('[AUTH-VALIDATION] Input changed, scheduling check in 500ms for:', input);
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(async () => {
+      try {
+        const startTime = Date.now();
+        const response = await fetch(`/api/auth/check-account?q=${encodeURIComponent(input)}`, {
+          signal: controller.signal
+        });
+        if (!response.ok) {
+          throw new Error('Verification failed');
+        }
+        const data = await response.json();
+        console.log(`[AUTH-VALIDATION] Database lookup completed in ${Date.now() - startTime}ms. Result:`, data);
+        
+        if (data.exists) {
+          setAccountStatus('valid');
+          setResolvedEmail(data.email || input);
+        } else {
+          setAccountStatus('invalid');
+          setResolvedEmail('');
+        }
+      } catch (err: any) {
+        if (err.name !== 'AbortError') {
+          console.error('[AUTH-VALIDATION] Error verifying account:', err);
+          // Standard resilient fallback: keep idle so they can at least attempt login if backend acts up
+          setAccountStatus('idle');
+          setResolvedEmail('');
+        }
+      }
+    }, 500);
+
+    return () => {
+      clearTimeout(timeoutId);
+      controller.abort();
+    };
+  }, [formData.email, isLogin, isResetMode, showForgotModal]);
 
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -194,6 +250,15 @@ export default function Auth() {
       // console.time('login') represents the login request to session completion
       console.timeEnd('login');
 
+      // Populate User and Session in the store synchronously BEFORE calling setSession
+      // to unblock ProtectedRoute instantly and prevent onAuthStateChange race condition!
+      const mappedUser = profile ? mapDbProfileToUser(profile, session.user.email) : null;
+      useStore.setState({
+        session,
+        currentUser: mappedUser,
+        isAuthLoading: false
+      });
+
       // Save session in Supabase Client & cache
       if (isConfigured) {
         try {
@@ -203,14 +268,6 @@ export default function Auth() {
           console.warn('[AUTH] setSession exception caught gracefully:', setSessionErr);
         }
       }
-
-      // Populate User and Session in the store synchronously to unblock ProtectedRoute guard instantly
-      const mappedUser = profile ? mapDbProfileToUser(profile, session.user.email) : null;
-      useStore.setState({
-        session,
-        currentUser: mappedUser,
-        isAuthLoading: false
-      });
 
       // Clear the local spinner in Auth.tsx
       setLoading(false);
@@ -1190,6 +1247,21 @@ export default function Auth() {
               value={formData.email} 
               onChange={handleInputChange}
             />
+            {accountStatus === 'loading' && (
+              <p className="text-[11px] font-semibold text-cyan-400 pl-1">
+                🔍 Verifying account...
+              </p>
+            )}
+            {accountStatus === 'valid' && (
+              <p className="text-[11px] font-semibold text-emerald-400 pl-1">
+                ✅ Valid Account
+              </p>
+            )}
+            {accountStatus === 'invalid' && (
+              <p className="text-[11px] font-semibold text-red-400 pl-1">
+                ❌ Account Not Found
+              </p>
+            )}
             <div className="relative">
               <Input 
                 icon={Lock} 
@@ -1198,11 +1270,13 @@ export default function Auth() {
                 placeholder="Password" 
                 value={formData.password} 
                 onChange={handleInputChange}
+                disabled={accountStatus !== 'valid'}
               />
               <button 
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-4 top-1/2 -translate-y-1/2 opacity-40 hover:opacity-100"
+                disabled={accountStatus !== 'valid'}
+                className="absolute right-4 top-1/2 -translate-y-1/2 opacity-40 hover:opacity-100 disabled:opacity-20"
               >
                 {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
               </button>
@@ -1227,8 +1301,8 @@ export default function Auth() {
             </div>
             <button 
               type="submit"
-              disabled={loading}
-              className="w-full py-4 mt-2 clay-coral rounded-2xl font-bold flex items-center justify-center gap-2 shadow-xl hover:brightness-110 transition-all active:scale-95 text-white uppercase tracking-widest text-xs disabled:opacity-50"
+              disabled={loading || accountStatus !== 'valid'}
+              className="w-full py-4 mt-2 clay-coral rounded-2xl font-bold flex items-center justify-center gap-2 shadow-xl hover:brightness-110 transition-all active:scale-95 text-white uppercase tracking-widest text-xs disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? <Loader2 className="animate-spin" size={18} /> : (
                 <>

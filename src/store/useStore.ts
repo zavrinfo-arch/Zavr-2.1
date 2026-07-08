@@ -387,16 +387,9 @@ export const useStore = create<AppState>()(
           console.time('[TIMER] Session Restoration');
           console.time('[TIMER] Dashboard Navigation');
 
-          const existingSession = get().session;
-          const isSessionExpired = existingSession?.expires_at ? existingSession.expires_at <= (Math.floor(Date.now() / 1000)) : true;
-          
-          if (!existingSession || isSessionExpired) {
-            set({ isAuthLoading: true });
-          } else {
-            set({ isAuthLoading: false });
-          }
+          set({ isAuthLoading: true });
 
-          console.log('[AUTH] Checking authentication status...', { isInitial, hasCachedSession: !isSessionExpired });
+          console.log('[AUTH] Checking authentication status...', { isInitial });
           
           try {
             let sbSession: Session | null = null;
@@ -506,11 +499,9 @@ export const useStore = create<AppState>()(
                     preferences: { currency: 'INR' as Currency, notificationsEnabled: true, reminders: { enabled: true, time: '20:00', frequency: 'daily' } }
                   }) as User;
 
-              // Instantly load the optimistic layout options
+              // Instantly load the optimistic layout options in store but DO NOT set isAuthLoading to false yet
               if (!existingUser || existingUser.id !== sbSession.user.id) {
-                set({ currentUser: optimisticUser, isAuthLoading: false });
-              } else {
-                set({ isAuthLoading: false });
+                set({ currentUser: optimisticUser });
               }
 
               console.timeEnd('[TIMER] Dashboard Navigation');
@@ -520,7 +511,7 @@ export const useStore = create<AppState>()(
                   const mappedUser = mapProfileToUser(prefetchedProfile);
                   console.log('[AUTH] Instant pre-fetched profile load, bypassing DB query:', mappedUser.id, 'completeness:', mappedUser.onboardingCompleted);
                   supabaseService.setProfileCache(sbSession.user.id, mappedUser);
-                  set({ currentUser: mappedUser, isAuthLoading: false });
+                  set({ currentUser: mappedUser });
                   get().refreshData().catch(e => console.warn('[AUTH] refreshData after prefetchedProfile failed:', e));
                   activeCheckAuthPromise = null;
                   return;
@@ -539,7 +530,7 @@ export const useStore = create<AppState>()(
                 const cached = await supabaseService.getProfile(sbSession.user.id);
                 if (cached?.data) {
                   const mappedUser = cached.data;
-                  set({ currentUser: mappedUser, isAuthLoading: false });
+                  set({ currentUser: mappedUser });
                   console.log('[AUTH] Loaded from memory/service profile cache, layout ready!');
                   profileFetched = true;
                   console.timeEnd('[TIMER] Profile Fetching');
@@ -552,7 +543,7 @@ export const useStore = create<AppState>()(
                     .maybeSingle()
                   );
 
-                  const { data: profile, error: profileError } = await withTimeout<any>(profilePromise, 8000, 'Profiles table fetch timed out');
+                  const { data: profile, error: profileError } = await withTimeout<any>(profilePromise, 10000, 'Profiles table fetch timed out');
 
                   if (profileError) {
                     console.error('[AUTH] Profiles table fetch error:', profileError.message);
@@ -561,7 +552,7 @@ export const useStore = create<AppState>()(
                   if (profile) {
                     const mappedUser = mapProfileToUser(profile);
                     supabaseService.setProfileCache(sbSession.user.id, mappedUser);
-                    set({ currentUser: mappedUser, isAuthLoading: false });
+                    set({ currentUser: mappedUser });
                     console.log('[AUTH] Sync profile loaded from Supabase profiles, layout ready:', mappedUser.id, 'completeness:', mappedUser.onboardingCompleted);
                     profileFetched = true;
                     console.timeEnd('[TIMER] Profile Fetching');
@@ -585,7 +576,7 @@ export const useStore = create<AppState>()(
                         .insert(newProfileRow)
                       );
 
-                      const { error: insError } = await withTimeout<any>(insertPromise, 8000, 'Profiles auto-insert timed out');
+                      const { error: insError } = await withTimeout<any>(insertPromise, 10000, 'Profiles auto-insert timed out');
 
                       if (insError) {
                         console.warn('[AUTH] Auto-insertion in profiles failed:', insError.message);
@@ -604,7 +595,7 @@ export const useStore = create<AppState>()(
 
                     const mappedUser = mapProfileToUser(defaultUserObject);
                     supabaseService.setProfileCache(sbSession.user.id, mappedUser);
-                    set({ currentUser: mappedUser, isAuthLoading: false });
+                    set({ currentUser: mappedUser });
                     profileFetched = true;
                     console.timeEnd('[TIMER] Profile Fetching');
                     get().refreshData().catch(e => console.warn('[AUTH] refreshData after fallback setup failed:', e));
@@ -618,7 +609,7 @@ export const useStore = create<AppState>()(
               // Absolute fallback to optimistic user representation
               if (!profileFetched) {
                 console.log('[AUTH] Falling back to optimistic metadata layout.');
-                set({ currentUser: optimisticUser, isAuthLoading: false });
+                set({ currentUser: optimisticUser });
               }
 
               return;

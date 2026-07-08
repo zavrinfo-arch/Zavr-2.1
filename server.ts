@@ -650,6 +650,75 @@ async function updateLoginStats(userId: string, currentLoginCount: number): Prom
   return data;
 }
 
+// 3.5 Check Account Existence (Email Address OR Username)
+app.get('/api/auth/check-account', async (req, res) => {
+  const q = (req.query.q as string || '').trim();
+  if (!q) {
+    return res.status(400).json({ error: 'Query parameter q is required' });
+  }
+
+  try {
+    console.log(`[API-AUTH] Checking account existence for: ${q}`);
+    const result = await checkAccountExists(q);
+    
+    // If it's an email and not found in profiles, check auth.users directly to be 100% resilient
+    if (!result.exists && q.includes('@')) {
+      console.log(`[API-AUTH] Email not found in profiles. Checking administrative auth.users for: ${q}`);
+      try {
+        const { data: userData, error: listError } = await supabaseAdmin.auth.admin.listUsers({
+          perPage: 1000
+        });
+        if (!listError && userData?.users) {
+          const authUser = userData.users.find((u: any) => u.email?.toLowerCase() === q.toLowerCase());
+          if (authUser) {
+            console.log(`[API-AUTH] Found user in auth.users but missing profile: ${authUser.id}. Re-creating profile row.`);
+            // Auto-create profile row now so checkAccountExists can return it
+            const fallbackUsername = (q.split('@')[0] || `user_${authUser.id.substring(0, 8)}`).toLowerCase().replace(/[^a-z0-9_]/g, '');
+            const newProfileRow = {
+              id: authUser.id,
+              email: authUser.email || '',
+              username: fallbackUsername,
+              full_name: authUser.user_metadata?.full_name || '',
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString()
+            };
+            const { data: insertedData, error: insError } = await supabaseAdmin
+              .from('profiles')
+              .insert(newProfileRow)
+              .select()
+              .maybeSingle();
+
+            if (!insError && insertedData) {
+              return res.json({
+                exists: true,
+                email: authUser.email,
+                username: fallbackUsername
+              });
+            }
+          }
+        }
+      } catch (err: any) {
+        console.warn('[API-AUTH] Failed to check auth.users administrative fallback:', err.message || err);
+      }
+    }
+
+    if (result.exists) {
+      return res.json({
+        exists: true,
+        email: result.email,
+        username: result.profile?.username
+      });
+    }
+
+    return res.json({
+      exists: false
+    });
+  } catch (error: any) {
+    console.error('[API-AUTH] Error in check-account:', error);
+    return res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+});
+
 // 4. Sign In (Email Address OR Username + Password)
 app.post('/api/auth/signin', signinLimiter, async (req, res) => {
   const { email: rawEmail, loginInput, password } = req.body;
@@ -663,7 +732,47 @@ app.post('/api/auth/signin', signinLimiter, async (req, res) => {
     let profileToUse = null;
 
     // 1 & 2. Detect input type & retrieve account details using checkAccountExists
-    const accountResult = await checkAccountExists(loginId);
+    let accountResult = await checkAccountExists(loginId);
+    
+    // If not found in profiles, but loginId is an email, attempt auto-heal from auth.users
+    if (!accountResult.exists && loginId.includes('@')) {
+      console.log(`[API-AUTH] Signin email ${loginId} not in profiles, checking auth.users for auto-healing...`);
+      try {
+        const { data: userData, error: listError } = await supabaseAdmin.auth.admin.listUsers({
+          perPage: 1000
+        });
+        if (!listError && userData?.users) {
+          const authUser = userData.users.find((u: any) => u.email?.toLowerCase() === loginId.toLowerCase());
+          if (authUser) {
+            console.log(`[API-AUTH] Found user in auth.users during signin: ${authUser.id}. Re-creating profile row.`);
+            const fallbackUsername = (loginId.split('@')[0] || `user_${authUser.id.substring(0, 8)}`).toLowerCase().replace(/[^a-z0-9_]/g, '');
+            const newProfileRow = {
+              id: authUser.id,
+              email: authUser.email || '',
+              username: fallbackUsername,
+              full_name: authUser.user_metadata?.full_name || '',
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString()
+            };
+            const { data: insertedData, error: insError } = await supabaseAdmin
+              .from('profiles')
+              .insert(newProfileRow)
+              .select()
+              .maybeSingle();
+
+            if (!insError && insertedData) {
+              accountResult = {
+                exists: true,
+                email: authUser.email,
+                profile: insertedData
+              };
+            }
+          }
+        }
+      } catch (err: any) {
+        console.warn('[API-AUTH] Failed to check auth.users during signin auto-healing:', err.message || err);
+      }
+    }
     
     // 3. Validate account existence
     if (!accountResult.exists) {
