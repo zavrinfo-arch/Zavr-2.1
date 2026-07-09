@@ -3,7 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
+import { friendService } from '../services/friendService';
 import CreateZettlModal from '../components/zettl/CreateZettl';
+import AddFriendModal from '../components/Zettl/AddFriendModal';
 import toast from 'react-hot-toast';
 import { cn } from '../lib/utils';
 import { 
@@ -678,12 +680,23 @@ export default function ZettlPage() {
   const fetchFriends = useCallback(async () => {
     if (!userId) return;
     try {
-      const { data: list, error } = await supabase
+      // Try querying with status first, fallback if the column does not exist
+      let { data: list, error } = await supabase
         .from('friends')
         .select('friend_id')
         .eq('user_id', userId)
         .eq('status', 'accepted');
-      if (error) throw error;
+        
+      if (error && (error.code === '42703' || error.message?.includes('column') || error.message?.includes('status'))) {
+        const fallbackRes = await supabase
+          .from('friends')
+          .select('friend_id')
+          .eq('user_id', userId);
+        if (fallbackRes.error) throw fallbackRes.error;
+        list = fallbackRes.data;
+      } else if (error) {
+        throw error;
+      }
       if (list && list.length > 0) {
         const friendIds = list.map(f => f.friend_id);
         const { data: profilesList, error: pError } = await supabase
@@ -801,20 +814,76 @@ export default function ZettlPage() {
     }
   }, [userId]);
 
-  // Dispatch connection requests
+  // Dispatch connection requests with 5-step duplicate checks
   const handleAddFriend = async (targetUserId) => {
-    try {
-      const { error } = await supabase.from('friend_requests').insert({
-        sender_id: userId,
-        receiver_id: targetUserId,
-        status: 'pending',
-      });
+    if (!targetUserId) {
+      toast.error('User not found.');
+      return;
+    }
+    if (targetUserId === userId) {
+      toast.error('Cannot add yourself.');
+      return;
+    }
 
-      if (error) throw error;
-      toast.success('Link invitation dispatched successfully!');
+    try {
+      // Step 1: Verify user exists in the database
+      const { data: targetUser, error: findError } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('id', targetUserId)
+        .maybeSingle();
+
+      if (findError) throw findError;
+      if (!targetUser) {
+        toast.error('User not found.');
+        return;
+      }
+
+      // STEP 3: Check friends table (bidirectional check)
+      const { data: existingFriend, error: friendError } = await supabase
+        .from('friends')
+        .select('*')
+        .in('user_id', [userId, targetUserId])
+        .in('friend_id', [userId, targetUserId])
+        .maybeSingle();
+
+      if (friendError) throw friendError;
+      if (existingFriend) {
+        toast.error('Already friends.');
+        return;
+      }
+
+      // STEP 4: Check friend_requests table (bidirectional check)
+      const { data: existingReq, error: reqError } = await supabase
+        .from('friend_requests')
+        .select('*')
+        .in('sender_id', [userId, targetUserId])
+        .in('receiver_id', [userId, targetUserId])
+        .maybeSingle();
+
+      if (reqError) throw reqError;
+
+      if (existingReq) {
+        if (existingReq.status === 'pending') {
+          toast.error('Friend request already pending.');
+          return;
+        } else if (existingReq.status === 'accepted') {
+          toast.error('Already friends.');
+          return;
+        }
+      }
+
+      // STEP 5: Only if NO friendship AND NO pending request perform INSERT (by calling secure backend api)
+      await friendService.sendFriendRequest(targetUserId, userId);
+      toast.success('Friend request sent successfully.');
       fetchLedgersAndFriendsData();
     } catch (err) {
-      toast.error(err.message || 'Verification link failing, retry.');
+      console.error('[ZETTL] Add friend failed:', err);
+      if (err.code === '23505' || err.message?.includes('unique') || err.message?.includes('23505')) {
+        toast.error('Friend request already pending.');
+      } else {
+        toast.error(err.message || 'Failed to send friend request.');
+      }
     }
   };
 
@@ -822,33 +891,12 @@ export default function ZettlPage() {
   const handleAcceptFriendRequest = async (requestId, senderId) => {
     setSettledLoading(true);
     try {
-      // 1. Update friend request status to accepted
-      const { error: reqError } = await supabase
-        .from('friend_requests')
-        .update({ status: 'accepted' })
-        .eq('id', requestId);
-
-      if (reqError) throw reqError;
-
-      // 2. Insert bidirectional connections block
-      const { error: friendErr1 } = await supabase.from('friends').insert({
-        user_id: userId,
-        friend_id: senderId,
-        status: 'accepted',
-      });
-      if (friendErr1) throw friendErr1;
-
-      const { error: friendErr2 } = await supabase.from('friends').insert({
-        user_id: senderId,
-        friend_id: userId,
-        status: 'accepted',
-      });
-      if (friendErr2) throw friendErr2;
-
+      await friendService.acceptFriendRequest(requestId, userId);
       toast.success('Friend request connected! Link created successfully.');
       fetchLedgersAndFriendsData();
       fetchFriends();
     } catch (err) {
+      console.error('[ZETTL] Accept friendship failed:', err);
       toast.error(err.message || 'Could not map friend links.');
     } finally {
       setSettledLoading(false);
@@ -859,16 +907,12 @@ export default function ZettlPage() {
   const handleDeclineFriendRequest = async (requestId) => {
     setSettledLoading(true);
     try {
-      const { error } = await supabase
-        .from('friend_requests')
-        .update({ status: 'rejected' })
-        .eq('id', requestId);
-
-      if (error) throw error;
+      await friendService.rejectFriendRequest(requestId);
       toast.success('Link invitation declined.');
       fetchLedgersAndFriendsData();
     } catch (err) {
-      toast.error(err.message || 'Rejection actions disrupted.');
+      console.error('[ZETTL] Decline friendship failed:', err);
+      toast.error(err.message || 'Decline failed.');
     } finally {
       setSettledLoading(false);
     }
@@ -971,6 +1015,7 @@ export default function ZettlPage() {
           { event: '*', schema: 'public', table: 'friend_requests' },
           () => {
             fetchLedgersAndFriendsData();
+            fetchFriends();
           }
         )
         .subscribe();
@@ -1199,55 +1244,15 @@ export default function ZettlPage() {
         )}
       </AnimatePresence>
 
-      {/* CONTACT BOOK MODAL */}
+      {/* PREMIUM ADD FRIEND MODAL */}
       <AnimatePresence>
         {isContactBookOpen && (
-          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm" id="contact-book-modal">
-            <motion.div 
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-slate-900 border border-slate-800/85 w-full max-w-sm rounded-3xl overflow-hidden shadow-2xl relative p-6 flex flex-col h-[75vh] md:h-[580px] max-h-[85vh] md:max-h-[640px] space-y-4 text-left"
-            >
-              <div className="flex items-center justify-between border-b border-slate-800 pb-3 shrink-0">
-                <div className="flex items-center gap-2">
-                  <Users size={20} className="text-[#FF6B6B]" />
-                  <h3 className="text-base font-black tracking-wider text-slate-100">Add friend</h3>
-                </div>
-                <button 
-                  type="button"
-                  onClick={() => setIsContactBookOpen(false)}
-                  className="p-1 text-slate-400 hover:text-white hover:bg-white/5 rounded-lg transition-colors cursor-pointer"
-                >
-                  <X size={18} />
-                </button>
-              </div>
-
-              <p className="text-xs text-slate-400 font-medium shrink-0">
-                Search for and link with standard Zavr contacts to build active debt boards.
-              </p>
-
-              <ContactSearch
-                userId={userId}
-                onAddFriend={(targetId) => {
-                  handleAddFriend(targetId);
-                  setIsContactBookOpen(false);
-                }}
-                onFocusInput={handleFocusSearch}
-                searchInputRef={searchInputRef}
-              />
-
-              <div className="pt-2 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setIsContactBookOpen(false)}
-                  className="w-full py-3 bg-slate-800 hover:bg-slate-750 text-slate-200 font-bold text-xs rounded-2xl transition-colors cursor-pointer text-center"
-                >
-                  Close
-                </button>
-              </div>
-            </motion.div>
-          </div>
+          <AddFriendModal
+            isOpen={isContactBookOpen}
+            onClose={() => setIsContactBookOpen(false)}
+            userId={userId}
+            onSuccess={fetchLedgersAndFriendsData}
+          />
         )}
       </AnimatePresence>
 

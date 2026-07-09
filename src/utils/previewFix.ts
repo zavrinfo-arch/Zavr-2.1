@@ -29,7 +29,7 @@ export const isAIStudioPreview = (): boolean => {
 
 // Check if anims or realtime should be bypassed/disabled
 export const shouldDisableHeavyFeatures = (): boolean => {
-  return isAIStudioPreview();
+  return false;
 };
 
 // Keep-Alive Heartbeat controller

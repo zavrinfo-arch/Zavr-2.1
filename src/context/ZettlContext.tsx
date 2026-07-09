@@ -24,6 +24,7 @@ interface ZettlContextType {
   sendFriendRequest: (friendId: string) => Promise<void>;
   acceptFriend: (requestId: string) => Promise<void>;
   rejectFriend: (requestId: string) => Promise<void>;
+  removeFriend: (friendId: string) => Promise<void>;
   requestMoney: (friendId: string, amount: number, note: string, dueDate?: string) => Promise<void>;
   payDebt: (debtId: string) => Promise<void>;
   sendReminder: (debtId: string) => Promise<void>;
@@ -205,6 +206,9 @@ export const ZettlProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       .on('postgres_changes', { event: '*', schema: 'public', table: 'friends' }, () => {
         fetchDataRef.current();
       })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'friend_requests' }, () => {
+        fetchDataRef.current();
+      })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'personal_zettls' }, () => {
         fetchDataRef.current();
       })
@@ -249,6 +253,12 @@ export const ZettlProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const handleRejectFriend = async (requestId: string) => {
     await friendService.rejectFriendRequest(requestId);
     toast.success('Connection declined');
+    fetchData();
+  };
+
+  const handleRemoveFriend = async (friendId: string) => {
+    await friendService.removeFriend(friendId);
+    toast.success('Connection removed successfully');
     fetchData();
   };
 
@@ -327,6 +337,7 @@ export const ZettlProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         sendFriendRequest: handleSendFriendRequest,
         acceptFriend: handleAcceptFriend,
         rejectFriend: handleRejectFriend,
+        removeFriend: handleRemoveFriend,
         requestMoney: handleRequestMoney,
         payDebt: handlePayDebt,
         sendReminder: handleSendReminder,

@@ -8,10 +8,6 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     persistSession: true,
     autoRefreshToken: true,
   },
-  // This block disables the automatic WebSocket connection completely
-  realtime: {
-    createStreamConnection: () => null,
-  } as any,
 });
 
 export const isConfigured = true;

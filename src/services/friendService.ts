@@ -167,5 +167,29 @@ export const friendService = {
       console.error('[FRIEND-SERVICE] getFriendList error:', err);
       return [];
     }
+  },
+
+  /**
+   * Remove/Delete a friendship
+   */
+  async removeFriend(friendId: string): Promise<void> {
+    if (!friendId) return;
+
+    try {
+      const response = await fetch(`/api/friends/remove/${friendId}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || 'Failed to remove connection');
+      }
+    } catch (err: any) {
+      console.error('[FRIEND-SERVICE] Remove friend failed:', err);
+      throw err;
+    }
   }
 };

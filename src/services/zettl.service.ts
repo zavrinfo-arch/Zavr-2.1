@@ -20,6 +20,17 @@ const saveSessionReadStatus = (status: Record<string, boolean>) => {
   }
 };
 
+function generateUUID(): string {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0;
+    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
+
 export const zettlService = {
   /**
    * getChatList(userId) - returns ChatListItem[]
@@ -28,12 +39,11 @@ export const zettlService = {
     if (!userId) return [];
 
     try {
-      // 1. Fetch accepted connections
+      // 1. Fetch accepted connections from public.friends table
       const { data: rawFriends, error: fErr } = await supabase
         .from('friends')
         .select('*')
-        .or(`user_id.eq.${userId},friend_id.eq.${userId}`)
-        .eq('status', 'accepted');
+        .or(`user_id.eq.${userId},friend_id.eq.${userId}`);
 
       if (fErr) throw fErr;
       if (!rawFriends || rawFriends.length === 0) return [];
@@ -279,10 +289,11 @@ export const zettlService = {
       ]);
 
       await supabase.from('notifications').insert({
+        id: generateUUID(),
         user_id: friendId,
         type: 'request',
         title: '💸 Zettl Money Request',
-        body: `Requested ₹${amount} for "${purpose}". Tap to chat/pay.`,
+        message: `Requested ₹${amount} for "${purpose}". Tap to chat/pay.`,
         data: JSON.stringify({ debtId: record.id, amount, note: purpose }),
         read: false
       });
@@ -341,10 +352,11 @@ export const zettlService = {
         ]);
 
         await supabase.from('notifications').insert({
+          id: generateUUID(),
           user_id: friendId,
           type: 'payment',
           title: '✅ Payment Received',
-          body: `Received ₹${amount} for "${purpose}".`,
+          message: `Received ₹${amount} for "${purpose}".`,
           data: JSON.stringify({ debtId, amount, note: purpose }),
           read: false
         });
@@ -396,10 +408,11 @@ export const zettlService = {
         ]);
 
         await supabase.from('notifications').insert({
+          id: generateUUID(),
           user_id: friendId,
           type: 'payment',
           title: '✅ Direct Payment Received',
-          body: `Sent you ₹${amount} for "${purpose}".`,
+          message: `Sent you ₹${amount} for "${purpose}".`,
           data: JSON.stringify({ debtId: record.id, amount, note: purpose }),
           read: false
         });

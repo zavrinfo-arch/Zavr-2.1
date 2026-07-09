@@ -4,6 +4,17 @@ import { useStore } from '../store/useStore';
 import { Friend, User } from '../types';
 import toast from 'react-hot-toast';
 
+function generateUUID(): string {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0;
+    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
+
 export function useSupabaseFriends() {
   const { currentUser } = useStore();
   const [friendsList, setFriendsList] = useState<Friend[]>([]);
@@ -181,7 +192,8 @@ export function useSupabaseFriends() {
       const { data: existing, error: existErr } = await supabase
         .from('friendships')
         .select('*')
-        .or(`and(sender_id.eq.${activeUserId},receiver_id.eq.${profile.id}),and(sender_id.eq.${profile.id},receiver_id.eq.${activeUserId})`)
+        .in('sender_id', [activeUserId, profile.id])
+        .in('receiver_id', [activeUserId, profile.id])
         .maybeSingle();
 
       if (existing) {
@@ -216,10 +228,11 @@ export function useSupabaseFriends() {
       // Log in notifications/activities
       try {
         await supabase.from('notifications').insert({
+          id: generateUUID(),
           user_id: profile.id,
           type: 'reminder',
           title: '👥 Connection Invite',
-          body: `@${currentUser?.username || 'A user'} wants to link with you.`,
+          message: `@${currentUser?.username || 'A user'} wants to link with you.`,
           data: JSON.stringify({ senderId: activeUserId }),
           read: false
         });
@@ -259,10 +272,11 @@ export function useSupabaseFriends() {
       if (friendship?.sender_id) {
         try {
           await supabase.from('notifications').insert({
+            id: generateUUID(),
             user_id: friendship.sender_id,
             type: 'achievement',
             title: '🤝 Connection Accepted',
-            body: `@${currentUser?.username || 'Your friend'} accepted your link request!`,
+            message: `@${currentUser?.username || 'Your friend'} accepted your link request!`,
             read: false
           });
         } catch {}

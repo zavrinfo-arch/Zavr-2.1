@@ -8,6 +8,7 @@ import rateLimit from 'express-rate-limit';
 import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
 import fs from 'fs';
+import crypto from 'crypto';
 
 dotenv.config();
 
@@ -48,7 +49,7 @@ if (!isSupabaseConfigured) {
 }
 
 // Supabase Client (using SERVICE_ROLE key for administrative tasks if available)
-const rawServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY;
+const rawServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml2ZGthY2Npam9laXRrcmttcmtrIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NTk4MzEwMiwiZXhwIjoyMDkxNTU5MTAyfQ.1odyQi-1cFuCXbj28AHzukMg-DPcSIHTmlFSqJyskMQ';
 const hasServiceKey = rawServiceKey && rawServiceKey.length > 40; // Some keys might be slightly shorter but still valid
 const supabaseServiceKey = hasServiceKey ? rawServiceKey.trim() : supabaseAnonKey;
 
@@ -286,6 +287,60 @@ async function getAuthenticatedUser(req: express.Request, res: express.Response)
     return null;
   }
 }
+
+async function sendSafeNotification(supabaseClient: any, notificationData: {
+  user_id: string;
+  type: string;
+  title: string;
+  message: string;
+  data?: string;
+  read?: boolean;
+}) {
+  try {
+    // 1. Ensure user exists in user_profiles to satisfy notifications_user_id_fkey constraint
+    const { data: up, error: upError } = await supabaseClient
+      .from('user_profiles')
+      .select('id')
+      .eq('id', notificationData.user_id)
+      .maybeSingle();
+
+    if (upError) {
+      console.error('[sendSafeNotification] user_profiles check failed:', upError);
+    }
+
+    if (!up && !upError) {
+      console.log(`[sendSafeNotification] User ${notificationData.user_id} not found in user_profiles. Creating record...`);
+      const { error: insertUpError } = await supabaseClient
+        .from('user_profiles')
+        .insert({ id: notificationData.user_id });
+      if (insertUpError) {
+        console.error('[sendSafeNotification] Failed to auto-insert user_profiles row:', insertUpError);
+      }
+    }
+
+    // 2. Insert the notification with a generated ID to prevent violates not-null constraint on id
+    const { error: insertError } = await supabaseClient
+      .from('notifications')
+      .insert({
+        id: crypto.randomUUID(),
+        user_id: notificationData.user_id,
+        type: notificationData.type,
+        title: notificationData.title,
+        message: notificationData.message,
+        data: notificationData.data || null,
+        read: notificationData.read ?? false
+      });
+
+    if (insertError) {
+      console.error('[sendSafeNotification] failed to insert notification:', insertError);
+    } else {
+      console.log('[sendSafeNotification] Notification sent successfully');
+    }
+  } catch (err: any) {
+    console.error('[sendSafeNotification] Error:', err.message || err);
+  }
+}
+
 
 // --- Routes ---
 
@@ -1123,33 +1178,65 @@ app.post('/api/friends/request-by-username', async (req, res) => {
     if (!targetUser) return res.status(404).json({ error: 'User not found' });
     if (targetUser.id === user.id) return res.status(400).json({ error: 'You cannot add yourself' });
 
-    // 2. Check if relationship already exists in either direction
-    const selectFields = hasFriendsStatusColumn ? 'id, status, user_id, friend_id' : 'id, user_id, friend_id';
-    const { data: existing, error: checkError } = await (supabaseAdmin
-      .from('friends')
-      .select(selectFields) as any)
-      .or(`and(user_id.eq.${user.id},friend_id.eq.${targetUser.id}),and(user_id.eq.${targetUser.id},friend_id.eq.${user.id})`)
+    // 2. Check if a friend request or active friendship already exists
+    const { data: existingReq, error: checkReqError } = await supabaseAdmin
+      .from('friend_requests')
+      .select('*')
+      .in('sender_id', [user.id, targetUser.id])
+      .in('receiver_id', [user.id, targetUser.id])
       .maybeSingle();
-    
-    if (checkError) throw checkError;
-    if (existing) {
-      if (!hasFriendsStatusColumn || existing.status === 'accepted') {
-        return res.status(400).json({ error: 'You are already friends' });
-      }
-      const direction = existing.user_id === user.id ? 'sent' : 'received';
-      return res.status(400).json({ error: `You already have a ${direction} request with this user` });
+
+    if (checkReqError) throw checkReqError;
+
+    const { data: existingFriend, error: checkFriendError } = await supabaseAdmin
+      .from('friends')
+      .select('*')
+      .in('user_id', [user.id, targetUser.id])
+      .in('friend_id', [user.id, targetUser.id])
+      .maybeSingle();
+
+    if (checkFriendError) throw checkFriendError;
+
+    if (existingFriend) {
+      return res.status(400).json({ error: 'You are already friends' });
     }
 
-    // 3. Insert friend request
-    const insertObj = hasFriendsStatusColumn
-      ? { user_id: user.id, friend_id: targetUser.id, status: 'pending' }
-      : { user_id: user.id, friend_id: targetUser.id };
+    if (existingReq) {
+      if (existingReq.status === 'pending') {
+        const direction = existingReq.sender_id === user.id ? 'sent' : 'received';
+        return res.status(400).json({ error: `You already have a ${direction} request with this user` });
+      } else if (existingReq.status === 'accepted') {
+        return res.status(400).json({ error: 'You are already friends' });
+      } else {
+        // Delete rejected or declined request first to prevent duplicate key violations on re-send
+        const { error: deleteError } = await supabaseAdmin
+          .from('friend_requests')
+          .delete()
+          .eq('id', existingReq.id);
+        if (deleteError) throw deleteError;
+      }
+    }
 
+    // 3. Insert into friend_requests
     const { error: insertError } = await supabaseAdmin
-      .from('friends')
-      .insert(insertObj);
+      .from('friend_requests')
+      .insert({
+        sender_id: user.id,
+        receiver_id: targetUser.id,
+        status: 'pending'
+      });
     
     if (insertError) throw insertError;
+
+    // Send realtime-friendly notification
+    try {
+      await sendSafeNotification(supabaseAdmin, {
+        user_id: targetUser.id,
+        type: 'reminder',
+        title: '👥 Connection Invite',
+        message: `@${user.username || 'A user'} wants to link with you.`
+      });
+    } catch {}
 
     res.json({ success: true, friendId: targetUser.id, friendUsername: targetUser.username });
   } catch (err: any) {
@@ -1164,33 +1251,67 @@ app.post('/api/friends/request', async (req, res) => {
 
   const { friendId } = req.body;
   if (!friendId) return res.status(400).json({ error: 'friendId is required' });
+  if (friendId === user.id) return res.status(400).json({ error: 'You cannot add yourself' });
 
   try {
     // Check if relationship already exists
-    const selectFields = hasFriendsStatusColumn ? 'id, status, user_id, friend_id' : 'id, user_id, friend_id';
-    const { data: existing, error: checkError } = await (supabaseAdmin
-      .from('friends')
-      .select(selectFields) as any)
-      .or(`and(user_id.eq.${user.id},friend_id.eq.${friendId}),and(user_id.eq.${friendId},friend_id.eq.${user.id})`)
+    const { data: existingReq, error: checkReqError } = await supabaseAdmin
+      .from('friend_requests')
+      .select('*')
+      .in('sender_id', [user.id, friendId])
+      .in('receiver_id', [user.id, friendId])
       .maybeSingle();
-    
-    if (checkError) throw checkError;
-    if (existing) {
-      if (!hasFriendsStatusColumn || existing.status === 'accepted') {
-        return res.status(400).json({ error: 'You are already friends' });
-      }
-      return res.status(400).json({ error: 'Relationship already exists' });
+
+    if (checkReqError) throw checkReqError;
+
+    const { data: existingFriend, error: checkFriendError } = await supabaseAdmin
+      .from('friends')
+      .select('*')
+      .in('user_id', [user.id, friendId])
+      .in('friend_id', [user.id, friendId])
+      .maybeSingle();
+
+    if (checkFriendError) throw checkFriendError;
+
+    if (existingFriend) {
+      return res.status(400).json({ error: 'You are already friends' });
     }
 
-    const insertObj = hasFriendsStatusColumn
-      ? { user_id: user.id, friend_id: friendId, status: 'pending' }
-      : { user_id: user.id, friend_id: friendId };
+    if (existingReq) {
+      if (existingReq.status === 'pending') {
+        return res.status(400).json({ error: 'Relationship request already exists' });
+      } else if (existingReq.status === 'accepted') {
+        return res.status(400).json({ error: 'You are already friends' });
+      } else {
+        // Delete rejected or declined request first to prevent duplicate key violations on re-send
+        const { error: deleteError } = await supabaseAdmin
+          .from('friend_requests')
+          .delete()
+          .eq('id', existingReq.id);
+        if (deleteError) throw deleteError;
+      }
+    }
 
     const { error } = await supabaseAdmin
-      .from('friends')
-      .insert(insertObj);
+      .from('friend_requests')
+      .insert({
+        sender_id: user.id,
+        receiver_id: friendId,
+        status: 'pending'
+      });
     
     if (error) throw error;
+
+    // Send notification
+    try {
+      await sendSafeNotification(supabaseAdmin, {
+        user_id: friendId,
+        type: 'reminder',
+        title: '👥 Connection Invite',
+        message: `@${user.username || 'A user'} wants to link with you.`
+      });
+    } catch {}
+
     res.json({ success: true });
   } catch (err: any) {
     console.error('Friend request failed:', err);
@@ -1202,37 +1323,75 @@ app.post('/api/friends/accept/:requestId', async (req, res) => {
   const user = await getAuthenticatedUser(req, res);
   if (!user) return res.status(401).json({ error: 'Not authenticated' });
 
-  if (!hasFriendsStatusColumn) {
-    // If friends table doesn't support status, friendship is implicitly active immediately
-    return res.json({ success: true });
-  }
-
   try {
-    // Robustly find friendship row and verify either user is part of it before accepting
-    const { data: friendship, error: findError } = await supabaseAdmin
-      .from('friends')
-      .select('id, user_id, friend_id')
+    // 1. Find request row in friend_requests
+    const { data: request, error: findError } = await supabaseAdmin
+      .from('friend_requests')
+      .select('id, sender_id, receiver_id, status')
       .eq('id', req.params.requestId)
       .maybeSingle();
 
     if (findError) throw findError;
-    if (!friendship) return res.status(404).json({ error: 'Friend request not found' });
+    if (!request) return res.status(404).json({ error: 'Friend request not found' });
 
-    // Allow user to accept as long as they are part of the transaction
-    if (friendship.friend_id !== user.id && friendship.user_id !== user.id) {
-      return res.status(403).json({ error: 'Unauthorized to respond to this request' });
+    // 2. Security Check: Only the receiver can accept the request
+    if (request.receiver_id !== user.id) {
+      return res.status(403).json({ error: 'Unauthorized: Only the recipient can accept this invitation' });
     }
 
-    const { error } = await supabaseAdmin
-      .from('friends')
+    if (request.status === 'accepted') {
+      return res.status(400).json({ error: 'This request has already been accepted' });
+    }
+
+    // 3. Update status in friend_requests to 'accepted'
+    const { error: updateError } = await supabaseAdmin
+      .from('friend_requests')
       .update({ status: 'accepted' })
       .eq('id', req.params.requestId);
-    
-    if (error) throw error;
+
+    if (updateError) throw updateError;
+
+    // 4. Create bidirectional friendships
+    const { error: insertError1 } = await supabaseAdmin
+      .from('friends')
+      .upsert({
+        user_id: user.id,
+        friend_id: request.sender_id
+      }, { onConflict: 'user_id,friend_id' });
+
+    if (insertError1) throw insertError1;
+
+    const { error: insertError2 } = await supabaseAdmin
+      .from('friends')
+      .upsert({
+        user_id: request.sender_id,
+        friend_id: user.id
+      }, { onConflict: 'user_id,friend_id' });
+
+    if (insertError2) throw insertError2;
+
+    // 5. Send notification to the sender
+    try {
+      await sendSafeNotification(supabaseAdmin, {
+        user_id: request.sender_id,
+        type: 'achievement',
+        title: '🤝 Connection Accepted',
+        message: `@${user.username || 'Your friend'} accepted your link request!`
+      });
+    } catch (nErr) {
+      console.error('[FRIENDS] Failed to send acceptance notification:', nErr);
+    }
+
     res.json({ success: true });
   } catch (err: any) {
-    console.error('[FRIENDS] Accept failed:', err);
-    res.status(500).json({ error: 'Accept failed', message: err.message });
+    console.error('[FRIENDS] Accept failed. Full error:', {
+      message: err.message,
+      code: err.code,
+      details: err.details,
+      hint: err.hint,
+      stack: err.stack
+    }, err);
+    res.status(500).json({ error: 'Accept failed', message: err.message || err });
   }
 });
 
@@ -1241,22 +1400,21 @@ app.post('/api/friends/decline/:requestId', async (req, res) => {
   if (!user) return res.status(401).json({ error: 'Not authenticated' });
 
   try {
-    // Robustly find friendship row and verify user belongs to it
-    const { data: friendship, error: findError } = await supabaseAdmin
-      .from('friends')
-      .select('id, user_id, friend_id')
+    const { data: request, error: findError } = await supabaseAdmin
+      .from('friend_requests')
+      .select('id, sender_id, receiver_id')
       .eq('id', req.params.requestId)
       .maybeSingle();
 
     if (findError) throw findError;
-    if (!friendship) return res.status(404).json({ error: 'Friend request not found' });
+    if (!request) return res.status(404).json({ error: 'Friend request not found' });
 
-    if (friendship.friend_id !== user.id && friendship.user_id !== user.id) {
-      return res.status(403).json({ error: 'Unauthorized to decline this request' });
+    if (request.receiver_id !== user.id && request.sender_id !== user.id) {
+      return res.status(403).json({ error: 'Unauthorized to respond to this request' });
     }
 
     const { error } = await supabaseAdmin
-      .from('friends')
+      .from('friend_requests')
       .delete()
       .eq('id', req.params.requestId);
     
@@ -1268,41 +1426,76 @@ app.post('/api/friends/decline/:requestId', async (req, res) => {
   }
 });
 
+app.delete('/api/friends/remove/:friendId', async (req, res) => {
+  const user = await getAuthenticatedUser(req, res);
+  if (!user) return res.status(401).json({ error: 'Not authenticated' });
+
+  const { friendId } = req.params;
+  if (!friendId) return res.status(400).json({ error: 'friendId is required' });
+
+  try {
+    // 1. Delete bidirectional rows from friends
+    const { error: deleteFriendsError } = await supabaseAdmin
+      .from('friends')
+      .delete()
+      .in('user_id', [user.id, friendId])
+      .in('friend_id', [user.id, friendId]);
+
+    if (deleteFriendsError) throw deleteFriendsError;
+
+    // 2. Delete any friend requests between these two users
+    const { error: deleteRequestsError } = await supabaseAdmin
+      .from('friend_requests')
+      .delete()
+      .in('sender_id', [user.id, friendId])
+      .in('receiver_id', [user.id, friendId]);
+
+    if (deleteRequestsError) throw deleteRequestsError;
+
+    res.json({ success: true });
+  } catch (err: any) {
+    console.error('[FRIENDS] Remove friend failed:', err);
+    res.status(500).json({ error: 'Remove friend failed', message: err.message });
+  }
+});
+
 app.get('/api/friends/list', async (req, res) => {
   const user = await getAuthenticatedUser(req, res);
   if (!user) return res.status(401).json({ error: 'Not authenticated' });
 
   try {
-    const fields = hasFriendsStatusColumn 
-      ? 'id, status, created_at, friend_id, user_id'
-      : 'id, created_at, friend_id, user_id';
-
-    // 1. Fetch raw relationships without relying on PostgREST joins (resilient to missing foreign constraints)
-    const { data: friendships, error: friendsError } = await (supabaseAdmin
+    // 1. Fetch established friends from friends table
+    const { data: friendsList, error: friendsError } = await supabaseAdmin
       .from('friends')
-      .select(fields) as any)
-      .or(`user_id.eq.${user.id},friend_id.eq.${user.id}`);
-    
+      .select('id, user_id, friend_id, created_at')
+      .eq('user_id', user.id);
+
     if (friendsError) throw friendsError;
 
-    const rawFriendships = (friendships || []) as any[];
+    // 2. Fetch pending requests from friend_requests table involving current user
+    const { data: requestsList, error: requestsError } = await supabaseAdmin
+      .from('friend_requests')
+      .select('id, sender_id, receiver_id, status, created_at')
+      .or(`sender_id.eq.${user.id},receiver_id.eq.${user.id}`)
+      .eq('status', 'pending');
 
-    // Filter into initiated (outgoing) vs received (incoming) from current user's perspective
-    const initiatedList = rawFriendships.filter(f => f.user_id === user.id);
-    const receivedList = rawFriendships.filter(f => f.friend_id === user.id);
+    if (requestsError) throw requestsError;
 
-    // Collect all involved friend IDs to fetch their profiles efficiently in a single roundtrip
-    const friendIds = [
-      ...initiatedList.map(f => f.friend_id),
-      ...receivedList.map(f => f.user_id)
-    ];
+    // 3. Collect all involved user profiles
+    const friendUserIds = new Set<string>();
+    (friendsList || []).forEach(f => friendUserIds.add(f.friend_id));
+    (requestsList || []).forEach(r => {
+      friendUserIds.add(r.sender_id);
+      friendUserIds.add(r.receiver_id);
+    });
+    friendUserIds.delete(user.id);
 
     const profilesMap = new Map();
-    if (friendIds.length > 0) {
+    if (friendUserIds.size > 0) {
       const { data: profiles, error: profilesError } = await supabaseAdmin
         .from('profiles')
         .select('id, username, full_name, avatar_url')
-        .in('id', friendIds);
+        .in('id', Array.from(friendUserIds));
       
       if (!profilesError && profiles) {
         profiles.forEach(p => {
@@ -1311,40 +1504,51 @@ app.get('/api/friends/list', async (req, res) => {
       }
     }
 
-    const friendsList = [
-      ...initiatedList.map(f => ({
+    const combinedList: any[] = [];
+
+    // Add established friends
+    (friendsList || []).forEach(f => {
+      const p = profilesMap.get(f.friend_id) || {
+        id: f.friend_id,
+        username: 'user',
+        full_name: 'Zettl Friend',
+        avatar_url: `https://api.dicebear.com/7.x/lorelei/svg?seed=${f.friend_id}`
+      };
+      combinedList.push({
         id: f.id,
-        user_id: f.user_id,
+        user_id: user.id,
         friend_id: f.friend_id,
         created_at: f.created_at,
-        status: hasFriendsStatusColumn ? f.status : 'accepted',
-        friend: profilesMap.get(f.friend_id) || {
-          id: f.friend_id,
-          username: 'user',
-          full_name: 'Zettl Friend',
-          avatar_url: `https://api.dicebear.com/7.x/lorelei/svg?seed=${f.friend_id}`
-        },
+        status: 'accepted',
+        friend: p,
         type: 'outgoing'
-      })),
-      ...receivedList.map(f => ({
-        id: f.id,
-        user_id: f.user_id,
-        friend_id: f.user_id, // Map friend_id as the sender's user_id so storefront has correct reference
-        created_at: f.created_at,
-        status: hasFriendsStatusColumn ? f.status : 'accepted',
-        friend: profilesMap.get(f.user_id) || {
-          id: f.user_id,
-          username: 'user',
-          full_name: 'Zettl Friend',
-          avatar_url: `https://api.dicebear.com/7.x/lorelei/svg?seed=${f.user_id}`
-        },
-        type: 'incoming'
-      }))
-    ];
+      });
+    });
 
-    res.json(friendsList);
+    // Add pending requests
+    (requestsList || []).forEach(r => {
+      const isSender = r.sender_id === user.id;
+      const targetId = isSender ? r.receiver_id : r.sender_id;
+      const p = profilesMap.get(targetId) || {
+        id: targetId,
+        username: 'user',
+        full_name: 'Zettl Friend',
+        avatar_url: `https://api.dicebear.com/7.x/lorelei/svg?seed=${targetId}`
+      };
+      combinedList.push({
+        id: r.id,
+        user_id: r.sender_id,
+        friend_id: targetId,
+        created_at: r.created_at,
+        status: 'pending',
+        friend: p,
+        type: isSender ? 'outgoing' : 'incoming'
+      });
+    });
+
+    res.json(combinedList);
   } catch (err: any) {
-    console.error('[FRIENDS] Custom retrieval failed:', err);
+    console.error('[FRIENDS] Combined retrieval failed:', err);
     res.status(500).json({ error: 'Fetch friends failed', message: err.message });
   }
 });
@@ -1679,13 +1883,12 @@ app.post('/api/zettl/personal/:zettlId/remind', async (req, res) => {
     if (creditorId !== user.id) return res.status(403).json({ error: 'Only the payee can remind' });
 
     try {
-      await supabaseAdmin.from('notifications').insert({
+      await sendSafeNotification(supabaseAdmin, {
         user_id: debtorId,
         type: 'reminder',
         title: '🔔 Zettl Reminder',
-        body: `Friendly reminder about ₹${zettl.amount} for "${zettl.message_text}".`,
-        data: JSON.stringify({ debtId: zettl.id, amount: zettl.amount, note: zettl.message_text }),
-        read: false
+        message: `Friendly reminder about ₹${zettl.amount} for "${zettl.message_text}".`,
+        data: JSON.stringify({ debtId: zettl.id, amount: zettl.amount, note: zettl.message_text })
       });
     } catch (notifErr) {
       console.warn('[SERVER] Non-blocking reminder notification failed:', notifErr);

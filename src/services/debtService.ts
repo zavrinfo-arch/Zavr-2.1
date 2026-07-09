@@ -1,6 +1,17 @@
 import { supabase } from '../lib/supabaseClient';
 import { PersonalZettl, Currency } from '../types';
 
+function generateUUID(): string {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0;
+    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
+
 export const debtService = {
   /**
    * Request money from a friend
@@ -55,10 +66,11 @@ export const debtService = {
 
       // Create notification for debtor
       await supabase.from('notifications').insert({
+        id: generateUUID(),
         user_id: debtorId,
         type: 'request',
         title: '💸 Money Requested',
-        body: `Requested ₹${amount} for "${note}". Click to pay.`,
+        message: `Requested ₹${amount} for "${note}". Click to pay.`,
         data: JSON.stringify({ debtId: requestData.id, amount, note }),
         read: false
       });
@@ -136,10 +148,11 @@ export const debtService = {
       ]);
 
       await supabase.from('notifications').insert({
+        id: generateUUID(),
         user_id: payeeId,
         type: 'payment',
         title: '✅ Payment Received',
-        body: `Transferred ₹${amount} for "${note}".`,
+        message: `Transferred ₹${amount} for "${note}".`,
         data: JSON.stringify({ debtId, amount, note }),
         read: false
       });
@@ -185,10 +198,11 @@ export const debtService = {
       });
 
       await supabase.from('notifications').insert({
+        id: generateUUID(),
         user_id: receiverId,
         type: 'reminder',
         title: '⏰ Payment Nudge',
-        body: `Please settle ₹${debt.amount} for "${debt.note || 'debt'}"!`,
+        message: `Please settle ₹${debt.amount} for "${debt.note || 'debt'}"!`,
         data: JSON.stringify({ debtId, amount: debt.amount }),
         read: false
       });
