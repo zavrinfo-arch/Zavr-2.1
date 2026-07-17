@@ -227,13 +227,13 @@ export function useSupabaseFriends() {
 
       // Log in notifications/activities
       try {
+        const notifData = { senderId: activeUserId };
         await supabase.from('notifications').insert({
           id: generateUUID(),
           user_id: profile.id,
           type: 'reminder',
           title: '👥 Connection Invite',
-          message: `@${currentUser?.username || 'A user'} wants to link with you.`,
-          data: JSON.stringify({ senderId: activeUserId }),
+          message: `@${currentUser?.username || 'A user'} wants to link with you. |||DATA:${JSON.stringify(notifData)}`,
           read: false
         });
       } catch (nErr) {

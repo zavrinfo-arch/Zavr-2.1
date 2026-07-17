@@ -110,12 +110,12 @@ export default function PaymentModal({ friendId, friendName, isOpen, onClose, on
   };
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
-      <div className="bg-slate-900 border border-slate-800/80 w-full max-w-sm rounded-3xl overflow-hidden shadow-2xl relative">
+    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/40 dark:bg-[#0a0a0f]/80 backdrop-blur-sm">
+      <div className="bg-white dark:bg-[#111118]/95 border border-black/[0.06] dark:border-white/[0.08] w-full max-w-sm rounded-[2rem] overflow-hidden shadow-2xl relative">
         {/* Header Ribbon bar */}
-        <div className="bg-gradient-to-r from-emerald-800 to-emerald-600 px-6 py-4 flex items-center justify-between text-white">
+        <div className="bg-gradient-to-r from-emerald-600 to-emerald-500 px-6 py-4 flex items-center justify-between text-white">
           <div className="flex items-center gap-2">
-            <HandCoins size={20} className="text-emerald-200" />
+            <HandCoins size={20} className="text-white/90" />
             <h3 className="text-base font-black uppercase tracking-wider">Report Payment</h3>
           </div>
           <button 
@@ -129,26 +129,26 @@ export default function PaymentModal({ friendId, friendName, isOpen, onClose, on
 
         <form onSubmit={handleFormSubmit} className="p-6 space-y-4">
           {/* Target Profile Link */}
-          <div className="bg-slate-800/40 border border-slate-800 rounded-2xl p-3">
-            <span className="text-[10px] text-emerald-400 font-black uppercase tracking-widest block">Paying Friend</span>
-            <span className="text-sm font-bold text-slate-100 block mt-0.5">{friendName}</span>
+          <div className="bg-black/[0.01] dark:bg-white/[0.02] border border-black/[0.06] dark:border-white/[0.08] rounded-2xl p-3">
+            <span className="text-[10px] text-emerald-500 dark:text-emerald-400 font-black uppercase tracking-widest block">Paying Friend</span>
+            <span className="text-sm font-bold text-zinc-900 dark:text-slate-100 block mt-0.5">{friendName}</span>
           </div>
 
           {/* Optional Debt selection mapping dropdown */}
           {pendingDebts.length > 0 && (
             <div className="space-y-1.5">
-              <label className="text-[10px] text-slate-400 uppercase tracking-wider font-extrabold block">
+              <label className="text-[10px] text-zinc-500 dark:text-slate-400 uppercase tracking-wider font-extrabold block">
                 Select Active Debt to Settle
               </label>
               <select
                 disabled={loading}
                 value={selectedDebtId}
                 onChange={handleDebtChange}
-                className="w-full h-11 bg-slate-950 border border-slate-800 text-slate-300 text-xs px-3 rounded-xl focus:border-emerald-500/50 outline-none transition-colors cursor-pointer"
+                className="w-full h-11 bg-black/[0.01] dark:bg-white/[0.02] border border-black/[0.08] dark:border-white/[0.08] text-zinc-800 dark:text-slate-100 text-xs px-3 rounded-xl focus:border-emerald-500/50 outline-none transition-all cursor-pointer"
               >
-                <option value="">Spontaneous Direct Cash Pay (No debt match)</option>
+                <option value="" className="text-zinc-800 dark:text-zinc-900">Spontaneous Direct Cash Pay (No debt match)</option>
                 {pendingDebts.map((d) => (
-                  <option key={d.id} value={d.id}>
+                  <option key={d.id} value={d.id} className="text-zinc-800 dark:text-zinc-900">
                     ₹{d.amount} for "{d.note || 'debt'}"
                   </option>
                 ))}
@@ -158,11 +158,11 @@ export default function PaymentModal({ friendId, friendName, isOpen, onClose, on
 
           {/* Amount field box */}
           <div className="space-y-1.5">
-            <label className="text-[10px] text-slate-400 uppercase tracking-wider font-extrabold block">
+            <label className="text-[10px] text-zinc-500 dark:text-slate-400 uppercase tracking-wider font-extrabold block">
               Amount (₹) *
             </label>
             <div className="relative">
-              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-lg font-black text-emerald-400">
+              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-lg font-black text-emerald-500">
                 ₹
               </span>
               <input
@@ -174,14 +174,14 @@ export default function PaymentModal({ friendId, friendName, isOpen, onClose, on
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
                 placeholder="0"
-                className="w-full h-12 bg-slate-950 border border-slate-800 text-slate-100 font-extrabold text-lg px-9 rounded-2xl focus:border-emerald-500/50 outline-none transition-colors"
+                className="w-full h-12 bg-black/[0.01] dark:bg-white/[0.02] border border-black/[0.08] dark:border-white/[0.08] text-zinc-800 dark:text-slate-100 font-extrabold text-lg px-9 rounded-2xl focus:border-emerald-500/50 outline-none transition-all placeholder:text-zinc-400"
               />
             </div>
           </div>
 
           {/* Purpose Box */}
           <div className="space-y-1.5">
-            <label className="text-[10px] text-slate-400 uppercase tracking-wider font-extrabold block">
+            <label className="text-[10px] text-zinc-500 dark:text-slate-400 uppercase tracking-wider font-extrabold block">
               Purpose *
             </label>
             <input
@@ -191,7 +191,7 @@ export default function PaymentModal({ friendId, friendName, isOpen, onClose, on
               value={purpose}
               onChange={(e) => setPurpose(e.target.value)}
               placeholder="E.g., paid for tea, movies, lunch"
-              className="w-full h-11 bg-slate-950 border border-slate-800 text-slate-100 text-xs px-4 rounded-xl focus:border-emerald-500/50 outline-none transition-colors"
+              className="w-full h-11 bg-black/[0.01] dark:bg-white/[0.02] border border-black/[0.08] dark:border-white/[0.08] text-zinc-800 dark:text-slate-100 text-xs px-4 rounded-xl focus:border-emerald-500/50 outline-none transition-all placeholder:text-zinc-400 dark:placeholder:text-white/30"
             />
           </div>
 
@@ -201,14 +201,14 @@ export default function PaymentModal({ friendId, friendName, isOpen, onClose, on
               type="button"
               onClick={onClose}
               disabled={loading}
-              className="flex-1 py-3 border border-slate-800 text-slate-300 font-bold text-xs rounded-2xl hover:bg-slate-800/40 transition-colors cursor-pointer"
+              className="flex-1 py-3 border border-black/[0.08] dark:border-white/[0.08] text-zinc-500 dark:text-zinc-300 font-bold text-xs rounded-2xl hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors cursor-pointer"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={loading}
-              className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs rounded-2xl cursor-pointer shadow-lg shadow-emerald-600/20 hover:scale-[1.01] transition-all disabled:opacity-50"
+              className="flex-1 py-3 bg-gradient-to-r from-emerald-500 to-emerald-400 text-white font-extrabold text-xs rounded-2xl cursor-pointer shadow-lg shadow-emerald-500/20 hover:scale-[1.01] transition-all disabled:opacity-50"
             >
               {loading ? 'Submitting...' : 'Send Payment'}
             </button>

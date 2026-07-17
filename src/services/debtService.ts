@@ -65,13 +65,13 @@ export const debtService = {
       ]);
 
       // Create notification for debtor
+      const notifData = { debtId: requestData.id, amount, note };
       await supabase.from('notifications').insert({
         id: generateUUID(),
         user_id: debtorId,
         type: 'request',
         title: '💸 Money Requested',
-        message: `Requested ₹${amount} for "${note}". Click to pay.`,
-        data: JSON.stringify({ debtId: requestData.id, amount, note }),
+        message: `Requested ₹${amount} for "${note}". Click to pay. |||DATA:${JSON.stringify(notifData)}`,
         read: false
       });
     } catch (aErr) {
@@ -147,13 +147,13 @@ export const debtService = {
         }
       ]);
 
+      const notifData = { debtId, amount, note };
       await supabase.from('notifications').insert({
         id: generateUUID(),
         user_id: payeeId,
         type: 'payment',
         title: '✅ Payment Received',
-        message: `Transferred ₹${amount} for "${note}".`,
-        data: JSON.stringify({ debtId, amount, note }),
+        message: `Transferred ₹${amount} for "${note}". |||DATA:${JSON.stringify(notifData)}`,
         read: false
       });
     } catch (aErr) {
@@ -197,13 +197,13 @@ export const debtService = {
         message: `Reminder nudge for ₹${debt.amount} for "${debt.note || 'debt'}"`
       });
 
+      const notifData = { debtId, amount: debt.amount };
       await supabase.from('notifications').insert({
         id: generateUUID(),
         user_id: receiverId,
         type: 'reminder',
         title: '⏰ Payment Nudge',
-        message: `Please settle ₹${debt.amount} for "${debt.note || 'debt'}"!`,
-        data: JSON.stringify({ debtId, amount: debt.amount }),
+        message: `Please settle ₹${debt.amount} for "${debt.note || 'debt'}"! |||DATA:${JSON.stringify(notifData)}`,
         read: false
       });
     } catch (err) {

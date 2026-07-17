@@ -239,7 +239,7 @@ export default function DashboardStats({ onNewZettl }: DashboardStatsProps) {
         <div className="clay p-6 bg-surface flex flex-col justify-between">
           <div>
             <div className="flex items-center gap-2 mb-6">
-              <div className="w-8 h-8 rounded-lg clay-inset bg-pink-500/10 text-pink-400 flex items-center justify-center">
+              <div className="w-8 h-8 rounded-lg clay-inset bg-[#FF6B6B]/10 text-[#FF6B6B] flex items-center justify-center">
                 <CheckCircle size={16} />
               </div>
               <div>

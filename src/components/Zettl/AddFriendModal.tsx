@@ -304,7 +304,7 @@ export default function AddFriendModal({ isOpen, onClose, userId, onSuccess }: A
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.95 }}
         transition={{ duration: 0.25 }}
-        className="w-full max-w-md bg-[#0B1220] border border-white/8 rounded-[22px] shadow-[0_20px_60px_rgba(0,0,0,0.45)] relative p-6 flex flex-col space-y-4 text-left overflow-hidden"
+        className="w-full max-w-md bg-white dark:bg-[#111118]/95 border border-black/[0.06] dark:border-white/[0.08] rounded-[22px] shadow-[0_20px_60px_rgba(0,0,0,0.45)] relative p-6 flex flex-col space-y-4 text-left overflow-hidden"
         id="add-friend-modal"
         role="dialog"
         aria-modal="true"
@@ -316,7 +316,7 @@ export default function AddFriendModal({ isOpen, onClose, userId, onSuccess }: A
             <div className="w-9 h-9 rounded-xl bg-[#FF6B6B]/10 flex items-center justify-center text-[#FF6B6B]">
               <UserPlus size={20} />
             </div>
-            <h2 id="add-friend-title" className="text-[18px] font-bold text-white leading-none">
+            <h2 id="add-friend-title" className="text-[18px] font-bold text-zinc-900 dark:text-white leading-none">
               Add Friend
             </h2>
           </div>
@@ -325,7 +325,7 @@ export default function AddFriendModal({ isOpen, onClose, userId, onSuccess }: A
             onClick={onClose}
             whileHover={{ rotate: 90 }}
             transition={{ duration: 0.2 }}
-            className="p-1 text-[#9CA3AF] hover:text-white rounded-lg transition-colors cursor-pointer"
+            className="p-1 text-zinc-500 dark:text-[#9CA3AF] hover:text-zinc-800 dark:hover:text-white rounded-lg transition-colors cursor-pointer"
             aria-label="Close modal"
           >
             <X size={20} />
@@ -333,20 +333,20 @@ export default function AddFriendModal({ isOpen, onClose, userId, onSuccess }: A
         </div>
 
         {/* Description */}
-        <p className="text-[13px] text-[#9CA3AF] leading-relaxed">
-          Search for ZTTEL users by username or email and instantly send a friend request.
+        <p className="text-[13px] text-zinc-500 dark:text-[#9CA3AF] leading-relaxed">
+          Search for ZETTL users by username or email and instantly send a friend request.
         </p>
 
         {/* Search Input */}
         <div className="relative">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#9CA3AF]" size={16} />
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-400 dark:text-[#9CA3AF]" size={16} />
           <input
             ref={inputRef}
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Enter username or email"
-            className="w-full h-[46px] bg-[#111827] border border-white/8 rounded-[16px] pl-10 pr-4 text-[14px] text-white placeholder-[#9CA3AF]/50 outline-none transition-all duration-200 focus:border-[#00F5D4] focus:ring-3 focus:ring-[#00F5D4]/18"
+            className="w-full h-[46px] bg-black/[0.01] dark:bg-white/[0.02] border border-black/[0.08] dark:border-white/[0.08] rounded-[16px] pl-10 pr-4 text-[14px] text-zinc-800 dark:text-white placeholder-zinc-400 dark:placeholder-white/30 outline-none transition-all duration-200 focus:border-[#FF8A8A]/60 dark:focus:border-[#FF8A8A]/60"
             aria-label="Search username or email"
           />
         </div>
@@ -356,10 +356,10 @@ export default function AddFriendModal({ isOpen, onClose, userId, onSuccess }: A
           {query.trim().length === 0 ? (
             /* Idle State */
             <div className="flex flex-col items-center justify-center h-full py-10 text-center space-y-3">
-              <div className="w-16 h-16 rounded-full bg-white/[0.02] flex items-center justify-center border border-white/[0.05]">
-                <Search size={28} className="text-[#9CA3AF]/40" />
+              <div className="w-16 h-16 rounded-full bg-black/[0.01] dark:bg-white/[0.01] flex items-center justify-center border border-black/[0.06] dark:border-white/[0.05]">
+                <Search size={28} className="text-zinc-400 dark:text-[#9CA3AF]/40" />
               </div>
-              <p className="text-[13px] text-[#9CA3AF]/60 font-medium">
+              <p className="text-[13px] text-zinc-500 dark:text-[#9CA3AF]/60 font-medium">
                 Start typing to search for friends.
               </p>
             </div>
@@ -367,22 +367,22 @@ export default function AddFriendModal({ isOpen, onClose, userId, onSuccess }: A
             /* Loading State */
             <div className="space-y-3 py-1">
               {[1, 2, 3].map((i) => (
-                <div key={i} className="flex items-center justify-between p-3 rounded-[16px] bg-white/[0.02] border border-white/[0.04] animate-pulse">
+                <div key={i} className="flex items-center justify-between p-3 rounded-[16px] bg-black/[0.01] dark:bg-white/[0.01] border border-black/[0.06] dark:border-white/[0.05] animate-pulse">
                   <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-xl bg-white/5" />
+                    <div className="w-12 h-12 rounded-xl bg-black/[0.06] dark:bg-white/[0.06]" />
                     <div className="space-y-2">
-                      <div className="h-3.5 w-24 bg-white/10 rounded-md" />
-                      <div className="h-2.5 w-32 bg-white/5 rounded-md" />
+                      <div className="h-3.5 w-24 bg-black/[0.08] dark:bg-white/[0.08] rounded-md" />
+                      <div className="h-2.5 w-32 bg-black/[0.04] dark:bg-white/[0.04] rounded-md" />
                     </div>
                   </div>
-                  <div className="w-20 h-8 bg-white/5 rounded-lg" />
+                  <div className="w-20 h-8 bg-black/[0.06] dark:bg-white/[0.06] rounded-lg" />
                 </div>
               ))}
             </div>
           ) : results.length === 0 ? (
             /* No Results State */
             <div className="flex flex-col items-center justify-center h-full py-10 text-center space-y-2">
-              <p className="text-[13px] text-[#9CA3AF]/50 font-medium">
+              <p className="text-[13px] text-zinc-500 dark:text-[#9CA3AF]/50 font-medium">
                 No users found.
               </p>
             </div>
@@ -415,10 +415,10 @@ export default function AddFriendModal({ isOpen, onClose, userId, onSuccess }: A
                       hidden: { opacity: 0, y: 15 },
                       show: { opacity: 1, y: 0, transition: { type: 'spring', stiffness: 300, damping: 24 } }
                     }}
-                    className="p-3 bg-white/[0.02] hover:bg-white/[0.04] border border-white/[0.05] rounded-[16px] flex items-center justify-between transition-all duration-200"
+                    className="p-3 bg-black/[0.01] dark:bg-white/[0.01] hover:bg-black/[0.02] dark:hover:bg-white/[0.03] border border-black/[0.06] dark:border-white/[0.06] rounded-[16px] flex items-center justify-between transition-all duration-200"
                   >
                     <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-12 h-12 rounded-xl overflow-hidden bg-white/5 flex-shrink-0 border border-white/10">
+                      <div className="w-12 h-12 rounded-xl overflow-hidden bg-black/[0.04] dark:bg-white/[0.04] flex-shrink-0 border border-black/[0.08] dark:border-white/[0.08]">
                         <img
                           src={user.avatar_url || `https://api.dicebear.com/7.x/lorelei/svg?seed=${user.username}`}
                           alt=""
@@ -427,11 +427,11 @@ export default function AddFriendModal({ isOpen, onClose, userId, onSuccess }: A
                         />
                       </div>
                       <div className="min-w-0">
-                        <p className="text-[14px] font-bold text-white truncate">@{user.username}</p>
-                        <p className="text-[12px] font-medium text-[#9CA3AF] truncate">{user.full_name || 'Zavr Friend'}</p>
+                        <p className="text-[14px] font-bold text-zinc-900 dark:text-white truncate">@{user.username}</p>
+                        <p className="text-[12px] font-medium text-zinc-500 dark:text-[#9CA3AF] truncate">{user.full_name || 'Zavr Friend'}</p>
                         <p className={cn(
                           "text-[10px] font-medium flex items-center gap-1 mt-0.5",
-                          isOnline ? 'text-emerald-400' : 'text-[#9CA3AF]/60'
+                          isOnline ? 'text-emerald-400' : 'text-zinc-400 dark:text-[#9CA3AF]/60'
                         )}>
                           {isOnline && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse inline-block" />}
                           {statusText}
@@ -447,8 +447,8 @@ export default function AddFriendModal({ isOpen, onClose, userId, onSuccess }: A
                       className={cn(
                         "px-3.5 py-1.5 rounded-xl font-bold text-xs transition-all flex items-center gap-1.5 shadow-md",
                         isSent
-                          ? "bg-white/10 text-[#9CA3AF] border border-white/5 cursor-not-allowed"
-                          : "bg-[#00F5D4] hover:bg-[#00F5D4]/90 text-black cursor-pointer shadow-[#00F5D4]/10"
+                          ? "bg-black/[0.04] dark:bg-white/10 text-zinc-400 dark:text-[#9CA3AF] border border-black/[0.06] dark:border-white/5 cursor-not-allowed"
+                          : "bg-gradient-to-r from-[#FF7C7C] to-[#FF6B6B] hover:opacity-90 text-white cursor-pointer shadow-[rgba(255,107,107,0.15)]"
                       )}
                     >
                       {actionLoading[user.id] ? (

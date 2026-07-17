@@ -237,22 +237,22 @@ export default function Goals({ onAddMoney, onWithdraw }: {
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 onClick={() => setTransferModal({ ...transferModal, isOpen: false })}
-                className="absolute inset-0 bg-background/80 backdrop-blur-sm"
+                className="absolute inset-0 bg-black/40 dark:bg-[#0a0a0f]/80 backdrop-blur-md"
               />
               <motion.div 
                 initial={{ opacity: 0, scale: 0.9, y: 20 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.9, y: 20 }}
-                className="relative w-full max-w-sm clay bg-surface p-8 space-y-6"
+                className="relative w-full max-w-sm bg-white dark:bg-[#111118]/95 border border-black/[0.06] dark:border-white/[0.08] rounded-[2.5rem] p-8 space-y-6 shadow-2xl dark:shadow-[0_32px_80px_rgba(0,0,0,0.95)]"
               >
                 <div className="flex items-center justify-between">
-                  <h3 className="text-xl font-bold">Transfer Admin</h3>
-                  <button onClick={() => setTransferModal({ ...transferModal, isOpen: false })} className="p-2 hover:bg-foreground/5 rounded-full transition-colors">
+                  <h3 className="text-xl font-bold text-zinc-900 dark:text-white">Transfer Admin</h3>
+                  <button onClick={() => setTransferModal({ ...transferModal, isOpen: false })} className="p-2 hover:bg-black/[0.04] dark:hover:bg-white/[0.04] rounded-full transition-colors text-zinc-500 dark:text-white/60">
                     <X size={20} />
                   </button>
                 </div>
                 
-                <p className="text-sm opacity-60">Choose a member to transfer the admin role to. You will leave the group after transferring.</p>
+                <p className="text-sm text-zinc-500 dark:text-[#94A3B8]/60">Choose a member to transfer the admin role to. You will leave the group after transferring.</p>
                 
                 <div className="space-y-3 max-h-60 overflow-y-auto pr-2 custom-scrollbar">
                   {transferModal.goal?.members
@@ -262,25 +262,25 @@ export default function Goals({ onAddMoney, onWithdraw }: {
                         key={member.userId}
                         onClick={() => setTransferModal({ ...transferModal, selectedUserId: member.userId })}
                         className={cn(
-                          "w-full flex items-center gap-4 p-4 rounded-xl border transition-all",
+                          "w-full flex items-center gap-4 p-4 rounded-2xl border transition-all cursor-pointer",
                           transferModal.selectedUserId === member.userId 
-                            ? "clay border-[#4ECDC4] bg-surface" 
-                            : "bg-foreground/5 border-transparent hover:bg-foreground/10"
+                            ? "border-[#4ECDC4] bg-[#4ECDC4]/5 text-zinc-900 dark:text-white shadow-sm" 
+                            : "bg-black/[0.01] dark:bg-white/[0.02] border-black/[0.08] dark:border-white/[0.08] hover:bg-black/[0.04] dark:hover:bg-white/[0.04] text-zinc-700 dark:text-white/70"
                         )}
                       >
-                        <div className="w-10 h-10 rounded-full overflow-hidden clay-inset">
+                        <div className="w-10 h-10 rounded-full overflow-hidden border border-black/[0.08] dark:border-white/[0.08]">
                           <img src={member.avatar} alt={member.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                         </div>
                         <div className="text-left flex-1">
-                          <p className="text-xs font-bold">{member.name}</p>
-                          <p className="text-[10px] opacity-40 uppercase tracking-widest">{formatCurrency(member.contributed, currentUser?.preferences?.currency)} saved</p>
+                          <p className="text-xs font-bold text-zinc-900 dark:text-white">{member.name}</p>
+                          <p className="text-[10px] text-zinc-400 dark:text-[#94A3B8]/40 uppercase tracking-widest">{formatCurrency(member.contributed, currentUser?.preferences?.currency)} saved</p>
                         </div>
                       </button>
                     ))}
                     
                   {transferModal.goal?.members.length <= 1 && (
                     <div className="p-10 text-center opacity-40">
-                      <p className="text-xs">No other members to transfer to.</p>
+                      <p className="text-xs text-zinc-500 dark:text-white">No other members to transfer to.</p>
                     </div>
                   )}
                 </div>
@@ -288,7 +288,7 @@ export default function Goals({ onAddMoney, onWithdraw }: {
                 <button 
                   onClick={handleTransferAdmin}
                   disabled={!transferModal.selectedUserId}
-                  className="w-full py-4 clay-teal text-white rounded-xl text-xs font-black uppercase tracking-widest shadow-2xl active:scale-95 transition-all disabled:opacity-50 disabled:active:scale-100"
+                  className="w-full h-14 bg-gradient-to-r from-[#4ECDC4] to-[#20968F] text-white rounded-2xl text-xs font-black uppercase tracking-widest shadow-lg shadow-[#4ECDC4]/20 hover:-translate-y-0.5 active:translate-y-0 active:scale-95 transition-all disabled:opacity-50 disabled:active:scale-100 cursor-pointer"
                 >
                   Confirm Transfer & Leave
                 </button>
@@ -306,43 +306,43 @@ export default function Goals({ onAddMoney, onWithdraw }: {
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 onClick={() => setEditModal({ ...editModal, isOpen: false })}
-                className="absolute inset-0 bg-background/80 backdrop-blur-sm"
+                className="absolute inset-0 bg-black/40 dark:bg-[#0a0a0f]/80 backdrop-blur-sm"
               />
               <motion.div 
                 initial={{ opacity: 0, scale: 0.9, y: 20 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.9, y: 20 }}
-                className="relative w-full max-w-sm clay bg-surface p-8 space-y-6"
+                className="relative w-full max-w-sm bg-white dark:bg-[#111118]/95 border border-black/[0.06] dark:border-white/[0.08] rounded-[2.5rem] p-8 space-y-6 shadow-2xl dark:shadow-[0_32px_80px_rgba(0,0,0,0.95)]"
               >
                 <div className="flex items-center justify-between">
-                  <h3 className="text-xl font-bold">Edit Goal</h3>
-                  <button onClick={() => setEditModal({ ...editModal, isOpen: false })} className="p-2 hover:bg-foreground/5 rounded-full transition-colors">
+                  <h3 className="text-xl font-bold text-zinc-900 dark:text-white">Edit Goal</h3>
+                  <button onClick={() => setEditModal({ ...editModal, isOpen: false })} className="p-2 hover:bg-black/[0.04] dark:hover:bg-white/[0.04] rounded-full transition-colors text-zinc-500 dark:text-white/60">
                     <X size={20} />
                   </button>
                 </div>
                 <form onSubmit={saveEdit} className="space-y-4">
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold uppercase tracking-widest opacity-40 ml-4">Goal Name</label>
+                  <div className="space-y-1.5 text-left">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 dark:text-[#94A3B8]/40 ml-4">Goal Name</label>
                     <input 
-                      className="w-full clay-inset bg-foreground/5 p-4 rounded-xl text-sm outline-none focus:border-[#FF6B6B]/50 border border-transparent transition-all"
+                      className="w-full bg-black/[0.01] dark:bg-white/[0.02] border border-black/[0.08] dark:border-white/[0.08] hover:border-[#FF8A8A]/40 dark:hover:border-[#FF8A8A]/30 focus:border-[#FF6B6B]/60 dark:focus:border-[#FF6B6B]/60 rounded-2xl p-4 text-sm text-zinc-800 dark:text-white outline-none transition-all"
                       value={editModal.goal.name}
                       onChange={e => setEditModal({ ...editModal, goal: { ...editModal.goal, name: e.target.value } })}
                     />
                   </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold uppercase tracking-widest opacity-40 ml-4">Target Amount</label>
+                  <div className="space-y-1.5 text-left">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 dark:text-[#94A3B8]/40 ml-4">Target Amount</label>
                     <input 
                       type="number"
-                      className="w-full clay-inset bg-foreground/5 p-4 rounded-xl text-sm outline-none focus:border-[#FF6B6B]/50 border border-transparent transition-all"
+                      className="w-full bg-black/[0.01] dark:bg-white/[0.02] border border-black/[0.08] dark:border-white/[0.08] hover:border-[#FF8A8A]/40 dark:hover:border-[#FF8A8A]/30 focus:border-[#FF6B6B]/60 dark:focus:border-[#FF6B6B]/60 rounded-2xl p-4 text-sm text-zinc-800 dark:text-white outline-none transition-all"
                       value={editModal.goal.targetAmount}
                       onChange={e => setEditModal({ ...editModal, goal: { ...editModal.goal, targetAmount: parseInt(e.target.value) } })}
                     />
                   </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold uppercase tracking-widest opacity-40 ml-4">Deadline</label>
+                  <div className="space-y-1.5 text-left">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 dark:text-[#94A3B8]/40 ml-4">Deadline</label>
                     <input 
                       type="date"
-                      className="w-full clay-inset bg-foreground/5 p-4 rounded-xl text-sm outline-none focus:border-[#FF6B6B]/50 border border-transparent transition-all"
+                      className="w-full bg-black/[0.01] dark:bg-white/[0.02] border border-black/[0.08] dark:border-white/[0.08] hover:border-[#FF8A8A]/40 dark:hover:border-[#FF8A8A]/30 focus:border-[#FF6B6B]/60 dark:focus:border-[#FF6B6B]/60 rounded-2xl p-4 text-sm text-zinc-800 dark:text-white outline-none transition-all dark:[color-scheme:dark]"
                       value={editModal.goal.deadline}
                       onChange={e => setEditModal({ ...editModal, goal: { ...editModal.goal, deadline: e.target.value } })}
                     />
@@ -354,7 +354,7 @@ export default function Goals({ onAddMoney, onWithdraw }: {
                   </div>
                   <button 
                     type="submit"
-                    className="w-full py-4 clay-coral text-white rounded-xl text-xs font-black uppercase tracking-widest shadow-2xl active:scale-95 transition-all"
+                    className="w-full h-14 bg-gradient-to-r from-[#FF7C7C] to-[#FF6B6B] text-white rounded-2xl text-xs font-black uppercase tracking-widest shadow-lg shadow-[rgba(255,107,107,0.35)] hover:-translate-y-0.5 active:translate-y-0 active:scale-95 transition-all cursor-pointer"
                   >
                     Save Changes
                   </button>
@@ -373,16 +373,16 @@ export default function Goals({ onAddMoney, onWithdraw }: {
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 onClick={() => setConfirmModal({ ...confirmModal, isOpen: false })}
-                className="absolute inset-0 bg-background/80 backdrop-blur-sm"
+                className="absolute inset-0 bg-black/40 dark:bg-[#0a0a0f]/80 backdrop-blur-sm"
               />
               <motion.div 
                 initial={{ opacity: 0, scale: 0.9, y: 20 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.9, y: 20 }}
-                className="relative w-full max-w-sm clay bg-surface p-10 space-y-8 text-center"
+                className="relative w-full max-w-sm bg-white dark:bg-[#111118]/95 border border-black/[0.06] dark:border-white/[0.08] rounded-[2.5rem] p-10 space-y-8 text-center shadow-2xl dark:shadow-[0_32px_80px_rgba(0,0,0,0.95)]"
               >
                 <div className={cn(
-                  "w-20 h-20 mx-auto rounded-3xl clay-inset flex items-center justify-center",
+                  "w-20 h-20 mx-auto rounded-3xl flex items-center justify-center bg-black/[0.01] dark:bg-white/[0.02] border border-black/[0.08] dark:border-white/[0.08]",
                   (confirmModal.type.includes('delete') || confirmModal.type === 'clear-history') ? "text-[#FF6B6B]" : "text-[#E2B05E]"
                 )}>
                   {confirmModal.type.includes('delete') ? <Trash2 size={36} /> : 
@@ -391,19 +391,19 @@ export default function Goals({ onAddMoney, onWithdraw }: {
                 </div>
                 
                 <div className="space-y-4">
-                  <h3 className="text-2xl font-bold tracking-tight">
+                  <h3 className="text-2xl font-bold tracking-tight text-zinc-900 dark:text-white">
                     {confirmModal.type.includes('delete') ? 'Delete Goal?' : 
                      confirmModal.type === 'clear-history' ? 'Clear History?' :
                      'Leave Group?'}
                   </h3>
                   
-                  <div className="p-4 clay-inset bg-foreground/5 rounded-2xl">
-                    <p className="text-[11px] font-medium leading-relaxed italic opacity-60">
+                  <div className="p-4 bg-black/[0.01] dark:bg-white/[0.02] border border-black/[0.06] dark:border-white/[0.05] rounded-2xl">
+                    <p className="text-[11px] font-medium leading-relaxed italic text-zinc-500 dark:text-[#94A3B8]/60">
                       "{confirmModal.quote}"
                     </p>
                   </div>
 
-                  <p className="text-[11px] opacity-30 uppercase font-black tracking-widest leading-relaxed">
+                  <p className="text-[11px] text-zinc-400 dark:text-[#94A3B8]/30 uppercase font-black tracking-widest leading-relaxed">
                     {confirmModal.type.includes('delete')
                       ? 'All transactions will be permanently deleted. This cannot be undone.' 
                       : confirmModal.type === 'clear-history'
@@ -415,15 +415,15 @@ export default function Goals({ onAddMoney, onWithdraw }: {
                 <div className="flex gap-4">
                   <button 
                     onClick={() => setConfirmModal({ ...confirmModal, isOpen: false })}
-                    className="flex-1 py-4 clay-card rounded-xl text-[10px] font-bold uppercase tracking-[0.2em] opacity-40 hover:opacity-100 transition-all"
+                    className="flex-1 py-4 bg-black/[0.02] dark:bg-white/[0.02] border border-black/[0.08] dark:border-white/[0.05] rounded-xl text-[10px] text-zinc-700 dark:text-white font-bold uppercase tracking-[0.2em] hover:opacity-100 transition-all cursor-pointer"
                   >
                     Cancel
                   </button>
                   <button 
                     onClick={confirmAction}
                     className={cn(
-                      "flex-1 py-4 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] text-white shadow-2xl transition-all active:scale-95",
-                      (confirmModal.type.includes('delete') || confirmModal.type === 'clear-history') ? "clay-coral" : "bg-[#E2B05E]"
+                      "flex-1 py-4 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] text-white shadow-lg transition-all active:scale-95 cursor-pointer",
+                      (confirmModal.type.includes('delete') || confirmModal.type === 'clear-history') ? "bg-gradient-to-r from-[#FF7C7C] to-[#FF6B6B] shadow-[rgba(255,107,107,0.35)]" : "bg-gradient-to-r from-[#E2B05E] to-yellow-500 shadow-yellow-500/20"
                     )}
                   >
                     Yes, {confirmModal.type === 'delete-solo' || confirmModal.type === 'delete-group' || confirmModal.type === 'delete-emergency' ? 'Delete' : 
@@ -436,13 +436,13 @@ export default function Goals({ onAddMoney, onWithdraw }: {
         </AnimatePresence>
 
         <div className="flex items-center justify-between">
-        <h2 className="text-3xl font-bold tracking-tight">My Goals</h2>
-        <div className="flex p-1 clay-inset w-fit">
+        <h2 className="text-3xl font-bold tracking-tight text-zinc-900 dark:text-white">My Goals</h2>
+        <div className="flex p-1 bg-white/60 dark:bg-white/[0.02] border border-black/[0.06] dark:border-white/[0.08] backdrop-blur-md rounded-2xl w-fit shadow-sm">
           <button 
             onClick={() => setActiveTab('solo')}
             className={cn(
-              "px-6 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all",
-              activeTab === 'solo' ? "clay-coral text-white" : "opacity-20"
+              "px-5 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all duration-300 cursor-pointer",
+              activeTab === 'solo' ? "bg-gradient-to-r from-[#FF7C7C] to-[#FF6B6B] text-white shadow-md shadow-[rgba(255,107,107,0.15)]" : "text-zinc-500 dark:text-[#94A3B8] opacity-50 hover:opacity-100 hover:text-zinc-800 dark:hover:text-white"
             )}
           >
             Solo
@@ -450,8 +450,8 @@ export default function Goals({ onAddMoney, onWithdraw }: {
           <button 
             onClick={() => setActiveTab('group')}
             className={cn(
-              "px-6 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all",
-              activeTab === 'group' ? "clay-teal text-black" : "opacity-20"
+              "px-5 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all duration-300 cursor-pointer",
+              activeTab === 'group' ? "bg-gradient-to-r from-[#FF7C7C] to-[#FF6B6B] text-white shadow-md shadow-[rgba(255,107,107,0.15)]" : "text-zinc-500 dark:text-[#94A3B8] opacity-50 hover:opacity-100 hover:text-zinc-800 dark:hover:text-white"
             )}
           >
             Group
@@ -459,8 +459,8 @@ export default function Goals({ onAddMoney, onWithdraw }: {
           <button 
             onClick={() => setActiveTab('emergency')}
             className={cn(
-              "px-6 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all",
-              activeTab === 'emergency' ? "bg-[#E2B05E] text-black" : "opacity-20"
+              "px-5 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all duration-300 cursor-pointer",
+              activeTab === 'emergency' ? "bg-gradient-to-r from-[#FF7C7C] to-[#FF6B6B] text-white shadow-md shadow-[rgba(255,107,107,0.15)]" : "text-zinc-500 dark:text-[#94A3B8] opacity-50 hover:opacity-100 hover:text-zinc-800 dark:hover:text-white"
             )}
           >
             Emergency
@@ -478,23 +478,23 @@ export default function Goals({ onAddMoney, onWithdraw }: {
             className="space-y-6"
           >
             {soloGoals.length === 0 ? (
-              <div className="clay p-20 text-center opacity-30">
-                <Target className="w-20 h-20 mx-auto mb-6" />
-                <p className="text-xl font-bold uppercase tracking-widest">No solo goals yet</p>
+              <div className="bg-white dark:bg-white/[0.02] border border-black/[0.06] dark:border-white/[0.08] backdrop-blur-md p-20 text-center rounded-2xl opacity-60">
+                <Target className="w-20 h-20 mx-auto mb-6 text-zinc-400 dark:text-[#94A3B8]" />
+                <p className="text-xl font-bold uppercase tracking-widest text-zinc-500 dark:text-[#94A3B8]">No solo goals yet</p>
               </div>
             ) : (
               soloGoals.map((goal) => (
-                <div key={goal.id} className="clay p-8 bg-surface space-y-8">
+                <div key={goal.id} className="bg-white dark:bg-white/[0.02] border border-black/[0.06] dark:border-white/[0.08] backdrop-blur-md p-8 rounded-2xl space-y-8 shadow-sm dark:shadow-lg relative overflow-hidden">
                   <div className="flex items-start justify-between">
                     <div className="flex gap-5">
-                      <div className="w-16 h-16 rounded-2xl clay-inset flex items-center justify-center text-[#FF6B6B]">
+                      <div className="w-16 h-16 rounded-2xl bg-black/[0.02] dark:bg-white/[0.02] border border-black/[0.06] dark:border-white/[0.05] flex items-center justify-center text-[#FF6B6B]">
                         <Target size={32} />
                       </div>
                       <div>
-                        <h4 className="text-2xl font-bold tracking-tight">{goal.name}</h4>
+                        <h4 className="text-2xl font-bold tracking-tight text-zinc-900 dark:text-white">{goal.name}</h4>
                         <div className="flex items-center gap-3 mt-1">
-                          <p className="text-[10px] opacity-30 font-bold uppercase tracking-[0.2em]">{goal.category}</p>
-                          <span className="w-1 h-1 rounded-full bg-foreground/10" />
+                          <p className="text-[10px] text-zinc-500 dark:text-[#94A3B8]/60 font-bold uppercase tracking-[0.2em]">{goal.category}</p>
+                          <span className="w-1 h-1 rounded-full bg-black/10 dark:bg-white/10" />
                           <p className="text-[10px] text-[#FF6B6B] font-bold uppercase tracking-[0.2em]">{goal.frequency}</p>
                         </div>
                       </div>
@@ -502,7 +502,7 @@ export default function Goals({ onAddMoney, onWithdraw }: {
                     <div className="flex gap-2 relative">
                       <button 
                         onClick={() => setActiveActionsMenu(activeActionsMenu === goal.id ? null : goal.id)}
-                        className="p-3 rounded-xl clay-inset opacity-40 hover:opacity-100 transition-all"
+                        className="p-3 rounded-xl bg-black/[0.02] dark:bg-white/[0.02] border border-black/[0.06] dark:border-white/[0.05] hover:bg-black/[0.04] dark:hover:bg-white/[0.06] text-zinc-500 dark:text-white/50 hover:text-zinc-800 dark:hover:text-white transition-all cursor-pointer"
                       >
                         <Settings2 size={16} />
                       </button>
@@ -513,23 +513,23 @@ export default function Goals({ onAddMoney, onWithdraw }: {
                             initial={{ opacity: 0, y: 10, scale: 0.95 }}
                             animate={{ opacity: 1, y: 0, scale: 1 }}
                             exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                            className="absolute top-12 right-0 w-48 bg-surface clay border border-foreground/5 p-2 z-50 space-y-1 shadow-2xl"
+                            className="absolute top-12 right-0 w-48 bg-white dark:bg-[#111118]/95 border border-black/[0.06] dark:border-white/[0.08] rounded-2xl p-2 z-50 space-y-1 shadow-xl dark:shadow-2xl backdrop-blur-2xl"
                           >
                             <button 
                               onClick={() => { handleEditGoal(goal, 'solo'); setActiveActionsMenu(null); }}
-                              className="w-full flex items-center gap-3 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-foreground/60 hover:bg-foreground/5 rounded-lg transition-colors"
+                              className="w-full flex items-center gap-3 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-zinc-600 dark:text-white/60 hover:text-zinc-900 dark:hover:text-white hover:bg-black/[0.02] dark:hover:bg-white/[0.04] rounded-xl transition-colors cursor-pointer"
                             >
                               <Edit3 size={14} /> Edit Goal
                             </button>
                             <button 
                               onClick={() => handleAction('clear-history', goal.id, 'solo')}
-                              className="w-full flex items-center gap-3 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-foreground/60 hover:bg-foreground/5 rounded-lg transition-colors"
+                              className="w-full flex items-center gap-3 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-zinc-600 dark:text-white/60 hover:text-zinc-900 dark:hover:text-white hover:bg-black/[0.02] dark:hover:bg-white/[0.04] rounded-xl transition-colors cursor-pointer"
                             >
                               <Eraser size={14} /> Clear History
                             </button>
                             <button 
                               onClick={() => handleAction('delete-solo', goal.id, 'solo')}
-                              className="w-full flex items-center gap-3 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-red-500/80 hover:bg-red-500/5 rounded-lg transition-colors"
+                              className="w-full flex items-center gap-3 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-red-500/80 hover:bg-red-500/5 rounded-xl transition-colors cursor-pointer"
                             >
                               <Trash2 size={14} /> Delete Goal
                             </button>
@@ -542,26 +542,26 @@ export default function Goals({ onAddMoney, onWithdraw }: {
                   <div className="space-y-4">
                     <div className="flex justify-between items-end">
                       <div>
-                        <p className="text-[10px] opacity-20 font-bold uppercase tracking-widest mb-2">Progress</p>
-                        <p className="text-3xl font-black">
+                        <p className="text-[10px] text-zinc-500 dark:text-[#94A3B8]/60 font-bold uppercase tracking-widest mb-2">Progress</p>
+                        <p className="text-3xl font-black text-zinc-900 dark:text-white">
                           {formatCurrency(goal.currentAmount, currentUser?.preferences?.currency)}
-                          <span className="text-sm opacity-20 font-bold ml-3">
+                          <span className="text-sm text-zinc-400 dark:text-[#94A3B8]/40 font-bold ml-3">
                             / {formatCurrency(goal.targetAmount, currentUser?.preferences?.currency)}
                           </span>
                         </p>
                       </div>
                       <div className="flex items-center gap-4">
                         <GoalSparkline goalId={goal.id} color="#FF6B6B" transactions={transactions} />
-                        <span className="text-lg font-black text-[#FF6B6B]">
+                        <span className="text-lg font-bold text-[#FF6B6B]">
                           {Math.round((goal.currentAmount / goal.targetAmount) * 100)}%
                         </span>
                       </div>
                     </div>
-                    <div className="h-4 w-full clay-inset overflow-hidden rounded-full">
+                    <div className="h-2.5 w-full bg-black/[0.04] dark:bg-white/[0.04] rounded-full overflow-hidden">
                       <motion.div 
                         initial={{ width: 0 }}
                         animate={{ width: `${Math.min(100, (goal.currentAmount / goal.targetAmount) * 100)}%` }}
-                        className="h-full bg-gradient-to-r from-[#FF6B6B] to-[#EE5253] rounded-full"
+                        className="h-full bg-gradient-to-r from-[#FF7C7C] to-[#FF6B6B] rounded-full"
                       />
                     </div>
                   </div>
@@ -575,15 +575,15 @@ export default function Goals({ onAddMoney, onWithdraw }: {
                         if (remaining > 0) {
                           return (
                             <div className="space-y-4">
-                              <div className="p-4 clay-inset bg-foreground/5 text-center">
-                                <p className="text-[8px] font-black opacity-30 uppercase tracking-[0.2em] mb-1">Estimated money to add</p>
+                              <div className="p-4 bg-black/[0.01] dark:bg-white/[0.02] border border-black/[0.06] dark:border-white/[0.05] rounded-2xl text-center">
+                                <p className="text-[8px] font-bold text-zinc-500 dark:text-[#94A3B8]/60 uppercase tracking-[0.2em] mb-1">To add this {goal.frequency || 'period'}</p>
                                 <p className="text-xl font-black text-[#FF6B6B]">
                                   {formatCurrency(remaining, currentUser?.preferences?.currency)}
                                 </p>
                               </div>
                               <button 
                                 onClick={() => onAddMoney(goal.id, 'solo', remaining)}
-                                className="w-full py-4 clay-coral text-white text-[10px] font-black uppercase tracking-[0.2em] rounded-xl flex items-center justify-center gap-2 shadow-xl active:scale-95 transition-all"
+                                className="w-full h-14 bg-gradient-to-r from-[#FF7C7C] to-[#FF6B6B] text-white text-[10px] font-bold uppercase tracking-[0.20em] rounded-2xl flex items-center justify-center gap-2 shadow-lg shadow-[rgba(255,107,107,0.15)] hover:shadow-[0_8px_25px_rgba(255,107,107,0.3)] hover:-translate-y-0.5 active:translate-y-0 active:scale-95 transition-all duration-300 text-white cursor-pointer"
                               >
                                 <Plus size={14} /> Add {formatCurrency(remaining, currentUser?.preferences?.currency)}
                               </button>
@@ -593,19 +593,19 @@ export default function Goals({ onAddMoney, onWithdraw }: {
 
                         return (
                           <div className="space-y-4">
-                            <div className="p-4 clay-inset bg-emerald-500/5 text-center border border-emerald-500/10">
-                              <p className="text-[8px] font-black text-emerald-500 uppercase tracking-[0.2em]">Goal met for this {goal.frequency}! ✨</p>
+                            <div className="p-4 bg-emerald-500/[0.04] text-center border border-emerald-500/10 rounded-2xl">
+                              <p className="text-[8px] font-bold text-emerald-400 uppercase tracking-[0.2em]">Goal met for this {goal.frequency}! ✨</p>
                             </div>
                             <div className="flex gap-4">
                               <button 
                                 onClick={() => onAddMoney(goal.id, 'solo')}
-                                className="flex-1 py-4 clay-coral text-white text-[10px] font-black uppercase tracking-[0.2em] rounded-xl flex items-center justify-center gap-2 shadow-xl active:scale-95 transition-all"
+                                className="flex-1 h-14 bg-gradient-to-r from-[#FF7C7C] to-[#FF6B6B] text-white text-[10px] font-bold uppercase tracking-[0.20em] rounded-2xl flex items-center justify-center gap-2 shadow-lg shadow-[rgba(255,107,107,0.15)] hover:-translate-y-0.5 active:translate-y-0 active:scale-95 transition-all duration-300 text-white cursor-pointer"
                               >
                                 <Plus size={14} /> Add More
                               </button>
                               <button 
                                 onClick={() => onWithdraw(goal.id, 'solo')}
-                                className="flex-1 py-4 clay-card opacity-40 text-[10px] font-black uppercase tracking-[0.2em] rounded-xl flex items-center justify-center gap-2 active:scale-95 transition-all"
+                                className="flex-1 h-14 bg-black/[0.02] dark:bg-white/[0.02] border border-black/[0.06] dark:border-white/[0.08] text-zinc-500 dark:text-[#94A3B8] hover:text-zinc-800 dark:hover:text-white hover:bg-black/[0.04] dark:hover:bg-white/[0.06] text-[10px] font-bold uppercase tracking-[0.20em] rounded-2xl flex items-center justify-center gap-2 hover:-translate-y-0.5 active:translate-y-0 active:scale-95 transition-all duration-300 cursor-pointer"
                               >
                                 <MinusCircle size={14} /> Withdraw
                               </button>
@@ -627,9 +627,9 @@ export default function Goals({ onAddMoney, onWithdraw }: {
             className="space-y-6"
           >
             {groupGoals.length === 0 ? (
-              <div className="clay p-20 text-center opacity-30">
-                <Users className="w-20 h-20 mx-auto mb-6" />
-                <p className="text-xl font-bold uppercase tracking-widest">No group goals yet</p>
+              <div className="bg-white dark:bg-white/[0.02] border border-black/[0.06] dark:border-white/[0.08] backdrop-blur-md p-20 text-center rounded-2xl opacity-60">
+                <Users className="w-20 h-20 mx-auto mb-6 text-zinc-400 dark:text-[#94A3B8]" />
+                <p className="text-xl font-bold uppercase tracking-widest text-zinc-500 dark:text-[#94A3B8]">No group goals yet</p>
               </div>
             ) : (
               groupGoals.map((goal) => {
@@ -638,36 +638,36 @@ export default function Goals({ onAddMoney, onWithdraw }: {
                 const isCreator = goal.creatorId === currentUser?.id;
 
                 return (
-                  <div key={goal.id} className="clay p-8 space-y-8">
+                  <div key={goal.id} className="bg-white dark:bg-white/[0.02] border border-black/[0.06] dark:border-white/[0.08] backdrop-blur-md p-8 rounded-2xl space-y-8 shadow-sm dark:shadow-lg relative overflow-hidden">
                     <div className="flex items-start justify-between">
                       <div className="flex gap-5">
-                        <div className="w-16 h-16 rounded-2xl clay-inset flex items-center justify-center text-[#4ECDC4]">
+                        <div className="w-16 h-16 rounded-2xl bg-black/[0.02] dark:bg-white/[0.02] border border-black/[0.06] dark:border-white/[0.05] flex items-center justify-center text-[#4ECDC4]">
                           <Users size={32} />
                         </div>
                         <div>
-                          <h4 className="text-2xl font-bold tracking-tight">{goal.name}</h4>
+                          <h4 className="text-2xl font-bold tracking-tight text-zinc-900 dark:text-white">{goal.name}</h4>
                           <div className="flex items-center gap-3 mt-1">
                             <button 
                               onClick={() => copyToClipboard(goal.groupId)}
-                              className="flex items-center gap-2 text-[#4ECDC4] text-[10px] font-bold bg-[#4ECDC4]/10 px-3 py-1 rounded-full uppercase tracking-widest"
+                              className="flex items-center gap-2 text-[#4ECDC4] text-[10px] font-bold bg-[#4ECDC4]/10 px-3 py-1 rounded-full uppercase tracking-widest cursor-pointer hover:bg-[#4ECDC4]/20 transition-all duration-300"
                             >
                               ID: {goal.groupId} <Copy size={10} />
                             </button>
-                            <span className="w-1 h-1 rounded-full opacity-10" />
+                            <span className="w-1 h-1 rounded-full bg-black/10 dark:bg-white/10" />
                             <p className="text-[10px] text-[#4ECDC4] font-bold uppercase tracking-[0.2em]">{goal.frequency}</p>
                           </div>
                         </div>
                       </div>
                       <div className="flex items-center gap-2 relative">
-                        <div className="text-right">
-                          <p className="text-[10px] opacity-20 font-bold uppercase tracking-widest mb-1">Needed {goal.frequency}</p>
+                        <div className="text-right mr-2">
+                          <p className="text-[10px] text-zinc-500 dark:text-[#94A3B8]/60 font-bold uppercase tracking-widest mb-1">Needed {goal.frequency}</p>
                           <p className="text-sm font-black text-[#4ECDC4]">
                             {formatCurrency(calculateNeeded(goal.targetAmount / goal.memberCount, myContribution, goal.deadline, goal.frequency), currentUser?.preferences?.currency)}
                           </p>
                         </div>
                         <button 
                           onClick={() => setActiveActionsMenu(activeActionsMenu === goal.id ? null : goal.id)}
-                          className="p-3 rounded-xl clay-inset opacity-40 hover:opacity-100 transition-all"
+                          className="p-3 rounded-xl bg-black/[0.02] dark:bg-white/[0.02] border border-black/[0.06] dark:border-white/[0.05] hover:bg-black/[0.04] dark:hover:bg-white/[0.06] text-zinc-500 dark:text-white/50 hover:text-zinc-800 dark:hover:text-white transition-all cursor-pointer"
                         >
                           <Settings2 size={16} />
                         </button>
@@ -678,31 +678,31 @@ export default function Goals({ onAddMoney, onWithdraw }: {
                               initial={{ opacity: 0, y: 10, scale: 0.95 }}
                               animate={{ opacity: 1, y: 0, scale: 1 }}
                               exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                              className="absolute top-12 right-0 w-48 bg-surface clay border border-foreground/5 p-2 z-50 space-y-1 shadow-2xl"
+                              className="absolute top-12 right-0 w-48 bg-white dark:bg-[#111118]/95 border border-black/[0.06] dark:border-white/[0.08] rounded-2xl p-2 z-50 space-y-1 shadow-xl dark:shadow-2xl backdrop-blur-2xl"
                             >
                               {isCreator ? (
                                 <>
                                   <button 
                                     onClick={() => { handleEditGoal(goal, 'group'); setActiveActionsMenu(null); }}
-                                    className="w-full flex items-center gap-3 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-foreground/60 hover:bg-foreground/5 rounded-lg transition-colors"
+                                    className="w-full flex items-center gap-3 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-zinc-600 dark:text-white/60 hover:text-zinc-900 dark:hover:text-white hover:bg-black/[0.02] dark:hover:bg-white/[0.04] rounded-xl transition-colors cursor-pointer"
                                   >
                                     <Edit3 size={14} /> Edit Goal
                                   </button>
                                   <button 
                                     onClick={() => { setTransferModal({ isOpen: true, goal, selectedUserId: '' }); setActiveActionsMenu(null); }}
-                                    className="w-full flex items-center gap-3 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-[#E2B05E] hover:bg-[#E2B05E]/5 rounded-lg transition-colors"
+                                    className="w-full flex items-center gap-3 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-amber-400 hover:bg-amber-400/5 rounded-xl transition-colors cursor-pointer"
                                   >
                                     <UserMinus size={14} /> Transfer Admin
                                   </button>
                                   <button 
                                     onClick={() => handleAction('clear-history', goal.id, 'group')}
-                                    className="w-full flex items-center gap-3 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-foreground/60 hover:bg-foreground/5 rounded-lg transition-colors"
+                                    className="w-full flex items-center gap-3 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-zinc-600 dark:text-white/60 hover:text-zinc-900 dark:hover:text-white hover:bg-black/[0.02] dark:hover:bg-white/[0.04] rounded-xl transition-colors cursor-pointer"
                                   >
                                     <Eraser size={14} /> Clear History
                                   </button>
                                   <button 
                                     onClick={() => handleAction('delete-group', goal.id, 'group')}
-                                    className="w-full flex items-center gap-3 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-red-500/80 hover:bg-red-500/5 rounded-lg transition-colors"
+                                    className="w-full flex items-center gap-3 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-red-500/80 hover:bg-red-500/5 rounded-xl transition-colors cursor-pointer"
                                   >
                                     <Trash2 size={14} /> Delete Goal
                                   </button>
@@ -710,7 +710,7 @@ export default function Goals({ onAddMoney, onWithdraw }: {
                               ) : (
                                 <button 
                                   onClick={() => handleAction('leave-group', goal.id)}
-                                  className="w-full flex items-center gap-3 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-red-500/80 hover:bg-red-500/5 rounded-lg transition-colors"
+                                  className="w-full flex items-center gap-3 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-red-500/80 hover:bg-red-500/5 rounded-xl transition-colors cursor-pointer"
                                 >
                                   <LogOut size={14} /> Leave Group
                                 </button>
@@ -719,48 +719,48 @@ export default function Goals({ onAddMoney, onWithdraw }: {
                           )}
                         </AnimatePresence>
                       </div>
-                  </div>
+                    </div>
 
                     <div className="grid grid-cols-2 gap-5">
-                      <div className="clay-inset p-5 rounded-2xl">
-                        <p className="text-[10px] opacity-20 font-bold uppercase tracking-widest mb-2">Total Collected</p>
-                        <p className="text-xl font-bold">{formatCurrency(goal.totalCollected, currentUser?.preferences?.currency)}</p>
-                        <p className="text-[10px] opacity-10 font-medium mt-1">Target: {formatCurrency(goal.targetAmount, currentUser?.preferences?.currency)}</p>
+                      <div className="bg-black/[0.01] dark:bg-white/[0.02] border border-black/[0.06] dark:border-white/[0.05] p-5 rounded-2xl">
+                        <p className="text-[10px] text-zinc-500 dark:text-[#94A3B8]/60 font-bold uppercase tracking-widest mb-2">Total Collected</p>
+                        <p className="text-xl font-bold text-zinc-900 dark:text-white">{formatCurrency(goal.totalCollected, currentUser?.preferences?.currency)}</p>
+                        <p className="text-[10px] text-zinc-400 dark:text-[#94A3B8]/40 font-medium mt-1">Target: {formatCurrency(goal.targetAmount, currentUser?.preferences?.currency)}</p>
                       </div>
-                      <div className="clay-inset p-5 rounded-2xl">
-                        <p className="text-[10px] opacity-20 font-bold uppercase tracking-widest mb-2">Your Share</p>
-                        <p className="text-xl font-bold">{formatCurrency(myContribution, currentUser?.preferences?.currency)}</p>
-                        <p className="text-[10px] opacity-10 font-medium mt-1">Target: {formatCurrency(myShare, currentUser?.preferences?.currency)}</p>
+                      <div className="bg-black/[0.01] dark:bg-white/[0.02] border border-black/[0.06] dark:border-white/[0.05] p-5 rounded-2xl">
+                        <p className="text-[10px] text-zinc-500 dark:text-[#94A3B8]/60 font-bold uppercase tracking-widest mb-2">Your Share</p>
+                        <p className="text-xl font-bold text-zinc-900 dark:text-white">{formatCurrency(myContribution, currentUser?.preferences?.currency)}</p>
+                        <p className="text-[10px] text-zinc-400 dark:text-[#94A3B8]/40 font-medium mt-1">Target: {formatCurrency(myShare, currentUser?.preferences?.currency)}</p>
                       </div>
                     </div>
 
                     <div className="space-y-4">
                       <div className="flex justify-between text-[10px] font-bold uppercase tracking-widest">
-                        <span className="opacity-20">Group Progress</span>
+                        <span className="text-zinc-500 dark:text-[#94A3B8]/60">Group Progress</span>
                         <div className="flex items-center gap-4">
                           <GoalSparkline goalId={goal.id} color="#4ECDC4" transactions={transactions} />
-                          <span className="text-lg font-black text-[#4ECDC4]">{Math.round((goal.totalCollected / goal.targetAmount) * 100)}%</span>
+                          <span className="text-lg font-bold text-[#4ECDC4]">{Math.round((goal.totalCollected / goal.targetAmount) * 100)}%</span>
                         </div>
                       </div>
-                      <div className="h-4 w-full clay-inset overflow-hidden rounded-full">
+                      <div className="h-2.5 w-full bg-black/[0.04] dark:bg-white/[0.04] rounded-full overflow-hidden">
                         <motion.div 
                           initial={{ width: 0 }}
                           animate={{ width: `${Math.min(100, (goal.totalCollected / goal.targetAmount) * 100)}%` }}
-                          className="h-full bg-gradient-to-r from-[#4ECDC4] to-[#45B7AF] rounded-full"
+                          className="h-full bg-gradient-to-r from-[#4ECDC4] to-[#20968F] rounded-full"
                         />
                       </div>
                     </div>
 
                     <div className="space-y-4">
                       <div className="flex items-center justify-between">
-                        <p className="text-[10px] opacity-20 font-bold uppercase tracking-[0.2em]">Members ({goal.members.length})</p>
+                        <p className="text-[10px] text-zinc-500 dark:text-[#94A3B8]/60 font-bold uppercase tracking-[0.2em]">Members ({goal.members.length})</p>
                         {goal.members.some(m => m.contributed === 0) && (
                           <button 
                             onClick={() => {
                               nudgeGroup(goal.id);
                               toast.success('Group notified! 🚀');
                             }}
-                            className="flex items-center gap-2 text-[9px] font-black uppercase tracking-widest text-[#4ECDC4] bg-[#4ECDC4]/10 px-3 py-1.5 rounded-xl hover:bg-[#4ECDC4]/20 transition-all"
+                            className="flex items-center gap-2 text-[9px] font-bold uppercase tracking-widest text-[#4ECDC4] bg-[#4ECDC4]/10 px-3 py-1.5 rounded-xl hover:bg-[#4ECDC4]/20 transition-all cursor-pointer"
                           >
                             <Bell size={12} /> Notify Group
                           </button>
@@ -769,35 +769,35 @@ export default function Goals({ onAddMoney, onWithdraw }: {
                       <div className="space-y-3">
                         {goal.members.map((member) => (
                           <div key={member.userId} className={cn(
-                            "flex items-center justify-between p-4 clay-inset rounded-2xl transition-all",
-                            member.contributed === 0 ? "border-red-500/20 bg-red-500/5" : "border-foreground/5"
+                            "flex items-center justify-between p-4 bg-black/[0.01] dark:bg-white/[0.01] border rounded-2xl transition-all duration-300",
+                            member.contributed === 0 ? "border-red-500/20 bg-red-500/[0.02]" : "border-black/[0.06] dark:border-white/[0.05]"
                           )}>
                             <div className="flex items-center gap-4">
                               <div className="relative">
-                                <img src={member.avatar} className="w-10 h-10 rounded-full bg-foreground/5 p-1" alt="" />
+                                <img src={member.avatar} className="w-10 h-10 rounded-full bg-black/[0.04] dark:bg-white/[0.04] p-1" alt="" />
                                 {member.contributed === 0 && (
-                                  <div className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-red-500 border-2 border-surface rounded-full" />
+                                  <div className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-red-500 border-2 border-white dark:border-[#111118] rounded-full" />
                                 )}
                               </div>
                               <div>
-                                <p className="text-xs font-bold opacity-80">
+                                <p className="text-xs font-bold text-zinc-900 dark:text-white/95">
                                   {member.name} {member.userId === currentUser?.id && '(You)'}
-                                  {member.contributed === 0 && <span className="text-[8px] text-red-500 ml-2 font-black uppercase tracking-widest">Inactive</span>}
+                                  {member.contributed === 0 && <span className="text-[8px] text-red-500 ml-2 font-bold uppercase tracking-widest">Inactive</span>}
                                 </p>
-                                <p className="text-[10px] opacity-20 font-bold uppercase tracking-wider mt-0.5">{Math.round((member.contributed / myShare) * 100)}% completed</p>
+                                <p className="text-[10px] text-zinc-400 dark:text-[#94A3B8]/40 font-bold uppercase tracking-wider mt-0.5">{Math.round((member.contributed / myShare) * 100)}% completed</p>
                               </div>
                             </div>
                             <div className="flex items-center gap-4">
                               <span className={cn(
-                                "text-xs font-black",
-                                member.contributed === 0 ? "text-red-500/30" : "text-foreground"
+                                "text-xs font-bold",
+                                member.contributed === 0 ? "text-red-500/30" : "text-zinc-900 dark:text-white"
                               )}>
                                 {formatCurrency(member.contributed, currentUser?.preferences?.currency)}
                               </span>
                               {isCreator && member.userId !== currentUser?.id && (
                                 <button 
                                   onClick={() => removeGroupMember(goal.id, member.userId)}
-                                  className="text-red-500/30 hover:text-red-500 transition-colors"
+                                  className="text-red-500/30 hover:text-red-500 transition-colors cursor-pointer"
                                 >
                                   <UserMinus size={16} />
                                 </button>
@@ -817,15 +817,15 @@ export default function Goals({ onAddMoney, onWithdraw }: {
                         if (remaining > 0) {
                           return (
                             <div className="space-y-4">
-                              <div className="p-4 clay-inset bg-foreground/5 text-center">
-                                <p className="text-[8px] font-black opacity-30 uppercase tracking-[0.2em] mb-1">Estimated money to contribute</p>
+                              <div className="p-4 bg-black/[0.01] dark:bg-white/[0.02] border border-black/[0.06] dark:border-white/[0.05] rounded-2xl text-center">
+                                <p className="text-[8px] font-bold text-zinc-500 dark:text-[#94A3B8]/60 uppercase tracking-[0.2em] mb-1">To add this {goal.frequency || 'period'}</p>
                                 <p className="text-xl font-black text-[#4ECDC4]">
                                   {formatCurrency(remaining, currentUser?.preferences?.currency)}
                                 </p>
                               </div>
                               <button 
                                 onClick={() => onAddMoney(goal.id, 'group', remaining)}
-                                className="w-full py-4 clay-teal text-black text-[10px] font-black uppercase tracking-[0.2em] rounded-xl flex items-center justify-center gap-2 shadow-xl active:scale-95 transition-all"
+                                className="w-full h-14 bg-gradient-to-r from-[#FF7C7C] to-[#FF6B6B] text-white text-[10px] font-bold uppercase tracking-[0.20em] rounded-2xl flex items-center justify-center gap-2 shadow-lg shadow-[rgba(255,107,107,0.15)] hover:shadow-[0_8px_25px_rgba(255,107,107,0.3)] hover:-translate-y-0.5 active:translate-y-0 active:scale-95 transition-all duration-300 text-white cursor-pointer"
                               >
                                 <Plus size={14} /> Contribute {formatCurrency(remaining, currentUser?.preferences?.currency)}
                               </button>
@@ -835,19 +835,19 @@ export default function Goals({ onAddMoney, onWithdraw }: {
 
                         return (
                           <div className="space-y-4">
-                            <div className="p-4 clay-inset bg-emerald-500/5 text-center border border-emerald-500/10">
-                              <p className="text-[8px] font-black text-emerald-500 uppercase tracking-[0.2em]">Goal met for this {goal.frequency}! ✨</p>
+                            <div className="p-4 bg-emerald-500/[0.04] text-center border border-emerald-500/10 rounded-2xl">
+                              <p className="text-[8px] font-bold text-emerald-400 uppercase tracking-[0.2em]">Goal met for this {goal.frequency}! ✨</p>
                             </div>
                             <div className="flex gap-4">
                               <button 
                                 onClick={() => onAddMoney(goal.id, 'group')}
-                                className="flex-1 py-4 clay-teal text-black text-[10px] font-black uppercase tracking-[0.2em] rounded-xl flex items-center justify-center gap-2 active:scale-95 transition-all"
+                                className="flex-1 h-14 bg-gradient-to-r from-[#FF7C7C] to-[#FF6B6B] text-white text-[10px] font-bold uppercase tracking-[0.20em] rounded-2xl flex items-center justify-center gap-2 shadow-lg shadow-[rgba(255,107,107,0.15)] hover:-translate-y-0.5 active:translate-y-0 active:scale-95 transition-all duration-300 text-white cursor-pointer"
                               >
                                 <Plus size={14} /> Contribute More
                               </button>
                               <button 
                                 onClick={() => onWithdraw(goal.id, 'group')}
-                                className="flex-1 py-4 clay-card opacity-40 text-[10px] font-black uppercase tracking-[0.2em] rounded-xl flex items-center justify-center gap-2 active:scale-95 transition-all"
+                                className="flex-1 h-14 bg-black/[0.02] dark:bg-white/[0.02] border border-black/[0.06] dark:border-white/[0.08] text-zinc-500 dark:text-[#94A3B8] hover:text-zinc-800 dark:hover:text-white hover:bg-black/[0.04] dark:hover:bg-white/[0.06] text-[10px] font-bold uppercase tracking-[0.20em] rounded-2xl flex items-center justify-center gap-2 hover:-translate-y-0.5 active:translate-y-0 active:scale-95 transition-all duration-300 cursor-pointer"
                               >
                                 <MinusCircle size={14} /> Withdraw
                               </button>
@@ -870,31 +870,31 @@ export default function Goals({ onAddMoney, onWithdraw }: {
             className="space-y-6"
           >
             {emergencyGoals.length === 0 ? (
-              <div className="clay p-20 text-center opacity-30">
-                <ShieldAlert className="w-20 h-20 mx-auto mb-6" />
-                <p className="text-xl font-bold uppercase tracking-widest">No emergency funds yet</p>
+              <div className="bg-white dark:bg-white/[0.02] border border-black/[0.06] dark:border-white/[0.08] backdrop-blur-md p-20 text-center rounded-2xl opacity-60">
+                <ShieldAlert className="w-20 h-20 mx-auto mb-6 text-zinc-400 dark:text-[#94A3B8]" />
+                <p className="text-xl font-bold uppercase tracking-widest text-zinc-500 dark:text-[#94A3B8]">No emergency funds yet</p>
               </div>
             ) : (
               emergencyGoals.map((goal) => (
-                <div key={goal.id} className="clay p-8 bg-surface space-y-8">
+                <div key={goal.id} className="bg-white dark:bg-white/[0.02] border border-black/[0.06] dark:border-white/[0.08] backdrop-blur-md p-8 rounded-2xl space-y-8 shadow-sm dark:shadow-lg relative overflow-hidden">
                   <div className="flex items-start justify-between">
                     <div className="flex gap-5">
-                      <div className="w-16 h-16 rounded-2xl clay-inset flex items-center justify-center text-[#E2B05E]">
+                      <div className="w-16 h-16 rounded-2xl bg-black/[0.02] dark:bg-white/[0.02] border border-black/[0.06] dark:border-white/[0.05] flex items-center justify-center text-amber-400">
                         <ShieldAlert size={32} />
                       </div>
                       <div>
-                        <h4 className="text-2xl font-bold tracking-tight">{goal.name}</h4>
+                        <h4 className="text-2xl font-bold tracking-tight text-zinc-900 dark:text-white">{goal.name}</h4>
                         <div className="flex items-center gap-3 mt-1">
-                          <p className="text-[10px] opacity-30 font-bold uppercase tracking-[0.2em]">Emergency Fund</p>
-                          <span className="w-1 h-1 rounded-full opacity-10" />
-                          <p className="text-[10px] text-[#E2B05E] font-bold uppercase tracking-[0.2em]">{goal.frequency}</p>
+                          <p className="text-[10px] text-zinc-500 dark:text-[#94A3B8]/60 font-bold uppercase tracking-[0.2em]">Emergency Fund</p>
+                          <span className="w-1 h-1 rounded-full bg-black/10 dark:bg-white/10" />
+                          <p className="text-[10px] text-amber-400 font-bold uppercase tracking-[0.2em]">{goal.frequency}</p>
                         </div>
                       </div>
                     </div>
                     <div className="flex gap-3">
                       <button 
                         onClick={() => handleAction('delete-emergency', goal.id)}
-                        className="p-3 rounded-xl clay-inset opacity-20 hover:text-red-500 transition-all"
+                        className="p-3 rounded-xl bg-black/[0.02] dark:bg-white/[0.02] border border-black/[0.06] dark:border-white/[0.05] hover:bg-black/[0.04] dark:hover:bg-white/[0.06] text-red-500/50 hover:text-red-500 transition-all cursor-pointer"
                       >
                         <Trash2 size={16} />
                       </button>
@@ -904,36 +904,36 @@ export default function Goals({ onAddMoney, onWithdraw }: {
                   <div className="space-y-4">
                     <div className="flex justify-between items-end">
                       <div>
-                        <p className="text-[10px] opacity-20 font-bold uppercase tracking-widest mb-2">Total Saved</p>
-                        <p className="text-3xl font-black">
+                        <p className="text-[10px] text-zinc-500 dark:text-[#94A3B8]/60 font-bold uppercase tracking-widest mb-2">Total Saved</p>
+                        <p className="text-3xl font-black text-zinc-900 dark:text-white">
                           {formatCurrency(goal.currentAmount, currentUser?.preferences?.currency)}
                         </p>
                       </div>
                       <div className="flex items-center gap-4">
-                        <GoalSparkline goalId={goal.id} color="#E2B05E" transactions={transactions} />
+                        <GoalSparkline goalId={goal.id} color="#F59E0B" transactions={transactions} />
                       </div>
                     </div>
                   </div>
 
                   <div className="flex flex-col gap-4 pt-2">
                     <div className="space-y-4">
-                      <div className="p-4 clay-inset bg-foreground/5 text-center">
-                        <p className="text-[8px] font-black opacity-30 uppercase tracking-[0.2em] mb-1">Routine Saving</p>
-                        <p className="text-xl font-black text-[#E2B05E]">
+                      <div className="p-4 bg-black/[0.01] dark:bg-white/[0.02] border border-black/[0.06] dark:border-white/[0.05] rounded-2xl text-center">
+                        <p className="text-[8px] font-bold text-zinc-500 dark:text-[#94A3B8]/60 uppercase tracking-[0.2em] mb-1">Routine Saving</p>
+                        <p className="text-xl font-black text-amber-400">
                           {formatCurrency(goal.routineAmount, currentUser?.preferences?.currency)}
-                          <span className="text-[10px] font-bold ml-1 opacity-40">/{goal.frequency}</span>
+                          <span className="text-[10px] font-bold ml-1 text-zinc-400 dark:text-[#94A3B8]/40">/{goal.frequency}</span>
                         </p>
                       </div>
                       <div className="flex gap-4">
                         <button 
                           onClick={() => onAddMoney(goal.id, 'emergency', goal.routineAmount)}
-                          className="flex-1 py-4 bg-[#E2B05E] text-black text-[10px] font-black uppercase tracking-[0.2em] rounded-xl flex items-center justify-center gap-2 shadow-xl active:scale-95 transition-all"
+                          className="flex-1 h-14 bg-gradient-to-r from-[#FF7C7C] to-[#FF6B6B] text-white text-[10px] font-bold uppercase tracking-[0.20em] rounded-2xl flex items-center justify-center gap-2 shadow-lg shadow-[rgba(255,107,107,0.15)] hover:shadow-[0_8px_25px_rgba(255,107,107,0.3)] hover:-translate-y-0.5 active:translate-y-0 active:scale-95 transition-all duration-300 text-white cursor-pointer"
                         >
                           <Plus size={14} /> Add {formatCurrency(goal.routineAmount, currentUser?.preferences?.currency)}
                         </button>
                         <button 
                           onClick={() => onWithdraw(goal.id, 'emergency')}
-                          className="flex-1 py-4 clay-card opacity-40 text-[10px] font-black uppercase tracking-[0.2em] rounded-xl flex items-center justify-center gap-2 active:scale-95 transition-all"
+                          className="flex-1 h-14 bg-black/[0.02] dark:bg-white/[0.02] border border-black/[0.06] dark:border-white/[0.08] text-zinc-500 dark:text-[#94A3B8] hover:text-zinc-800 dark:hover:text-white hover:bg-black/[0.04] dark:hover:bg-white/[0.06] text-[10px] font-bold uppercase tracking-[0.20em] rounded-2xl flex items-center justify-center gap-2 hover:-translate-y-0.5 active:translate-y-0 active:scale-95 transition-all duration-300 cursor-pointer"
                         >
                           <MinusCircle size={14} /> Withdraw
                         </button>

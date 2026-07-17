@@ -46,3 +46,14 @@ export const AVATARS = [
   { id: 29, url: 'https://api.dicebear.com/7.x/adventurer/svg?seed=Champ', name: 'Champ', pack: 'Legendary' },
   { id: 30, url: 'https://api.dicebear.com/7.x/adventurer/svg?seed=Diamond', name: 'Diamond', pack: 'Legendary' },
 ];
+
+export const COLORS = {
+  primary: "#FF6B6B",
+  primaryHover: "#FF7C7C",
+  primaryPressed: "#E85A5A",
+  primaryLight: "#FFE8E8",
+  border: "#FF8A8A",
+  shadow: "rgba(255,107,107,0.35)",
+  white: "#FFFFFF"
+};
+

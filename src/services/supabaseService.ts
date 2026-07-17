@@ -655,15 +655,26 @@ export const supabaseService = {
       .limit(100);
     
     if (data) {
-      const mapped = data.map((n: any) => ({
-        id: n.id,
-        userId: n.user_id,
-        title: n.title,
-        message: n.message,
-        type: n.type,
-        read: n.read,
-        timestamp: n.timestamp
-      }));
+      const mapped = data.map((n: any) => {
+        let msg = n.message || '';
+        let extractedData = null;
+        const delimiter = " |||DATA:";
+        if (msg.includes(delimiter)) {
+          const parts = msg.split(delimiter);
+          msg = parts[0];
+          extractedData = parts[1];
+        }
+        return {
+          id: n.id,
+          userId: n.user_id,
+          title: n.title,
+          message: msg,
+          type: n.type,
+          read: n.read,
+          timestamp: n.timestamp,
+          data: extractedData || undefined
+        };
+      });
       return { data: mapped, error };
     }
     return { data, error };
@@ -671,11 +682,16 @@ export const supabaseService = {
 
   async saveNotification(notification: any) {
     await this.ensureSession();
+    let message = notification.message || '';
+    if (notification.data) {
+      const dataStr = typeof notification.data === 'string' ? notification.data : JSON.stringify(notification.data);
+      message = `${message} |||DATA:${dataStr}`;
+    }
     const dbNotification: any = {
       id: notification.id,
       user_id: notification.userId,
       title: notification.title,
-      message: notification.message,
+      message: message,
       type: notification.type,
       read: notification.read,
       timestamp: notification.timestamp

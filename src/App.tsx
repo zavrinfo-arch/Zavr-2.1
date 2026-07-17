@@ -45,6 +45,7 @@ import { isAIStudioPreview, shouldDisableHeavyFeatures, startKeepAliveHeartbeat,
 import PreviewBanner from './components/PreviewBanner';
 import ErrorBoundary from './components/ErrorBoundary';
 import { initSilentSafeLogger } from './utils/debug';
+import { useTheme } from './context/ThemeContext';
 
 export function generateUUID() {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -132,7 +133,17 @@ function ConfigWarning() {
 }
 
 export default function App() {
-  const theme = useStore((state) => state.theme);
+  const { theme, setTheme } = useTheme();
+  const storeTheme = useStore((state) => state.theme);
+  const setStoreTheme = useStore((state) => state.setTheme);
+  
+  // Keep Zustand store and our context theme in sync
+  useEffect(() => {
+    if (theme !== storeTheme) {
+      setStoreTheme(theme);
+    }
+  }, [theme, storeTheme, setStoreTheme]);
+
   const currentStreak = useStore((state) => state.streakData.currentStreak);
   const checkStreak = useStore((state) => state.checkStreak);
   const checkReminders = useStore((state) => state.checkReminders);
@@ -148,10 +159,6 @@ export default function App() {
       stopKeepAliveHeartbeat();
     };
   }, []);
-
-  useEffect(() => {
-    document.documentElement.classList.toggle('dark', theme === 'dark');
-  }, [theme]);
   
   const [isPlusModalOpen, setIsPlusModalOpen] = useState(false);
   const [plusAction, setPlusAction] = useState<'main' | 'solo' | 'group-create' | 'group-join' | 'contribute' | 'withdraw'>('main');
@@ -866,9 +873,13 @@ function PlusModal({ action, setAction, onClose, selectedGoal, initialAmount }: 
 
             <button 
               type="submit"
-              className="w-full py-4 gradient-bg rounded-2xl font-bold flex items-center justify-center gap-2 mt-4 shadow-lg shadow-accent/20"
+              className="w-full py-4 bg-gradient-to-r from-[#FF7C7C] to-[#FF6B6B] hover:from-[#FF6B6B] hover:to-[#FF7C7C] text-white rounded-2xl font-bold flex items-center justify-center gap-2 mt-4 shadow-lg shadow-[rgba(255,107,107,0.35)] hover:shadow-[rgba(255,107,107,0.5)] transition-all duration-300 transform hover:-translate-y-0.5 active:translate-y-0 active:scale-95 cursor-pointer"
             >
-              Confirm Contribution <ArrowRight size={20} />
+              {formData.amount && Number(formData.amount) > 0 ? (
+                <>ADD ₹{Number(formData.amount).toLocaleString('en-IN')} <ArrowRight size={20} /></>
+              ) : (
+                <>Confirm Contribution <ArrowRight size={20} /></>
+              )}
             </button>
           </form>
         )}

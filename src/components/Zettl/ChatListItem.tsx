@@ -36,8 +36,8 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({ item, onClick }) => 
   return (
     <div
       onClick={onClick}
-      className={`flex items-center gap-3.5 p-4 hover:bg-foreground/5 transition-all cursor-pointer border-b last:border-b-0 border-border select-none ${
-        item.unread_count > 0 ? 'bg-purple-600/5' : ''
+      className={`flex items-center gap-3.5 p-4 hover:bg-black/[0.03] dark:hover:bg-white/[0.03] transition-all cursor-pointer border-b last:border-b-0 border-black/[0.06] dark:border-white/[0.06] select-none ${
+        item.unread_count > 0 ? 'bg-[#FF6B6B]/5 dark:bg-[#FF7C7C]/5' : ''
       }`}
     >
       {/* Avatar Container with glowing border if unread */}
@@ -46,21 +46,21 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({ item, onClick }) => 
           src={item.friend_avatar}
           alt={item.friend_name}
           className={`w-12 h-12 rounded-full object-cover border-2 ${
-            item.unread_count > 0 ? 'border-purple-500 scale-[1.05] shadow-md shadow-purple-500/10' : 'border-border'
+            item.unread_count > 0 ? 'border-[#FF6B6B] dark:border-[#FF7C7C] scale-[1.05] shadow-md shadow-[rgba(255,107,107,0.15)]' : 'border-black/[0.08] dark:border-white/[0.08]'
           }`}
           referrerPolicy="no-referrer"
         />
         {/* Mocking online status dot */}
-        <span className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 border-2 border-surface rounded-full" />
+        <span className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 border-2 border-white dark:border-[#111118] rounded-full" />
       </div>
 
       {/* Main Metadata Grid */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between gap-2 mb-1">
-          <h4 className="font-semibold text-foreground truncate text-sm">
+          <h4 className="font-semibold text-zinc-900 dark:text-white truncate text-sm">
             {item.friend_name}
           </h4>
-          <span className="text-[10px] text-foreground/40 font-mono shrink-0">
+          <span className="text-[10px] text-zinc-400 dark:text-white/40 font-mono shrink-0">
             {friendlyTime}
           </span>
         </div>
@@ -68,7 +68,7 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({ item, onClick }) => 
         <div className="flex items-center justify-between gap-2">
           {/* Truncated message text */}
           <p className={`text-xs truncate max-w-[180px] sm:max-w-xs ${
-            item.unread_count > 0 ? 'font-black text-foreground' : 'text-foreground/60'
+            item.unread_count > 0 ? 'font-black text-zinc-900 dark:text-white' : 'text-zinc-500 dark:text-white/60'
           }`}>
             {truncate(item.last_message, 45)}
           </p>
@@ -86,7 +86,7 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({ item, onClick }) => 
               </span>
             )}
             {isSettled && (
-              <span className="text-[10px] font-bold tracking-wide text-foreground/30 uppercase">
+              <span className="text-[10px] font-bold tracking-wide text-zinc-400 dark:text-white/30 uppercase">
                 Settled ✓
               </span>
             )}
@@ -96,7 +96,7 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({ item, onClick }) => 
 
       {/* Unread circle badge indicator */}
       {item.unread_count > 0 && (
-        <span className="w-5 h-5 rounded-full bg-purple-650 text-white flex items-center justify-center font-extrabold text-[10px] scale-95 shrink-0 shadow-lg shadow-purple-600/20">
+        <span className="w-5 h-5 rounded-full bg-[#FF6B6B] dark:bg-[#FF7C7C] text-white flex items-center justify-center font-extrabold text-[10px] scale-95 shrink-0 shadow-lg shadow-[rgba(255,107,107,0.35)]">
           {item.unread_count}
         </span>
       )}

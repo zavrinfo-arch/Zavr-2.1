@@ -31,18 +31,18 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({ message, onPayNow, onRem
       <div
         className={`max-w-[85%] sm:max-w-[75%] rounded-2xl p-3 px-4 shadow-sm relative transition-shadow ${
           isMyMessage
-            ? 'bg-purple-600 text-white rounded-tr-none'
-            : 'bg-surface-light text-foreground rounded-tl-none border border-border'
+            ? 'bg-gradient-to-r from-[#FF7C7C] to-[#FF6B6B] text-white rounded-tr-none'
+            : 'bg-white dark:bg-[#111118]/80 text-zinc-800 dark:text-zinc-100 rounded-tl-none border border-black/[0.06] dark:border-white/[0.08]'
         }`}
       >
         {/* Core content handler depending on type */}
         {isRequest ? (
           <div className="space-y-2">
             <div className="flex items-center gap-2 border-b border-white/10 pb-1.5">
-              <span className="p-1 rounded-lg bg-pink-500/20 text-pink-300 text-[10px] uppercase font-black tracking-wider">
+              <span className="p-1 rounded-lg bg-[#FF6B6B]/20 text-[#FF8A8A] text-[10px] uppercase font-black tracking-wider">
                 Request
               </span>
-              <span className={`text-[10px] font-medium ${isMyMessage ? 'text-purple-200' : 'text-foreground/50'}`}>
+              <span className={`text-[10px] font-medium ${isMyMessage ? 'text-white/80' : 'text-zinc-500 dark:text-[#94A3B8]/50'}`}>
                 {isMyMessage ? 'You requested' : `@${message.friend_name} requested`}
               </span>
             </div>
@@ -51,7 +51,7 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({ message, onPayNow, onRem
               <span className="text-xl sm:text-2xl font-black font-sans">
                 ₹{message.amount}
               </span>
-              <span className={`text-xs ${isMyMessage ? 'text-purple-200' : 'text-foreground/50'}`}>
+              <span className={`text-xs ${isMyMessage ? 'text-white/80' : 'text-zinc-500 dark:text-[#94A3B8]/50'}`}>
                 INR
               </span>
             </div>
@@ -95,7 +95,7 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({ message, onPayNow, onRem
                   {isMyMessage && (
                     <button
                       onClick={() => onRemind(message.debt_id || message.id)}
-                      className="px-2.5 py-1 bg-purple-700 hover:bg-purple-800 text-purple-100 font-bold text-[10px] rounded-lg tracking-wider cursor-pointer flex items-center gap-1"
+                      className="px-2.5 py-1 bg-white/10 hover:bg-white/20 text-white font-bold text-[10px] rounded-lg tracking-wider cursor-pointer flex items-center gap-1"
                     >
                       <BellRing size={11} /> Remind
                     </button>
@@ -110,7 +110,7 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({ message, onPayNow, onRem
               <span className="p-1 rounded-lg bg-emerald-500/20 text-emerald-305 text-[10px] uppercase font-black tracking-wider">
                 Settled ✓
               </span>
-              <span className={`text-[10px] font-medium ${isMyMessage ? 'text-purple-200' : 'text-foreground/50'}`}>
+              <span className={`text-[10px] font-medium ${isMyMessage ? 'text-white/80' : 'text-zinc-500 dark:text-[#94A3B8]/50'}`}>
                 {isMyMessage ? 'You paid' : `@${message.friend_name} paid you`}
               </span>
             </div>
@@ -130,7 +130,7 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({ message, onPayNow, onRem
           <div className="space-y-1">
             {hasReceiptUrl ? (
               <div className="space-y-1.5">
-                <div className="border border-border bg-background rounded-lg p-1.5 overflow-hidden">
+                <div className="border border-black/[0.06] dark:border-white/[0.08] bg-black/[0.02] dark:bg-black/[0.2] rounded-lg p-1.5 overflow-hidden">
                   <img
                     src={message.message}
                     alt="Receipt Upload"

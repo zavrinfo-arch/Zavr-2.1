@@ -46,11 +46,26 @@ export async function getTransactions(userId: string) {
  * Gets notifications filtered by the authenticated user's ID.
  */
 export async function getNotifications(userId: string) {
-  return await supabase
+  const res = await supabase
     .from('notifications')
     .select('*')
     .eq('user_id', userId)
     .order('timestamp', { ascending: false });
+
+  if (res.data) {
+    res.data = res.data.map((n: any) => {
+      let message = n.message || '';
+      let data = null;
+      const delimiter = " |||DATA:";
+      if (message.includes(delimiter)) {
+        const parts = message.split(delimiter);
+        message = parts[0];
+        data = parts[1];
+      }
+      return { ...n, message, data };
+    });
+  }
+  return res;
 }
 
 /**

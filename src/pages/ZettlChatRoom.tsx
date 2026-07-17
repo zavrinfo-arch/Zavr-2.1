@@ -215,11 +215,11 @@ export default function ZettlChatRoom() {
       <div className="absolute inset-x-0 -top-16 h-36 bg-gradient-to-b from-[#FF6B6B]/5 to-transparent pointer-events-none" />
 
       {/* Claymorphic detail Header */}
-      <header className="sticky top-0 bg-surface/90 border border-border backdrop-blur-md p-3 rounded-2xl z-30 shrink-0 shadow-sm flex items-center justify-between gap-3">
+      <header className="sticky top-0 bg-white/90 dark:bg-[#111118]/90 border border-black/[0.06] dark:border-white/[0.08] backdrop-blur-md p-3 rounded-2xl z-30 shrink-0 shadow-sm flex items-center justify-between gap-3">
         <div className="flex items-center gap-2 max-w-[65%]">
           <button
             onClick={() => navigate('/zettl')}
-            className="p-1 px-1.5 hover:bg-foreground/5 text-foreground/40 hover:text-[#FF6B6B] rounded-xl transition-colors cursor-pointer"
+            className="p-1 px-1.5 hover:bg-black/[0.04] dark:hover:bg-white/[0.04] text-zinc-400 dark:text-white/40 hover:text-[#FF6B6B] dark:hover:text-[#FF7C7C] rounded-xl transition-colors cursor-pointer"
           >
             <ArrowLeft size={18} />
           </button>
@@ -229,14 +229,14 @@ export default function ZettlChatRoom() {
               <img
                 src={friendProfile.avatar}
                 alt=""
-                className="w-10 h-10 rounded-full object-cover border border-border shrink-0"
+                className="w-10 h-10 rounded-full object-cover border border-black/[0.08] dark:border-white/[0.08] shrink-0"
                 referrerPolicy="no-referrer"
               />
               <div className="truncate text-left">
-                <h3 className="text-xs sm:text-sm font-black text-foreground truncate leading-tight">
+                <h3 className="text-xs sm:text-sm font-black text-zinc-900 dark:text-white truncate leading-tight">
                   {friendProfile.name}
                 </h3>
-                <span className="text-[9px] text-[#FF6B6B] tracking-wider font-extrabold uppercase font-mono block leading-none mt-1">
+                <span className="text-[9px] text-[#FF6B6B] dark:text-[#FF7C7C] tracking-wider font-extrabold uppercase font-mono block leading-none mt-1">
                   {isTyping ? 'Typing...' : `@${friendProfile.username}`}
                 </span>
               </div>
@@ -249,7 +249,7 @@ export default function ZettlChatRoom() {
           <div className={`px-2.5 py-1.5 rounded-full text-[10px] font-black tracking-widest border shrink-0 uppercase ${
             netBalance > 0
               ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/10'
-              : 'bg-[#FF6B6B]/10 text-[#FF6B6B] border-[#FF6B6B]/10'
+              : 'bg-[#FF6B6B]/10 dark:bg-[#FF7C7C]/10 text-[#FF6B6B] dark:text-[#FF7C7C] border-black/[0.06] dark:border-white/[0.06]'
           }`}>
             {netBalance > 0 ? `Owes: ₹${netBalance}` : `Owed: ₹${Math.abs(netBalance)}`}
           </div>
@@ -261,17 +261,17 @@ export default function ZettlChatRoom() {
         {loading ? (
           <div className="flex-1 flex flex-col justify-center items-center py-12 gap-3 opacity-40">
             <div className="w-6 h-6 rounded-full border-2 border-[#FF6B6B] border-t-transparent animate-spin" />
-            <p className="text-[9.5px] text-foreground font-bold uppercase tracking-wider">Loading Ledger List...</p>
+            <p className="text-[9.5px] text-zinc-500 dark:text-white font-bold uppercase tracking-wider">Loading Ledger List...</p>
           </div>
         ) : groupedMessages.length === 0 ? (
           /* Empty Chat History Display */
           <div className="flex-1 flex flex-col justify-center items-center text-center py-12 space-y-4">
-            <div className="w-14 h-14 rounded-xl clay-inset flex items-center justify-center text-foreground/20">
+            <div className="w-14 h-14 rounded-full bg-black/[0.01] dark:bg-white/[0.02] border border-black/[0.08] dark:border-white/[0.08] flex items-center justify-center text-zinc-300 dark:text-white/20">
               <Smile size={24} />
             </div>
             <div className="space-y-1 max-w-xs">
-              <p className="text-xs font-black uppercase text-foreground/80 tracking-widest">Clear Ledger Activity</p>
-              <p className="text-[10px] opacity-40 font-bold uppercase tracking-wider leading-relaxed">
+              <p className="text-xs font-black uppercase text-zinc-800 dark:text-white/80 tracking-widest">Clear Ledger Activity</p>
+              <p className="text-[10px] text-zinc-400 dark:text-[#94A3B8]/40 font-bold uppercase tracking-wider leading-relaxed">
                 Send text messages or tap the quick coins buttons to request/pay split settlements.
               </p>
             </div>
@@ -283,7 +283,7 @@ export default function ZettlChatRoom() {
               <div key={group.label} className="space-y-3">
                 {/* Date Header Badge */}
                 <div className="flex justify-center my-4">
-                  <span className="px-3 py-1 bg-surface-light border border-border text-foreground/40 text-[9px] font-black uppercase tracking-wider rounded-full">
+                  <span className="px-3 py-1 bg-black/[0.02] dark:bg-white/[0.02] border border-black/[0.06] dark:border-white/[0.06] text-zinc-400 dark:text-white/40 text-[9px] font-black uppercase tracking-wider rounded-full">
                     {group.label}
                   </span>
                 </div>
@@ -301,10 +301,10 @@ export default function ZettlChatRoom() {
 
             {isTyping && (
               <div className="flex justify-start px-2 py-1">
-                <div className="bg-surface-light text-[#FF6B6B] text-[9.5px] font-bold px-3 py-1.5 rounded-full flex items-center gap-1.5 border border-border">
-                  <span className="w-1.5 h-1.5 bg-[#FF6B6B] rounded-full animate-bounce" />
-                  <span className="w-1.5 h-1.5 bg-[#FF6B6B] rounded-full animate-bounce [animation-delay:0.2s]" />
-                  <span className="w-1.5 h-1.5 bg-[#FF6B6B] rounded-full animate-bounce [animation-delay:0.4s]" />
+                <div className="bg-black/[0.02] dark:bg-white/[0.02] border border-black/[0.06] dark:border-white/[0.06] text-[#FF6B6B] dark:text-[#FF7C7C] text-[9.5px] font-bold px-3 py-1.5 rounded-full flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 bg-[#FF6B6B] dark:bg-[#FF7C7C] rounded-full animate-bounce" />
+                  <span className="w-1.5 h-1.5 bg-[#FF6B6B] dark:bg-[#FF7C7C] rounded-full animate-bounce [animation-delay:0.2s]" />
+                  <span className="w-1.5 h-1.5 bg-[#FF6B6B] dark:bg-[#FF7C7C] rounded-full animate-bounce [animation-delay:0.4s]" />
                   <span className="uppercase tracking-wider">@{friendProfile?.username || 'user'} typing...</span>
                 </div>
               </div>
@@ -317,14 +317,14 @@ export default function ZettlChatRoom() {
 
       {/* Styled Chat Keyboard Floats above BottomNav */}
       <footer className="fixed bottom-[84px] left-0 right-0 max-w-md mx-auto px-6 z-40">
-        <div className="clay-card p-2 bg-surface/90 backdrop-blur-md flex items-center gap-2 border border-border">
+        <div className="bg-white/90 dark:bg-[#111118]/95 border border-black/[0.06] dark:border-white/[0.08] p-2 rounded-2xl flex items-center gap-2 shadow-lg backdrop-blur-md">
           {/* Quick Transaction Action Drawer Shortcuts */}
           {friendProfile && (
-            <div className="flex items-center gap-1.5 bg-background px-2 h-11 rounded-full clay-inset border border-border/10 shrink-0">
+            <div className="flex items-center gap-1.5 bg-black/[0.01] dark:bg-white/[0.02] border border-black/[0.06] dark:border-white/[0.06] px-2 h-11 rounded-full shrink-0">
               <button
                 type="button"
                 onClick={() => setIsRequestOpen(true)}
-                className="p-1.5 bg-pink-500/10 hover:bg-pink-500/25 text-pink-500 rounded-full transition-all cursor-pointer"
+                className="p-1.5 bg-[#FF6B6B]/10 hover:bg-[#FF6B6B]/25 text-[#FF6B6B] rounded-full transition-all cursor-pointer"
                 title="Request Money"
               >
                 <Coins size={14} />
@@ -340,7 +340,7 @@ export default function ZettlChatRoom() {
               <button
                 type="button"
                 onClick={handleReceiptIconClick}
-                className="p-1.5 hover:bg-foreground/5 text-foreground/40 hover:text-[#FF6B6B] rounded-full transition-all cursor-pointer"
+                className="p-1.5 hover:bg-black/[0.04] dark:hover:bg-white/[0.04] text-zinc-400 dark:text-white/40 hover:text-[#FF6B6B] dark:hover:text-[#FF7C7C] rounded-full transition-all cursor-pointer"
                 title="Attach Receipt"
               >
                 <Paperclip size={14} />
@@ -350,19 +350,19 @@ export default function ZettlChatRoom() {
 
           {/* Core Send Message Textbox Form */}
           <form onSubmit={handleSendTextMessage} className="flex-1 flex items-center gap-2">
-            <div className="flex-1 h-11 bg-background rounded-full clay-inset border border-border/10 px-4 flex items-center">
+            <div className="flex-1 h-11 bg-black/[0.01] dark:bg-white/[0.02] border border-black/[0.08] dark:border-white/[0.08] rounded-full px-4 flex items-center">
               <input
                 type="text"
                 value={inputText}
                 onChange={(e) => setInputText(e.target.value)}
                 placeholder="Type a ledger memo..."
-                className="w-full text-xs text-foreground outline-none placeholder:opacity-40 font-sans bg-transparent"
+                className="w-full text-xs text-zinc-800 dark:text-white outline-none placeholder:text-zinc-400 dark:placeholder:text-white/30 font-sans bg-transparent"
               />
             </div>
             <button
               type="submit"
               disabled={!inputText.trim()}
-              className="w-11 h-11 rounded-full clay-purple text-white flex items-center justify-center shrink-0 cursor-pointer disabled:opacity-30 transition-opacity"
+              className="w-11 h-11 rounded-full bg-gradient-to-r from-[#FF7C7C] to-[#FF6B6B] text-white flex items-center justify-center shrink-0 cursor-pointer disabled:opacity-30 transition-opacity"
             >
               <Send size={14} className="text-white" />
             </button>

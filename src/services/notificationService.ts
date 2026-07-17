@@ -20,15 +20,26 @@ export const notificationService = {
       throw error;
     }
 
-    return (data || []).map((n: any) => ({
-      id: n.id,
-      userId: n.user_id,
-      title: n.title,
-      message: n.body || n.message || '',
-      type: n.type as any,
-      read: n.read || false,
-      timestamp: n.created_at || n.timestamp || new Date().toISOString()
-    }));
+    return (data || []).map((n: any) => {
+      let msg = n.body || n.message || '';
+      let extractedData = null;
+      const delimiter = " |||DATA:";
+      if (msg.includes(delimiter)) {
+        const parts = msg.split(delimiter);
+        msg = parts[0];
+        extractedData = parts[1];
+      }
+      return {
+        id: n.id,
+        userId: n.user_id,
+        title: n.title,
+        message: msg,
+        type: n.type as any,
+        read: n.read || false,
+        timestamp: n.created_at || n.timestamp || new Date().toISOString(),
+        data: extractedData || undefined
+      };
+    });
   },
 
   /**
@@ -88,6 +99,12 @@ export const notificationService = {
       });
     };
 
+    let message = body || '';
+    if (data) {
+      const dataStr = typeof data === 'string' ? data : JSON.stringify(data);
+      message = `${message} |||DATA:${dataStr}`;
+    }
+
     const { error } = await supabase
       .from('notifications')
       .insert({
@@ -95,8 +112,7 @@ export const notificationService = {
         user_id: userId,
         type,
         title,
-        message: body, // Use the correct column name 'message'
-        data: data ? JSON.stringify(data) : null,
+        message: message, // Use the correct column name 'message'
         read: false
       });
 

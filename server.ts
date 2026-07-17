@@ -318,6 +318,11 @@ async function sendSafeNotification(supabaseClient: any, notificationData: {
       }
     }
 
+    let finalMessage = notificationData.message || '';
+    if (notificationData.data) {
+      finalMessage = `${finalMessage} |||DATA:${notificationData.data}`;
+    }
+
     // 2. Insert the notification with a generated ID to prevent violates not-null constraint on id
     const { error: insertError } = await supabaseClient
       .from('notifications')
@@ -326,8 +331,7 @@ async function sendSafeNotification(supabaseClient: any, notificationData: {
         user_id: notificationData.user_id,
         type: notificationData.type,
         title: notificationData.title,
-        message: notificationData.message,
-        data: notificationData.data || null,
+        message: finalMessage,
         read: notificationData.read ?? false
       });
 

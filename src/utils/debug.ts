@@ -51,14 +51,27 @@ export const setLogsEnabled = (enabled: boolean) => {
 
 /**
  * Filter checks if a log message represents the known preview-glitch numbers,
- * empty spam, or React DevTools extension complaints.
+ * empty spam, React DevTools extension complaints, or MetaMask/Web3-related issues.
  */
 const shouldSuppress = (args: any[]): boolean => {
-  if (!logsEnabled) return true;
-
   try {
     const firstArg = args[0];
     
+    // Check if any argument is a string or contains text related to MetaMask or Web3
+    if (firstArg !== undefined && firstArg !== null) {
+      const strRepresentation = String(firstArg).toLowerCase();
+      if (
+        strRepresentation.includes('metamask') ||
+        strRepresentation.includes('ethereum') ||
+        strRepresentation.includes('web3') ||
+        strRepresentation.includes('wallet')
+      ) {
+        return true;
+      }
+    }
+
+    if (!logsEnabled) return true;
+
     // Check for large numbers (like 100k+ numbers flooding the console)
     if (typeof firstArg === 'number' && firstArg >= 100000) {
       return true;
@@ -88,7 +101,7 @@ const shouldSuppress = (args: any[]): boolean => {
 };
 
 /**
- * Initialize the global logger override
+ * Initialize the global logger override and error listeners
  */
 export const initSilentSafeLogger = () => {
   if (isAIStudioPreview()) {
@@ -130,6 +143,47 @@ export const initSilentSafeLogger = () => {
       _originalConsole.error(...args);
     }
   };
+
+  // Global event interceptor for unhandled errors from browser extensions (e.g. MetaMask)
+  window.addEventListener('error', (event) => {
+    try {
+      const errorMsg = event.message || (event.error && event.error.message) || '';
+      const lowerMsg = errorMsg.toLowerCase();
+      if (
+        lowerMsg.includes('metamask') ||
+        lowerMsg.includes('ethereum') ||
+        lowerMsg.includes('web3') ||
+        lowerMsg.includes('wallet')
+      ) {
+        _originalConsole.info('[PREVIEW-INTERCEPTOR] Intercepted and suppressed MetaMask/Web3 global error:', errorMsg);
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    } catch (e) {
+      // Fail-safe
+    }
+  }, true);
+
+  // Global event interceptor for unhandled promise rejections from browser extensions
+  window.addEventListener('unhandledrejection', (event) => {
+    try {
+      const reason = event.reason;
+      const reasonMsg = reason ? (reason.message || String(reason)) : '';
+      const lowerMsg = reasonMsg.toLowerCase();
+      if (
+        lowerMsg.includes('metamask') ||
+        lowerMsg.includes('ethereum') ||
+        lowerMsg.includes('web3') ||
+        lowerMsg.includes('wallet')
+      ) {
+        _originalConsole.info('[PREVIEW-INTERCEPTOR] Intercepted and suppressed MetaMask/Web3 global rejection:', reasonMsg);
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    } catch (e) {
+      // Fail-safe
+    }
+  }, true);
 
   _originalConsole.info(
     `[DEBUG CONTROL] Initialized Safe Logger Interceptor. Preview mode: ${isAIStudioPreview() ? 'ACTIVE (Console logs suppressed)' : 'INACTIVE (Console logs active)'}`

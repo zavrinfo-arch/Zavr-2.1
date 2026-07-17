@@ -97,19 +97,19 @@ export default function AvatarSelection() {
   const filteredAvatars = AVATARS_50.filter(a => a.style === activeTab);
 
   return (
-    <div className="min-h-screen bg-background flex flex-col p-6 space-y-8">
+    <div className="min-h-screen bg-zinc-50 dark:bg-[#0a0a0f] text-zinc-900 dark:text-white flex flex-col p-6 space-y-8">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
           <button 
             onClick={() => navigate(-1)}
-            className="p-3 clay-card rounded-2xl opacity-60 hover:opacity-100 transition-opacity"
+            className="p-3 bg-black/[0.02] dark:bg-white/[0.02] hover:bg-black/[0.04] dark:hover:bg-white/[0.06] border border-black/[0.06] dark:border-white/[0.05] text-zinc-700 dark:text-white rounded-2xl opacity-60 hover:opacity-100 transition-opacity"
           >
             <ArrowLeft size={20} />
           </button>
           <div>
             <h1 className="text-2xl font-black tracking-tight serif-heading">Select Hero</h1>
-            <p className="text-xs opacity-40 font-bold uppercase tracking-widest">List Model View</p>
+            <p className="text-xs text-zinc-500 dark:text-[#94A3B8] font-bold uppercase tracking-widest">List Model View</p>
           </div>
         </div>
         
@@ -119,7 +119,7 @@ export default function AvatarSelection() {
             await signOut();
             navigate('/auth');
           }}
-          className="text-[9px] font-black uppercase tracking-widest px-4 py-2 clay-card opacity-40 hover:opacity-100 transition-all"
+          className="text-[9px] font-black uppercase tracking-widest px-4 py-2 bg-black/[0.02] dark:bg-white/[0.02] border border-black/[0.06] dark:border-white/[0.08] text-zinc-700 dark:text-white/40 rounded-xl opacity-40 hover:opacity-100 transition-all"
         >
           Reset / Logout
         </button>
@@ -136,8 +136,8 @@ export default function AvatarSelection() {
               className={cn(
                 "px-6 py-4 rounded-2xl flex items-center gap-3 transition-all whitespace-nowrap active:scale-95",
                 activeTab === style 
-                  ? "clay-card bg-surface shadow-xl ring-2 ring-coral/20" 
-                  : "opacity-40 hover:opacity-60"
+                  ? "bg-white dark:bg-[#111118] text-zinc-900 dark:text-white shadow-xl ring-2 ring-[#FF6B6B]/40 border border-[#FF8A8A]/20" 
+                  : "bg-black/[0.01] dark:bg-white/[0.01] border border-black/[0.04] dark:border-white/[0.04] text-zinc-500 dark:text-white opacity-40 hover:opacity-100"
               )}
             >
               <Icon size={16} className={STYLE_LABELS[style].color} />
@@ -163,8 +163,8 @@ export default function AvatarSelection() {
                 className={cn(
                   "relative aspect-square rounded-[2rem] transition-all group overflow-visible",
                   selectedId === avatar.id 
-                    ? "clay-inset bg-surface border-2 border-coral shadow-2xl scale-110 z-10" 
-                    : "clay-card hover:bg-foreground/5 hover:scale-105"
+                    ? "bg-white dark:bg-[#111118] border-2 border-[#FF8A8A] shadow-lg dark:shadow-[0_0_15px_rgba(255,107,107,0.4)] scale-110 z-10" 
+                    : "bg-white dark:bg-[#111118]/40 border border-black/[0.06] dark:border-white/[0.04] hover:border-[#FF6B6B]/40 hover:scale-105"
                 )}
               >
                 {/* Avatar Preview */}
@@ -179,7 +179,7 @@ export default function AvatarSelection() {
                   {selectedId === avatar.id && (
                     <motion.div 
                       layoutId="check"
-                      className="absolute -top-1 -right-1 w-6 h-6 rounded-full bg-coral shadow-lg flex items-center justify-center border-2 border-white z-20"
+                      className="absolute -top-1 -right-1 w-6 h-6 rounded-full bg-gradient-to-r from-[#FF7C7C] to-[#FF6B6B] shadow-lg flex items-center justify-center border-2 border-white dark:border-[#111118] z-20"
                     >
                       <Check className="text-white" size={10} strokeWidth={4} />
                     </motion.div>
@@ -190,7 +190,7 @@ export default function AvatarSelection() {
                 <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 whitespace-nowrap">
                    <p className={cn(
                      "text-[7px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full transition-colors",
-                     selectedId === avatar.id ? "bg-coral text-white" : "bg-foreground/5 opacity-40"
+                     selectedId === avatar.id ? "bg-gradient-to-r from-[#FF7C7C] to-[#FF6B6B] text-white" : "bg-black/[0.04] dark:bg-white/[0.04] text-zinc-500 dark:text-[#94A3B8] opacity-40"
                    )}>
                      {avatar.id.split('_').pop()?.toUpperCase()}
                    </p>
@@ -211,8 +211,8 @@ export default function AvatarSelection() {
           className={cn(
             "w-full py-6 rounded-[2rem] flex items-center justify-center gap-3 text-sm font-black uppercase tracking-[0.3em] shadow-2xl transition-all",
             !selectedId || loading 
-              ? "bg-foreground/10 opacity-50 cursor-not-allowed" 
-              : "clay-coral text-white scale-105"
+              ? "bg-white/10 opacity-50 cursor-not-allowed text-white/40" 
+              : "bg-gradient-to-r from-[#FF7C7C] to-[#FF6B6B] text-white hover:from-[#FF6B6B] hover:to-[#FF7C7C] shadow-[0_8px_25px_rgba(255,107,107,0.5)] scale-105"
           )}
         >
           {loading ? (

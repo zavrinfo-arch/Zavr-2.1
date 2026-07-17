@@ -288,13 +288,13 @@ export const zettlService = {
         }
       ]);
 
+      const notifData = { debtId: record.id, amount, note: purpose };
       await supabase.from('notifications').insert({
         id: generateUUID(),
         user_id: friendId,
         type: 'request',
         title: '💸 Zettl Money Request',
-        message: `Requested ₹${amount} for "${purpose}". Tap to chat/pay.`,
-        data: JSON.stringify({ debtId: record.id, amount, note: purpose }),
+        message: `Requested ₹${amount} for "${purpose}". Tap to chat/pay. |||DATA:${JSON.stringify(notifData)}`,
         read: false
       });
     } catch (actE) {
@@ -351,13 +351,13 @@ export const zettlService = {
           }
         ]);
 
+        const notifData = { debtId, amount, note: purpose };
         await supabase.from('notifications').insert({
           id: generateUUID(),
           user_id: friendId,
           type: 'payment',
           title: '✅ Payment Received',
-          message: `Received ₹${amount} for "${purpose}".`,
-          data: JSON.stringify({ debtId, amount, note: purpose }),
+          message: `Received ₹${amount} for "${purpose}". |||DATA:${JSON.stringify(notifData)}`,
           read: false
         });
       } catch (e) {
@@ -407,13 +407,13 @@ export const zettlService = {
           }
         ]);
 
+        const notifData = { debtId: record.id, amount, note: purpose };
         await supabase.from('notifications').insert({
           id: generateUUID(),
           user_id: friendId,
           type: 'payment',
           title: '✅ Direct Payment Received',
-          message: `Sent you ₹${amount} for "${purpose}".`,
-          data: JSON.stringify({ debtId: record.id, amount, note: purpose }),
+          message: `Sent you ₹${amount} for "${purpose}". |||DATA:${JSON.stringify(notifData)}`,
           read: false
         });
       } catch (e) {

@@ -13,6 +13,7 @@ import {
 import toast from 'react-hot-toast';
 import { differenceInYears, parseISO, format } from 'date-fns';
 import { AVATARS } from '../constants';
+import { useTheme } from '../context/ThemeContext';
 
 type SignupStep = 'email' | 'verify' | 'password' | 'profile';
 
@@ -66,7 +67,8 @@ export default function Auth() {
   const isSigningUpRef = React.useRef(false);
   
   const navigate = useNavigate();
-  const { currentUser, session, checkAuth, isAuthLoading, theme, setTheme } = useStore();
+  const { currentUser, session, checkAuth, isAuthLoading } = useStore();
+  const { theme, setTheme } = useTheme();
 
   useEffect(() => {
     sessionStorage.setItem('auth_is_login', isLogin.toString());
@@ -713,7 +715,7 @@ export default function Auth() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col px-8 py-12 bg-background overflow-y-auto relative">
+    <div className="min-h-screen flex flex-col justify-center items-center px-4 sm:px-6 lg:px-8 bg-white dark:bg-[#0a0a0f] text-zinc-900 dark:text-white font-sans antialiased overflow-y-auto relative py-12">
       {/* Floating Theme Switcher Button */}
       <div className="absolute top-6 right-6 z-[90]">
         <motion.button
@@ -721,7 +723,7 @@ export default function Auth() {
           onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
-          className="p-3 rounded-2xl clay bg-surface text-foreground hover:text-[#FF6B6B] transition-colors border border-foreground/5 shadow-md flex items-center justify-center gap-2 cursor-pointer"
+          className="p-3 rounded-2xl bg-black/[0.02] dark:bg-white/[0.02] hover:bg-black/[0.06] dark:hover:bg-white/[0.06] border border-black/[0.08] dark:border-white/[0.05] hover:border-black/[0.1] dark:hover:border-white/[0.1] text-zinc-800 dark:text-white transition-all duration-300 shadow-md flex items-center justify-center gap-2 cursor-pointer"
           title={theme === 'dark' ? "Switch to Light Mode" : "Switch to Dark Mode"}
         >
           {theme === 'dark' ? (
@@ -745,25 +747,25 @@ export default function Auth() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="absolute inset-0 bg-background/80 backdrop-blur-md"
+              className="absolute inset-0 bg-black/40 dark:bg-[#0a0a0f]/80 backdrop-blur-md"
             />
             <motion.div 
               initial={{ opacity: 0, scale: 0.9, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
-              className="relative w-full max-w-sm clay bg-surface p-10 text-center space-y-6"
+              className="relative w-full max-w-sm bg-white dark:bg-[#111118]/90 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.06] rounded-[2.5rem] p-10 text-center space-y-6 shadow-2xl dark:shadow-[0_32px_80px_rgba(0,0,0,0.95)]"
             >
-              <div className="w-24 h-24 mx-auto clay-coral rounded-3xl flex items-center justify-center text-white animate-bounce">
+              <div className="w-24 h-24 mx-auto bg-gradient-to-r from-[#FF7C7C] to-[#FF6B6B] rounded-3xl flex items-center justify-center text-white animate-bounce shadow-[0_4px_15px_rgba(255,107,107,0.3)]">
                 <Sparkles size={48} />
               </div>
               <div className="space-y-2">
-                <h2 className="text-3xl font-black tracking-tight">Welcome!</h2>
-                <p className="text-sm opacity-40 leading-relaxed">
+                <h2 className="text-3xl font-black tracking-tight text-zinc-900 dark:text-white">Welcome!</h2>
+                <p className="text-sm text-zinc-500 dark:text-[#94A3B8] leading-relaxed">
                   Your account is ready. Let's start your savings journey!
                 </p>
               </div>
               <button 
                 onClick={() => navigate('/home')}
-                className="w-full py-4 clay-coral text-white rounded-2xl font-bold uppercase tracking-widest text-xs shadow-2xl"
+                className="w-full py-4 bg-gradient-to-r from-[#FF7C7C] to-[#FF6B6B] text-white rounded-2xl font-bold uppercase tracking-widest text-xs shadow-[0_4px_15px_rgba(255,107,107,0.3)] hover:shadow-[0_8px_25px_rgba(255,107,107,0.5)] hover:-translate-y-0.5 active:translate-y-0 active:scale-95 transition-all duration-300"
               >
                 Let's Go!
               </button>
@@ -780,22 +782,22 @@ export default function Auth() {
               onClick={() => {
                 if (!forgotModalLoading) setShowForgotModal(false);
               }}
-              className="absolute inset-0 bg-background/80 backdrop-blur-md"
+              className="absolute inset-0 bg-black/40 dark:bg-[#0a0a0f]/80 backdrop-blur-md"
             />
             <motion.div 
               initial={{ opacity: 0, scale: 0.9, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.9, y: 20 }}
-              className="relative w-full max-w-sm clay bg-surface p-8 text-center space-y-6"
+              className="relative w-full max-w-sm bg-white dark:bg-[#111118]/95 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.06] rounded-[2.5rem] p-8 text-center space-y-6 shadow-2xl dark:shadow-[0_32px_80px_rgba(0,0,0,0.95)]"
             >
               {forgotStep === 'request' && (
                 <>
-                  <div className="w-16 h-16 mx-auto clay-coral rounded-2xl flex items-center justify-center text-white">
+                  <div className="w-16 h-16 mx-auto bg-gradient-to-r from-[#FF7C7C] to-[#FF6B6B] rounded-2xl flex items-center justify-center text-white shadow-[0_4px_15px_rgba(255,107,107,0.3)]">
                     <KeyRound size={28} />
                   </div>
                   <div className="space-y-2 text-center">
-                    <h2 className="text-2xl font-black tracking-tight">Forgot Password</h2>
-                    <p className="text-xs opacity-40 leading-relaxed">
+                    <h2 className="text-2xl font-black tracking-tight text-zinc-900 dark:text-white">Forgot Password</h2>
+                    <p className="text-xs text-zinc-500 dark:text-[#94A3B8] leading-relaxed">
                       Enter your Username or Email Address and we'll send you a 6-digit confirmation code.
                     </p>
                   </div>
@@ -814,7 +816,7 @@ export default function Auth() {
                     <button 
                       type="button"
                       onClick={() => setShowForgotModal(false)}
-                      className="flex-1 py-3 bg-foreground/5 hover:bg-foreground/10 rounded-xl font-bold uppercase tracking-widest text-[10px] transition-colors"
+                      className="flex-1 py-3 bg-black/[0.02] dark:bg-white/[0.02] hover:bg-black/[0.06] dark:hover:bg-white/[0.06] border border-black/[0.08] dark:border-white/[0.05] rounded-xl font-bold uppercase tracking-widest text-[10px] text-zinc-700 dark:text-white transition-all duration-300"
                     >
                       Cancel
                     </button>
@@ -857,7 +859,7 @@ export default function Auth() {
                           setForgotModalLoading(false);
                         }
                       }}
-                      className="flex-1 py-3 clay-coral text-white rounded-xl font-bold uppercase tracking-widest text-[10px] flex items-center justify-center gap-1 disabled:opacity-50 cursor-pointer"
+                      className="flex-1 py-3 bg-gradient-to-r from-[#FF7C7C] to-[#FF6B6B] text-white rounded-xl font-bold uppercase tracking-widest text-[10px] flex items-center justify-center gap-1 disabled:opacity-50 cursor-pointer shadow-[0_4px_15px_rgba(255,107,107,0.3)] hover:shadow-[0_8px_25px_rgba(255,107,107,0.5)] transition-all duration-300 hover:-translate-y-0.5 active:translate-y-0 active:scale-95"
                     >
                       {forgotModalLoading ? <Loader2 className="animate-spin" size={12} /> : 'Send Code'}
                     </button>
@@ -867,14 +869,14 @@ export default function Auth() {
 
               {forgotStep === 'verify' && (
                 <>
-                  <div className="w-16 h-16 mx-auto clay-coral rounded-2xl flex items-center justify-center text-white">
+                  <div className="w-16 h-16 mx-auto bg-gradient-to-r from-[#FF7C7C] to-[#FF6B6B] rounded-2xl flex items-center justify-center text-white shadow-[0_4px_15px_rgba(255,107,107,0.3)]">
                     <ShieldCheck size={28} />
                   </div>
                   <div className="space-y-2 text-center">
-                    <h2 className="text-2xl font-black tracking-tight">Verify Code</h2>
-                    <p className="text-xs opacity-40 leading-relaxed">
+                    <h2 className="text-2xl font-black tracking-tight text-zinc-900 dark:text-white">Verify Code</h2>
+                    <p className="text-xs text-zinc-500 dark:text-[#94A3B8] leading-relaxed">
                       Enter the 6-digit code sent to:
-                      <span className="block font-semibold opacity-70 mt-1 select-all font-mono">
+                      <span className="block font-semibold text-zinc-800 dark:text-white/90 mt-1 select-all font-mono">
                         {forgotResolvedEmail}
                       </span>
                     </p>
@@ -896,7 +898,7 @@ export default function Auth() {
                     />
                     <div className="text-center pt-1">
                       {forgotCountdown > 0 ? (
-                        <span className="text-[10px] font-bold uppercase tracking-widest text-foreground/40 select-none">
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-400 dark:text-foreground/40 select-none">
                           Resend code in {forgotCountdown}s
                         </span>
                       ) : (
@@ -937,7 +939,7 @@ export default function Auth() {
                     <button 
                       type="button"
                       onClick={() => setForgotStep('request')}
-                      className="flex-1 py-3 bg-foreground/5 hover:bg-foreground/10 rounded-xl font-bold uppercase tracking-widest text-[10px] transition-colors"
+                      className="flex-1 py-3 bg-black/[0.02] dark:bg-white/[0.02] hover:bg-black/[0.06] dark:hover:bg-white/[0.06] border border-black/[0.08] dark:border-white/[0.05] rounded-xl font-bold uppercase tracking-widest text-[10px] text-zinc-700 dark:text-white transition-all duration-300"
                     >
                       Back
                     </button>
@@ -952,9 +954,9 @@ export default function Auth() {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ 
-                              email: forgotResolvedEmail,
-                              token: forgotOtpCode,
-                              type: 'recovery'
+                               email: forgotResolvedEmail,
+                               token: forgotOtpCode,
+                               type: 'recovery'
                             })
                           });
                           const result = await response.json();
@@ -969,7 +971,7 @@ export default function Auth() {
                           setForgotModalLoading(false);
                         }
                       }}
-                      className="flex-1 py-3 clay-coral text-white rounded-xl font-bold uppercase tracking-widest text-[10px] flex items-center justify-center gap-1 disabled:opacity-50 cursor-pointer"
+                      className="flex-1 py-3 bg-gradient-to-r from-[#FF7C7C] to-[#FF6B6B] text-white rounded-xl font-bold uppercase tracking-widest text-[10px] flex items-center justify-center gap-1 disabled:opacity-50 cursor-pointer shadow-[0_4px_15px_rgba(255,107,107,0.3)] hover:shadow-[0_8px_25px_rgba(255,107,107,0.5)] transition-all duration-300 hover:-translate-y-0.5 active:translate-y-0 active:scale-95"
                     >
                       {forgotModalLoading ? <Loader2 className="animate-spin" size={12} /> : 'Verify'}
                     </button>
@@ -979,12 +981,12 @@ export default function Auth() {
 
               {forgotStep === 'new-password' && (
                 <>
-                  <div className="w-16 h-16 mx-auto clay-coral rounded-2xl flex items-center justify-center text-white">
+                  <div className="w-16 h-16 mx-auto bg-gradient-to-r from-[#FF7C7C] to-[#FF6B6B] rounded-2xl flex items-center justify-center text-white shadow-[0_4px_15px_rgba(255,107,107,0.3)]">
                     <Lock size={28} />
                   </div>
                   <div className="space-y-2 text-center">
-                    <h2 className="text-2xl font-black tracking-tight">New Password</h2>
-                    <p className="text-xs opacity-40 leading-relaxed">
+                    <h2 className="text-2xl font-black tracking-tight text-zinc-900 dark:text-white">New Password</h2>
+                    <p className="text-xs text-zinc-500 dark:text-[#94A3B8] leading-relaxed">
                       A secure password must be at least 8 characters and contain mixed case, numbers, and symbols.
                     </p>
                   </div>
@@ -1010,7 +1012,7 @@ export default function Auth() {
 
                     {forgotNewPassword && (
                       <div className="flex items-center gap-2 px-1">
-                        <div className="flex-1 h-1 rounded-full bg-foreground/10 overflow-hidden">
+                        <div className="flex-1 h-1 rounded-full bg-black/10 dark:bg-white/[0.08] overflow-hidden">
                           <motion.div 
                             initial={{ width: 0 }}
                             animate={{ 
@@ -1043,7 +1045,7 @@ export default function Auth() {
                     <button 
                       type="button"
                       onClick={() => setShowForgotModal(false)}
-                      className="flex-1 py-3 bg-foreground/5 hover:bg-foreground/10 rounded-xl font-bold uppercase tracking-widest text-[10px] transition-colors"
+                      className="flex-1 py-3 bg-black/[0.02] dark:bg-white/[0.02] hover:bg-black/[0.06] dark:hover:bg-white/[0.06] border border-black/[0.08] dark:border-white/[0.05] rounded-xl font-bold uppercase tracking-widest text-[10px] text-zinc-700 dark:text-white transition-all duration-300"
                     >
                       Cancel
                     </button>
@@ -1098,7 +1100,7 @@ export default function Auth() {
                           setForgotModalLoading(false);
                         }
                       }}
-                      className="flex-1 py-3 clay-coral text-white rounded-xl font-bold uppercase tracking-widest text-[10px] flex items-center justify-center gap-1 disabled:opacity-50 cursor-pointer"
+                      className="flex-1 py-3 bg-gradient-to-r from-[#FF7C7C] to-[#FF6B6B] text-white rounded-xl font-bold uppercase tracking-widest text-[10px] flex items-center justify-center gap-1 disabled:opacity-50 cursor-pointer shadow-[0_4px_15px_rgba(255,107,107,0.3)] hover:shadow-[0_8px_25px_rgba(255,107,107,0.5)] transition-all duration-300 hover:-translate-y-0.5 active:translate-y-0 active:scale-95"
                     >
                       {forgotModalLoading ? <Loader2 className="animate-spin" size={12} /> : 'Save Password'}
                     </button>
@@ -1110,211 +1112,219 @@ export default function Auth() {
         )}
       </AnimatePresence>
 
-      <motion.div 
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="mb-12 flex flex-col items-center text-center"
-      >
-        <div className="mb-8">
-          <img
-            src="https://raw.githubusercontent.com/zavrinfo-arch/zavr-privacy-policy/main/zavr_logo.png"
-            alt="Zavr Logo"
-            className="w-16 h-16 object-contain rounded-full shadow-lg shadow-emerald-500/20 hover:scale-105 transition duration-300"
-            referrerPolicy="no-referrer"
-          />
-        </div>
-        <h1 className="text-4xl font-bold tracking-tight mb-3 text-foreground">
-          {isResetMode ? 'Update Password' : isLogin ? 'Welcome Back' : 'Join Zavr'}
-        </h1>
-        <p className="opacity-30 text-sm leading-relaxed">
-          {isResetMode ? 'Set a secure new password for your account' : isLogin ? 'Sign in with your email' : 'Start your gamified savings adventure'}
-        </p>
-      </motion.div>
+      <div className="w-full max-w-md mx-auto space-y-8 relative z-10">
+        <motion.div 
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="flex flex-col items-center text-center"
+        >
+          <div className="mb-6">
+            <img
+              src="https://raw.githubusercontent.com/zavrinfo-arch/zavr-privacy-policy/main/zavr_logo.png"
+              alt="Zavr Logo"
+              className="w-16 h-16 object-contain rounded-full shadow-[0_4px_25px_rgba(255,107,107,0.35)] hover:scale-105 transition duration-300"
+              referrerPolicy="no-referrer"
+            />
+          </div>
+          <h1 className="text-3xl font-bold tracking-tight mb-2 text-zinc-900 dark:text-white">
+            {isResetMode ? 'Update Password' : isLogin ? 'Welcome Back' : 'Join Zavr'}
+          </h1>
+          <p className="text-xs text-zinc-500 dark:text-[#94A3B8] leading-relaxed">
+            {isResetMode ? 'Set a secure new password for your account' : isLogin ? 'Sign in with your email' : 'Start your gamified savings adventure'}
+          </p>
+        </motion.div>
 
-      {!isResetMode && (
-        <div className="flex p-1 clay-inset mb-10">
-          <button 
-            onClick={() => { setIsLogin(true); setSignupStep('email'); }}
-            className={cn(
-              "flex-1 py-3 text-xs font-bold rounded-xl transition-all uppercase tracking-widest",
-              isLogin ? "bg-surface text-foreground shadow-xl" : "opacity-30"
-            )}
-          >
-            Login
-          </button>
-          <button 
-            onClick={() => setIsLogin(false)}
-            className={cn(
-              "flex-1 py-3 text-xs font-bold rounded-xl transition-all uppercase tracking-widest",
-              !isLogin ? "bg-surface text-foreground shadow-xl" : "opacity-30"
-            )}
-          >
-            Signup
-          </button>
-        </div>
-      )}
-
-      <AnimatePresence mode="wait">
-        {isResetMode ? (
-          <motion.form 
-            key="reset-password"
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.95 }}
-            onSubmit={handleResetPassword} 
-            className="space-y-4"
-          >
-            <div className="relative">
-              <Input 
-                icon={Lock} 
-                name="resetPassword" 
-                type={showResetPassword ? 'text' : 'password'} 
-                placeholder="New Password" 
-                value={resetPassword} 
-                onChange={(e: any) => setResetPassword(e.target.value)}
-              />
+        <div className="bg-white dark:bg-[#111118]/85 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.06] rounded-[2.5rem] p-8 shadow-xl dark:shadow-[0_32px_80px_rgba(0,0,0,0.95)] flex flex-col justify-between relative">
+          {!isResetMode && (
+            <div className="flex p-1 bg-black/[0.02] dark:bg-white/[0.02] border border-black/[0.05] dark:border-white/[0.05] rounded-2xl mb-8">
               <button 
                 type="button"
-                onClick={() => setShowResetPassword(!showResetPassword)}
-                className="absolute right-4 top-1/2 -translate-y-1/2 opacity-40 hover:opacity-100"
+                onClick={() => { setIsLogin(true); setSignupStep('email'); }}
+                className={cn(
+                  "flex-1 py-3 text-xs font-bold rounded-xl transition-all uppercase tracking-widest cursor-pointer",
+                  isLogin 
+                    ? "bg-gradient-to-r from-[#FF6B6B]/10 to-[#FF7C7C]/5 dark:from-[#FF6B6B]/15 dark:to-[#FF7C7C]/5 border border-[#FF8A8A]/30 text-zinc-950 dark:text-white shadow-sm dark:shadow-[0_4px_20px_rgba(255,107,107,0.15)]" 
+                    : "text-zinc-500 dark:text-[#94A3B8] opacity-60 hover:opacity-100"
+                )}
               >
-                {showResetPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                Login
+              </button>
+              <button 
+                type="button"
+                onClick={() => setIsLogin(false)}
+                className={cn(
+                  "flex-1 py-3 text-xs font-bold rounded-xl transition-all uppercase tracking-widest cursor-pointer",
+                  !isLogin 
+                    ? "bg-gradient-to-r from-[#FF6B6B]/10 to-[#FF7C7C]/5 dark:from-[#FF6B6B]/15 dark:to-[#FF7C7C]/5 border border-[#FF8A8A]/30 text-zinc-950 dark:text-white shadow-sm dark:shadow-[0_4px_20px_rgba(255,107,107,0.15)]" 
+                    : "text-zinc-500 dark:text-[#94A3B8] opacity-60 hover:opacity-100"
+                )}
+              >
+                Signup
               </button>
             </div>
+          )}
 
-            {resetPassword && (
-              <div className="flex items-center gap-2 px-1">
-                <div className="flex-1 h-1 rounded-full bg-foreground/10 overflow-hidden">
-                  <motion.div 
-                    initial={{ width: 0 }}
-                    animate={{ 
-                      width: validatePassword(resetPassword) === 'Weak' ? '33%' : validatePassword(resetPassword) === 'Medium' ? '66%' : '100%',
-                      backgroundColor: validatePassword(resetPassword) === 'Weak' ? '#ef4444' : validatePassword(resetPassword) === 'Medium' ? '#f59e0b' : '#10b981'
-                    }}
-                    className="h-full"
+          <AnimatePresence mode="wait">
+            {isResetMode ? (
+              <motion.form 
+                key="reset-password"
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                onSubmit={handleResetPassword} 
+                className="space-y-4"
+              >
+                <div className="relative">
+                  <Input 
+                    icon={Lock} 
+                    name="resetPassword" 
+                    type={showResetPassword ? 'text' : 'password'} 
+                    placeholder="New Password" 
+                    value={resetPassword} 
+                    onChange={(e: any) => setResetPassword(e.target.value)}
                   />
+                  <button 
+                    type="button"
+                    onClick={() => setShowResetPassword(!showResetPassword)}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 opacity-40 hover:opacity-100"
+                  >
+                    {showResetPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                  </button>
                 </div>
-                <span className={cn(
-                  "text-[10px] font-bold uppercase tracking-wider",
-                  validatePassword(resetPassword) === 'Weak' ? "text-red-500" : validatePassword(resetPassword) === 'Medium' ? "text-amber-500" : "text-emerald-500"
-                )}>
-                  {validatePassword(resetPassword)}
-                </span>
-              </div>
-            )}
 
-            <Input 
-              icon={Lock} 
-              name="resetConfirmPassword" 
-              type="password" 
-              placeholder="Confirm New Password" 
-              value={resetConfirmPassword} 
-              onChange={(e: any) => setResetConfirmPassword(e.target.value)}
-            />
+                {resetPassword && (
+                  <div className="flex items-center gap-2 px-1">
+                    <div className="flex-1 h-1 rounded-full bg-white/[0.08] overflow-hidden">
+                      <motion.div 
+                        initial={{ width: 0 }}
+                        animate={{ 
+                          width: validatePassword(resetPassword) === 'Weak' ? '33%' : validatePassword(resetPassword) === 'Medium' ? '66%' : '100%',
+                          backgroundColor: validatePassword(resetPassword) === 'Weak' ? '#FF6B6B' : validatePassword(resetPassword) === 'Medium' ? '#f59e0b' : '#10b981'
+                        }}
+                        className="h-full"
+                      />
+                    </div>
+                    <span className={cn(
+                      "text-[10px] font-bold uppercase tracking-wider",
+                      validatePassword(resetPassword) === 'Weak' ? "text-red-500" : validatePassword(resetPassword) === 'Medium' ? "text-amber-500" : "text-emerald-500"
+                    )}>
+                      {validatePassword(resetPassword)}
+                    </span>
+                  </div>
+                )}
 
-            <button 
-              type="submit"
-              disabled={loading}
-              className="w-full py-4 mt-2 clay-coral rounded-2xl font-bold flex items-center justify-center gap-2 shadow-xl hover:brightness-110 transition-all active:scale-95 text-white uppercase tracking-widest text-xs disabled:opacity-50"
-            >
-              {loading ? <Loader2 className="animate-spin" size={18} /> : (
-                <>
-                  Reset Password
-                  <ArrowRight size={18} />
-                </>
-              )}
-            </button>
+                <Input 
+                  icon={Lock} 
+                  name="resetConfirmPassword" 
+                  type="password" 
+                  placeholder="Confirm New Password" 
+                  value={resetConfirmPassword} 
+                  onChange={(e: any) => setResetConfirmPassword(e.target.value)}
+                />
 
-            <p className="text-center text-[10px] opacity-20 font-bold uppercase tracking-widest mt-4">
-              Remembered your password? <button type="button" onClick={() => { setIsResetMode(false); setIsLogin(true); }} className="text-[#FF6B6B]">Back to Login</button>
-            </p>
-          </motion.form>
-        ) : isLogin ? (
-          <motion.form 
-            key="login"
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: 20 }}
-            onSubmit={handleLogin} 
-            className="space-y-4"
-          >
-            <Input 
-              id="login-email-username"
-              icon={Mail} 
-              name="email" 
-              type="text"
-              placeholder="Email or Username" 
-              value={formData.email} 
-              onChange={handleInputChange}
-            />
-            {accountStatus === 'loading' && (
-              <p className="text-[11px] font-semibold text-cyan-400 pl-1">
-                🔍 Verifying account...
-              </p>
-            )}
-            {accountStatus === 'valid' && (
-              <p className="text-[11px] font-semibold text-emerald-400 pl-1">
-                ✅ Valid Account
-              </p>
-            )}
-            {accountStatus === 'invalid' && (
-              <p className="text-[11px] font-semibold text-red-400 pl-1">
-                ❌ Account Not Found
-              </p>
-            )}
-            <div className="relative">
-              <Input 
-                icon={Lock} 
-                name="password" 
-                type={showPassword ? 'text' : 'password'} 
-                placeholder="Password" 
-                value={formData.password} 
-                onChange={handleInputChange}
-                disabled={accountStatus !== 'valid'}
-              />
-              <button 
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                disabled={accountStatus !== 'valid'}
-                className="absolute right-4 top-1/2 -translate-y-1/2 opacity-40 hover:opacity-100 disabled:opacity-20"
+                <button 
+                  type="submit"
+                  disabled={loading}
+                  className="w-full h-14 rounded-2xl font-bold text-xs uppercase tracking-[0.25em] flex items-center justify-center gap-3 transition-all duration-300 disabled:opacity-20 disabled:pointer-events-none bg-gradient-to-r from-[#FF7C7C] to-[#FF6B6B] text-white shadow-[0_4px_15px_rgba(255,107,107,0.3)] hover:shadow-[0_8px_25px_rgba(255,107,107,0.5)] hover:-translate-y-0.5 active:translate-y-0 active:scale-95 cursor-pointer mt-4"
+                >
+                  {loading ? <Loader2 className="animate-spin" size={18} /> : (
+                    <>
+                      Reset Password
+                      <ArrowRight size={18} />
+                    </>
+                  )}
+                </button>
+
+                <p className="text-center text-[10px] opacity-40 font-bold uppercase tracking-widest mt-4">
+                  Remembered your password? <button type="button" onClick={() => { setIsResetMode(false); setIsLogin(true); }} className="text-[#FF6B6B] hover:underline">Back to Login</button>
+                </p>
+              </motion.form>
+            ) : isLogin ? (
+              <motion.form 
+                key="login"
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 20 }}
+                onSubmit={handleLogin} 
+                className="space-y-4"
               >
-                {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
-              </button>
-            </div>
-             <div className="flex justify-end px-1">
-              <button 
-                type="button"
-                onClick={() => {
-                  setForgotInput(formData.email);
-                  setForgotStep('request');
-                  setForgotOtpCode('');
-                  setForgotNewPassword('');
-                  setForgotNewPasswordConfirm('');
-                  setForgotResolvedEmail('');
-                  setForgotCountdown(0);
-                  setShowForgotModal(true);
-                }}
-                className="text-[10px] uppercase font-bold tracking-widest text-[#FF6B6B] opacity-60 hover:opacity-100 transition-opacity"
-              >
-                Forgot Password?
-              </button>
-            </div>
-            <button 
-              type="submit"
-              disabled={loading || accountStatus !== 'valid'}
-              className="w-full py-4 mt-2 clay-coral rounded-2xl font-bold flex items-center justify-center gap-2 shadow-xl hover:brightness-110 transition-all active:scale-95 text-white uppercase tracking-widest text-xs disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {loading ? <Loader2 className="animate-spin" size={18} /> : (
-                <>
-                  Sign In
-                  <ArrowRight size={18} />
-                </>
-              )}
-            </button>
-            <p className="text-center text-[10px] opacity-20 font-bold uppercase tracking-widest mt-4">
-              Don't have an account? <button type="button" onClick={() => setIsLogin(false)} className="text-[#FF6B6B]">Create Account</button>
-            </p>
-          </motion.form>
+                <Input 
+                  id="login-email-username"
+                  icon={Mail} 
+                  name="email" 
+                  type="text"
+                  placeholder="Email or Username" 
+                  value={formData.email} 
+                  onChange={handleInputChange}
+                />
+                {accountStatus === 'loading' && (
+                  <p className="text-[11px] font-semibold text-cyan-400 pl-1">
+                    🔍 Verifying account...
+                  </p>
+                )}
+                {accountStatus === 'valid' && (
+                  <p className="text-[11px] font-semibold text-emerald-400 pl-1">
+                    ✅ Valid Account
+                  </p>
+                )}
+                {accountStatus === 'invalid' && (
+                  <p className="text-[11px] font-semibold text-red-400 pl-1">
+                    ❌ Account Not Found
+                  </p>
+                )}
+                <div className="relative">
+                  <Input 
+                    icon={Lock} 
+                    name="password" 
+                    type={showPassword ? 'text' : 'password'} 
+                    placeholder="Password" 
+                    value={formData.password} 
+                    onChange={handleInputChange}
+                    disabled={accountStatus !== 'valid'}
+                  />
+                  <button 
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    disabled={accountStatus !== 'valid'}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 opacity-40 hover:opacity-100 disabled:opacity-20"
+                  >
+                    {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                  </button>
+                </div>
+                <div className="flex justify-end px-1">
+                  <button 
+                    type="button"
+                    onClick={() => {
+                      setForgotInput(formData.email);
+                      setForgotStep('request');
+                      setForgotOtpCode('');
+                      setForgotNewPassword('');
+                      setForgotNewPasswordConfirm('');
+                      setForgotResolvedEmail('');
+                      setForgotCountdown(0);
+                      setShowForgotModal(true);
+                    }}
+                    className="text-[10px] uppercase font-bold tracking-widest text-[#FF6B6B] opacity-60 hover:opacity-100 transition-opacity"
+                  >
+                    Forgot Password?
+                  </button>
+                </div>
+                <button 
+                  type="submit"
+                  disabled={loading || accountStatus !== 'valid'}
+                  className="w-full h-14 rounded-2xl font-bold text-xs uppercase tracking-[0.25em] flex items-center justify-center gap-3 transition-all duration-300 disabled:opacity-20 disabled:pointer-events-none bg-gradient-to-r from-[#FF7C7C] to-[#FF6B6B] text-white shadow-[0_4px_15px_rgba(255,107,107,0.3)] hover:shadow-[0_8px_25px_rgba(255,107,107,0.5)] hover:-translate-y-0.5 active:translate-y-0 active:scale-95 cursor-pointer mt-4"
+                >
+                  {loading ? <Loader2 className="animate-spin" size={18} /> : (
+                    <>
+                      Sign In
+                      <ArrowRight size={18} />
+                    </>
+                  )}
+                </button>
+                <p className="text-center text-[10px] opacity-40 font-bold uppercase tracking-widest mt-6">
+                  Don't have an account? <button type="button" onClick={() => setIsLogin(false)} className="text-[#FF6B6B] hover:underline">Create Account</button>
+                </p>
+              </motion.form>
         ) : (
           <motion.form 
             key="signup"
@@ -1348,7 +1358,7 @@ export default function Auth() {
                   <button 
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-4 top-4 opacity-40 hover:opacity-100"
+                    className="absolute right-4 top-1/2 -translate-y-1/2 opacity-40 hover:opacity-100 text-zinc-500 dark:text-white"
                   >
                     {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                   </button>
@@ -1356,12 +1366,12 @@ export default function Auth() {
                 
                 {formData.password && (
                   <div className="flex items-center gap-2 px-1">
-                    <div className="flex-1 h-1 rounded-full bg-foreground/10 overflow-hidden">
+                    <div className="flex-1 h-1 rounded-full bg-black/10 dark:bg-white/[0.08] overflow-hidden">
                       <motion.div 
                         initial={{ width: 0 }}
                         animate={{ 
                           width: passwordStrength === 'Weak' ? '33%' : passwordStrength === 'Medium' ? '66%' : '100%',
-                          backgroundColor: passwordStrength === 'Weak' ? '#ef4444' : passwordStrength === 'Medium' ? '#f59e0b' : '#10b981'
+                          backgroundColor: passwordStrength === 'Weak' ? '#FF6B6B' : passwordStrength === 'Medium' ? '#f59e0b' : '#10b981'
                         }}
                         className="h-full"
                       />
@@ -1388,7 +1398,7 @@ export default function Auth() {
                 <button 
                   type="submit"
                   disabled={loading}
-                  className="w-full py-4 mt-6 clay-coral rounded-2xl font-bold flex items-center justify-center gap-2 shadow-xl text-white uppercase tracking-widest text-xs disabled:opacity-50"
+                  className="w-full h-14 rounded-2xl font-bold text-xs uppercase tracking-[0.25em] flex items-center justify-center gap-3 transition-all duration-300 disabled:opacity-20 disabled:pointer-events-none bg-gradient-to-r from-[#FF7C7C] to-[#FF6B6B] text-white shadow-[0_4px_15px_rgba(255,107,107,0.3)] hover:shadow-[0_8px_25px_rgba(255,107,107,0.5)] hover:-translate-y-0.5 active:translate-y-0 active:scale-95 cursor-pointer mt-6"
                 >
                   {loading ? (
                     <>
@@ -1402,27 +1412,27 @@ export default function Auth() {
                     </>
                   )}
                 </button>
-                <p className="text-[10px] opacity-30 text-center mt-6 leading-relaxed px-4">
+                <p className="text-[10px] text-zinc-500 dark:text-[#94A3B8]/60 text-center mt-6 leading-relaxed px-4">
                   By signing up, you agree to our{' '}
-                  <a href="https://zavrinfo-arch.github.io/zavr-privacy-policy/" target="_blank" rel="noopener noreferrer" className="underline hover:text-[#FF6B6B] transition-colors">Terms & Conditions</a>
+                  <a href="https://zavrinfo-arch.github.io/zavr-privacy-policy/" target="_blank" rel="noopener noreferrer" className="underline hover:text-[#FF6B6B] transition-colors font-semibold">Terms & Conditions</a>
                   {' '}and{' '}
-                  <a href="https://zavrinfo-arch.github.io/zavr-privacy-policy/" target="_blank" rel="noopener noreferrer" className="underline hover:text-[#FF6B6B] transition-colors">Privacy Policy</a>.
+                  <a href="https://zavrinfo-arch.github.io/zavr-privacy-policy/" target="_blank" rel="noopener noreferrer" className="underline hover:text-[#FF6B6B] transition-colors font-semibold">Privacy Policy</a>.
                 </p>
               </motion.div>
             )}
 
             {signupStep === 'verify' && (
               <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-4 text-center">
-                <div className="w-16 h-16 mx-auto clay-inset flex items-center justify-center text-[#FF6B6B] mb-4">
+                <div className="w-16 h-16 mx-auto bg-black/[0.01] dark:bg-white/[0.02] border border-black/[0.08] dark:border-white/[0.08] rounded-2xl flex items-center justify-center text-[#FF6B6B] mb-4">
                   <ShieldCheck size={32} />
                 </div>
-                <h3 className="text-lg font-bold">Verify Email</h3>
-                <p className="text-xs opacity-40 mb-6">Enter the 6-digit code sent to your email</p>
+                <h3 className="text-lg font-bold text-zinc-900 dark:text-white">Verify Email</h3>
+                <p className="text-xs text-zinc-500 dark:text-[#94A3B8] mb-6">Enter the 6-digit code sent to your email</p>
                 <div className="flex justify-center gap-2">
                   <input 
                     maxLength={6}
                     autoFocus
-                    className="w-full clay-inset bg-foreground/5 p-4 text-center text-2xl font-black tracking-[0.5em] outline-none focus:ring-2 focus:ring-[#FF6B6B]/20"
+                    className="w-full bg-black/[0.01] dark:bg-white/[0.02] border border-black/[0.08] dark:border-white/[0.08] hover:border-[#FF8A8A]/30 focus:border-[#FF6B6B]/60 rounded-2xl p-4 text-center text-2xl font-black tracking-[0.5em] outline-none text-zinc-900 dark:text-white focus:ring-2 focus:ring-[#FF6B6B]/20 transition-all duration-300"
                     placeholder="000000"
                     value={verificationCode}
                     onChange={e => {
@@ -1437,7 +1447,7 @@ export default function Auth() {
                 <button 
                   type="submit"
                   disabled={loading}
-                  className="w-full py-4 mt-6 clay-coral rounded-2xl font-bold text-white uppercase tracking-widest text-xs disabled:opacity-50"
+                  className="w-full h-14 rounded-2xl font-bold text-xs uppercase tracking-[0.25em] flex items-center justify-center gap-3 transition-all duration-300 disabled:opacity-20 disabled:pointer-events-none bg-gradient-to-r from-[#FF7C7C] to-[#FF6B6B] text-white shadow-[0_4px_15px_rgba(255,107,107,0.3)] hover:shadow-[0_8px_25px_rgba(255,107,107,0.5)] hover:-translate-y-0.5 active:translate-y-0 active:scale-95 cursor-pointer mt-6"
                 >
                   {loading ? (
                     <div className="flex items-center justify-center gap-2">
@@ -1517,7 +1527,7 @@ export default function Auth() {
                 <button 
                   type="submit"
                   disabled={loading}
-                  className="w-full py-4 mt-6 clay-coral rounded-2xl font-bold text-white uppercase tracking-widest text-xs disabled:opacity-50"
+                  className="w-full h-14 rounded-2xl font-bold text-xs uppercase tracking-[0.25em] flex items-center justify-center gap-3 transition-all duration-300 disabled:opacity-20 disabled:pointer-events-none bg-gradient-to-r from-[#FF7C7C] to-[#FF6B6B] text-white shadow-[0_4px_15px_rgba(255,107,107,0.3)] hover:shadow-[0_8px_25px_rgba(255,107,107,0.5)] hover:-translate-y-0.5 active:translate-y-0 active:scale-95 cursor-pointer mt-6"
                 >
                   {loading ? (
                     <div className="flex items-center justify-center gap-2">
@@ -1526,17 +1536,19 @@ export default function Auth() {
                     </div>
                   ) : 'Complete Setup'}
                 </button>
-                <p className="text-[10px] opacity-30 text-center mt-6 leading-relaxed px-4">
+                <p className="text-[10px] text-zinc-500 dark:text-[#94A3B8]/60 text-center mt-6 leading-relaxed px-4">
                   We collect this information to personalize your experience. By completing setup, you agree to our{' '}
-                  <a href="https://zavrinfo-arch.github.io/zavr-privacy-policy/" target="_blank" rel="noopener noreferrer" className="underline hover:text-[#FF6B6B] transition-colors">Terms & Conditions</a>
+                  <a href="https://zavrinfo-arch.github.io/zavr-privacy-policy/" target="_blank" rel="noopener noreferrer" className="underline hover:text-[#FF6B6B] transition-colors font-semibold">Terms & Conditions</a>
                   {' '}and{' '}
-                  <a href="https://zavrinfo-arch.github.io/zavr-privacy-policy/" target="_blank" rel="noopener noreferrer" className="underline hover:text-[#FF6B6B] transition-colors">Privacy Policy</a>.
+                  <a href="https://zavrinfo-arch.github.io/zavr-privacy-policy/" target="_blank" rel="noopener noreferrer" className="underline hover:text-[#FF6B6B] transition-colors font-semibold">Privacy Policy</a>.
                 </p>
               </motion.div>
             )}
           </motion.form>
         )}
-      </AnimatePresence>
+          </AnimatePresence>
+        </div>
+      </div>
     </div>
   );
 }
@@ -1545,15 +1557,15 @@ function Input({ icon: Icon, error, className, ...props }: any) {
   return (
     <div className="space-y-1.5">
       <div className={cn(
-        "relative flex items-center clay-card transition-all border",
-        error ? "border-red-500/30 bg-red-500/5" : "border-foreground/5 focus-within:border-foreground/20"
+        "relative flex items-center bg-black/[0.01] dark:bg-white/[0.02] border border-black/[0.08] dark:border-white/[0.08] hover:border-[#FF8A8A]/40 dark:hover:border-[#FF8A8A]/30 focus-within:border-[#FF6B6B]/60 dark:focus-within:border-[#FF6B6B]/60 rounded-2xl px-5 py-4 transition-all duration-300 shadow-sm dark:shadow-inner w-full",
+        error && "border-[#FF8A8A]/50 bg-red-500/5 focus-within:border-[#FF6B6B]"
       )}>
-        <div className="pl-4 opacity-20">
+        <div className="text-zinc-400 dark:text-[#94A3B8] transition-colors duration-200">
           <Icon size={18} />
         </div>
         <input 
           {...props}
-          className={cn("w-full py-4 px-3 bg-transparent outline-none text-sm text-foreground placeholder:opacity-10", className)}
+          className={cn("bg-transparent border-none outline-none flex-1 text-sm font-normal text-zinc-800 dark:text-white placeholder-zinc-400 dark:placeholder-[#4E4E52] focus:ring-0 w-full pl-3", className)}
         />
       </div>
       {props.type === 'date' && props.value && (

@@ -3,105 +3,149 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useEffect } from 'react';
-import { motion } from 'motion/react';
+import React, { useEffect, useState } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
 import { useStore } from '../store/useStore';
 
 export default function SplashScreen() {
   const navigate = useNavigate();
   const { currentUser, session, isAuthLoading } = useStore();
+  const [isExiting, setIsExiting] = useState(false);
+  const [loadingText, setLoadingText] = useState("Preparing your experience...");
 
   useEffect(() => {
-    // We only navigate once auth loading is definitely finished
+    // Rotating elegant loading messages to provide immediate high-end feedback
+    const messages = [
+      { delay: 0, text: "Initializing secure connection..." },
+      { delay: 400, text: "Preparing your premium dashboard..." },
+      { delay: 850, text: "Syncing personal ledgers..." },
+      { delay: 1250, text: "Welcome to Zavr!" }
+    ];
+
+    const timers = messages.map(msg => 
+      setTimeout(() => setLoadingText(msg.text), msg.delay)
+    );
+
+    return () => timers.forEach(clearTimeout);
+  }, []);
+
+  useEffect(() => {
+    // We only transition once the auth loading sequence has finalized
     if (isAuthLoading) return;
 
-    const timer = setTimeout(() => {
-      // 1. Check if we even have a session
+    // Start a smooth exit fade-out transition before navigating
+    const exitTimer = setTimeout(() => {
+      setIsExiting(true);
+    }, 1350);
+
+    // Navigate to the correct destination after the exit transition completes
+    const navTimer = setTimeout(() => {
       if (!session) {
         console.log('[SPLASH] No session, navigating to auth');
         navigate('/auth');
-        return;
+      } else {
+        console.log('[SPLASH] Session exists, navigating to home');
+        navigate('/home');
       }
+    }, 1750);
 
-      // 2. We have a session, go straight to home
-      console.log('[SPLASH] Session exists, navigating to home');
-      navigate('/home');
-    }, 1700); // 1.7s allows the premium animations to breathe beautifully
-
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(exitTimer);
+      clearTimeout(navTimer);
+    };
   }, [currentUser, session, isAuthLoading, navigate]);
 
   return (
-    <div className="fixed inset-0 flex flex-col items-center justify-center bg-background overflow-hidden z-50">
-      {/* Dynamic Background Glows */}
-      <div className="absolute inset-x-0 top-1/4 -translate-y-1/2 flex justify-center gap-24 pointer-events-none opacity-20">
-        <div className="w-80 h-80 bg-cyan-500 rounded-full blur-[120px] animate-pulse" />
-        <div className="w-80 h-80 bg-pink-500 rounded-full blur-[120px] animate-pulse" style={{ animationDelay: '1.5s' }} />
+    <motion.div 
+      initial={{ opacity: 1 }}
+      animate={{ opacity: isExiting ? 0 : 1 }}
+      transition={{ duration: 0.4, ease: "easeInOut" }}
+      className="fixed inset-0 flex flex-col items-center justify-center bg-white dark:bg-[#0a0a0f] overflow-hidden z-50 font-sans"
+      id="splash-screen-container"
+    >
+      {/* Premium Ambient Background Glow */}
+      <div className="absolute inset-0 pointer-events-none overflow-hidden" id="splash-glow">
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[450px] h-[450px] bg-gradient-to-tr from-[#FF6B6B]/5 dark:from-[#FF6B6B]/10 to-[#FF7C7C]/2 dark:to-[#FF7C7C]/5 rounded-full blur-[120px] animate-pulse" />
       </div>
 
-      <motion.div className="flex flex-col items-center z-10">
-        {/* Floating Logo Container with Glassmorphism */}
+      {/* Centered Glassmorphism Card Wrapper */}
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.96, y: 15 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        transition={{ duration: 0.8, ease: "easeOut" }}
+        className="w-full max-w-xs p-8 rounded-[28px] bg-white dark:bg-white/[0.02] border border-black/[0.06] dark:border-white/[0.08] backdrop-blur-2xl flex flex-col items-center shadow-xl dark:shadow-2xl relative z-10 text-center"
+        id="splash-card"
+      >
+        {/* Subtle radial logo highlight */}
+        <div className="absolute -top-8 left-1/2 -translate-x-1/2 w-20 h-20 bg-[#FF6B6B]/20 rounded-full blur-xl pointer-events-none" />
+
+        {/* Floating / Breathing Logo Container */}
         <motion.div
-          initial={{ opacity: 0, y: 20, scale: 0.9 }}
           animate={{ 
-            opacity: 1, 
-            y: [0, -8, 0],
-            scale: 1
+            y: [0, -6, 0]
           }}
           transition={{
-            opacity: { duration: 0.8, ease: "easeOut" },
-            scale: { duration: 0.8, ease: "easeOut" },
-            y: {
-              repeat: Infinity,
-              duration: 4,
-              ease: "easeInOut",
-              delay: 0.4
-            }
+            repeat: Infinity,
+            duration: 3.5,
+            ease: "easeInOut"
           }}
-          className="relative inline-block backdrop-blur-xl bg-white/40 dark:bg-white/5 border border-white/20 rounded-[32px] p-6 shadow-2xl shadow-cyan-500/10"
+          className="relative w-24 h-24 rounded-2xl bg-black/[0.02] dark:bg-white/[0.02] border border-black/[0.08] dark:border-white/[0.1] backdrop-blur-md p-1.5 flex items-center justify-center shadow-md dark:shadow-xl mb-6 overflow-hidden"
+          id="splash-logo-container"
         >
-          {/* Subtle Pink + Cyan Glow Loop */}
-          <div className="absolute inset-0 bg-gradient-to-tr from-cyan-500/20 to-pink-500/20 blur-xl opacity-60 rounded-[32px] animate-pulse pointer-events-none" />
+          {/* Subtle logo background mesh */}
+          <div className="absolute inset-0 bg-gradient-to-tr from-[#FF7C7C]/10 to-[#FF6B6B]/10 opacity-30 rounded-xl" />
           
           <img
             src="https://raw.githubusercontent.com/zavrinfo-arch/zavr-privacy-policy/main/zavr_logo.png"
             alt="Zavr Logo"
-            className="w-24 h-24 object-contain rounded-3xl relative z-10 hover:scale-105 transition-transform duration-500"
+            className="w-full h-full object-contain rounded-xl relative z-10 select-none"
             referrerPolicy="no-referrer"
+            id="splash-logo"
           />
         </motion.div>
 
-        {/* Brand Text */}
-        <motion.h1 
-          initial={{ opacity: 0, y: 15 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8, delay: 0.3, ease: "easeOut" }}
-          className="mt-6 text-5xl font-black tracking-tight text-foreground"
-        >
-          Zavr
-        </motion.h1>
+        {/* Display Brand Heading */}
+        <h1 className="text-3xl font-black tracking-tight text-zinc-900 dark:text-white leading-none" id="splash-brand-title">
+          Z<span className="text-[#FF6B6B]">a</span>vr
+        </h1>
+        <p className="text-[9px] text-zinc-400 dark:text-[#94A3B8]/40 font-bold uppercase tracking-[0.25em] mt-2 font-mono" id="splash-brand-subtitle">
+          Finance Playground
+        </p>
 
-        {/* Pulse glowing brand accent line */}
-        <motion.div
-          initial={{ scaleX: 0, opacity: 0 }}
-          animate={{ scaleX: 1, opacity: 1 }}
-          transition={{ delay: 0.5, duration: 0.8, ease: "easeOut" }}
-          className="mt-4 w-20 h-1 rounded-full bg-gradient-to-r from-cyan-400 via-pink-400 to-cyan-400 origin-center shadow-lg shadow-cyan-400/50"
-        />
-      </motion.div>
-
-      {/* Subtle loader footer */}
-      <div className="absolute bottom-16 left-0 right-0 px-16 max-w-sm mx-auto">
-        <div className="h-[2px] w-full bg-foreground/5 rounded-full overflow-hidden">
+        {/* Just ONE Premium Progress Bar with Glow Effect */}
+        <div className="w-full h-1.5 bg-black/[0.04] dark:bg-white/[0.04] border border-black/[0.06] dark:border-white/[0.06] rounded-full overflow-hidden mt-8 relative shadow-inner" id="splash-progress-track">
           <motion.div 
-            initial={{ width: 0 }}
-            animate={{ width: '100%' }}
-            transition={{ duration: 1.5, ease: "easeInOut" }}
-            className="h-full bg-gradient-to-r from-cyan-400 to-pink-400"
+            initial={{ width: "0%" }}
+            animate={{ width: "100%" }}
+            transition={{ duration: 1.3, ease: "easeInOut" }}
+            className="h-full bg-gradient-to-r from-[#FF7C7C] to-[#FF6B6B] shadow-[0_0_12px_rgba(255,107,107,0.55)] rounded-full"
+            id="splash-progress-bar"
           />
         </div>
+
+        {/* Loading Message Footer with smooth change animation */}
+        <div className="h-4 mt-4.5 flex items-center justify-center" id="splash-message-container">
+          <AnimatePresence mode="wait">
+            <motion.p 
+              key={loadingText}
+              initial={{ opacity: 0, y: 3 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -3 }}
+              transition={{ duration: 0.2, ease: "easeOut" }}
+              className="text-[10px] font-bold text-zinc-500 dark:text-[#94A3B8]/60 uppercase tracking-wider"
+              id="splash-loading-text"
+            >
+              {loadingText}
+            </motion.p>
+          </AnimatePresence>
+        </div>
+      </motion.div>
+
+      {/* Humble credit label matching the onboarding design elements */}
+      <div className="absolute bottom-6 w-full text-center text-[9px] font-bold tracking-[0.25em] text-zinc-300 dark:text-[#94A3B8]/20 uppercase font-mono" id="splash-footer-label">
+        Secured in Zavr Sandbox Core
       </div>
-    </div>
+    </motion.div>
   );
 }

@@ -16,6 +16,7 @@ import {
 import { useStore } from '../store/useStore';
 import { AVATARS_50 } from '../constants/avatars';
 import { shouldDisableHeavyFeatures } from '../utils/previewFix';
+import { useTheme } from '../context/ThemeContext';
 
 // Animated Counter Component using requestAnimationFrame
 function AnimatedCounter({ value, duration = 1000 }) {
@@ -62,10 +63,10 @@ function FriendRequestBell({ userId, pendingRequests, onAccept, onDecline, loadi
         whileHover={{ scale: 1.05 }}
         whileTap={{ scale: 0.95 }}
         onClick={() => setIsOpen(!isOpen)}
-        className="w-10 h-10 clay-inset flex items-center justify-center text-foreground/70 relative cursor-pointer"
+        className="w-10 h-10 bg-black/[0.02] dark:bg-white/[0.02] border border-black/[0.06] dark:border-white/[0.08] backdrop-blur-md rounded-xl flex items-center justify-center text-zinc-700 dark:text-white relative cursor-pointer"
         id="bell-button"
       >
-        <Bell size={18} className="text-purple-400" />
+        <Bell size={18} className="text-[#FF6B6B]" />
         {pendingRequests.length > 0 && (
           <span 
             className="absolute top-2.5 right-2.5 w-2 h-2 bg-[#FF6B6B] rounded-full animate-ping"
@@ -76,14 +77,14 @@ function FriendRequestBell({ userId, pendingRequests, onAccept, onDecline, loadi
 
       {isOpen && (
         <div 
-          className="absolute right-0 mt-2 w-72 clay p-4 z-50 transform origin-top-right transition-all duration-200"
+          className="absolute right-0 mt-2 w-72 bg-white dark:bg-[#111118]/95 border border-black/[0.06] dark:border-white/[0.08] backdrop-blur-2xl p-4 z-50 rounded-2xl shadow-2xl"
           id="bell-dropdown"
         >
-          <div className="flex items-center justify-between border-b border-border pb-2 mb-3">
-            <span className="text-[10px] font-black text-gray-400 uppercase tracking-wider">
+          <div className="flex items-center justify-between border-b border-black/[0.06] dark:border-white/[0.08] pb-2 mb-3">
+            <span className="text-[10px] font-bold text-zinc-500 dark:text-gray-400 uppercase tracking-wider">
               Link Invitations
             </span>
-            <span className="text-[9px] font-black text-[#FF6B6B] bg-[#FF6B6B]/10 px-2.5 py-0.5 rounded-full uppercase tracking-wider">
+            <span className="text-[9px] font-bold text-[#FF6B6B] bg-[#FF6B6B]/10 border border-[#FF6B6B]/20 px-2.5 py-0.5 rounded-full uppercase tracking-wider">
               {pendingRequests.length} Pending
             </span>
           </div>
@@ -93,7 +94,7 @@ function FriendRequestBell({ userId, pendingRequests, onAccept, onDecline, loadi
               <Loader2 className="w-5 h-5 text-[#FF6B6B] animate-spin" />
             </div>
           ) : pendingRequests.length === 0 ? (
-            <div className="text-center py-8 text-gray-500 font-black text-[10px] uppercase tracking-wider" id="bell-empty">
+            <div className="text-center py-8 text-zinc-400 dark:text-gray-500 font-bold text-[10px] uppercase tracking-wider" id="bell-empty">
               No pending requests found
             </div>
           ) : (
@@ -101,16 +102,16 @@ function FriendRequestBell({ userId, pendingRequests, onAccept, onDecline, loadi
               {pendingRequests.map((req) => (
                 <div 
                    key={req.id} 
-                   className="flex items-center justify-between p-2.5 bg-surface-light rounded-xl border border-border"
+                   className="flex items-center justify-between p-2.5 bg-black/[0.01] dark:bg-white/[0.02] border border-black/[0.06] dark:border-white/[0.08] rounded-xl"
                    id={`friend-req-${req.id}`}
                 >
                   <div className="flex items-center gap-2 min-w-0">
-                    <div className="w-8 h-8 rounded-full bg-surface text-foreground font-black flex items-center justify-center text-[10px] uppercase shadow-inner border border-border shrink-0 select-none">
+                    <div className="w-8 h-8 rounded-full bg-black/[0.04] dark:bg-white/[0.04] border border-black/[0.08] dark:border-white/[0.08] text-zinc-800 dark:text-white font-bold flex items-center justify-center text-[10px] uppercase shrink-0 select-none">
                       {req.sender_profile?.username?.charAt(0) || 'U'}
                     </div>
                     <div className="flex flex-col min-w-0">
-                      <span className="text-xs font-bold text-foreground truncate">@{req.sender_profile?.username || 'user'}</span>
-                      <span className="text-[9px] text-[#8E8E93] truncate">{req.sender_profile?.full_name || 'Zavr User'}</span>
+                      <span className="text-xs font-bold text-zinc-900 dark:text-white truncate">@{req.sender_profile?.username || 'user'}</span>
+                      <span className="text-[9px] text-zinc-400 dark:text-[#94A3B8]/60 truncate">{req.sender_profile?.full_name || 'Zavr User'}</span>
                     </div>
                   </div>
 
@@ -118,7 +119,7 @@ function FriendRequestBell({ userId, pendingRequests, onAccept, onDecline, loadi
                     <button
                       onClick={() => onAccept(req.id, req.sender_id)}
                       disabled={loading}
-                      className="bg-[#4ECDC4] hover:bg-[#45B7AF] text-black rounded-lg px-2 py-1 transition-all font-black text-[9px] flex items-center gap-1 cursor-pointer shadow-md active:scale-95 uppercase tracking-wider"
+                      className="bg-gradient-to-r from-[#FF7C7C] to-[#FF6B6B] text-white rounded-lg px-2.5 py-1 transition-all font-bold text-[9px] flex items-center gap-1 cursor-pointer shadow-md active:scale-95 uppercase tracking-wider"
                       id={`accept-btn-${req.id}`}
                     >
                       <Check className="w-3 h-3" /> Link
@@ -126,7 +127,7 @@ function FriendRequestBell({ userId, pendingRequests, onAccept, onDecline, loadi
                     <button
                       onClick={() => onDecline(req.id)}
                       disabled={loading}
-                      className="bg-surface-light hover:bg-surface border border-border text-foreground/60 rounded-lg px-2 py-1 transition-all font-black text-[9px] flex items-center gap-1 cursor-pointer active:scale-95 uppercase tracking-wider"
+                      className="bg-black/[0.02] dark:bg-white/[0.02] border border-black/[0.06] dark:border-white/[0.08] text-zinc-500 dark:text-white/60 rounded-lg px-2 py-1 transition-all font-bold text-[9px] flex items-center gap-1 cursor-pointer active:scale-95 uppercase tracking-wider"
                       id={`decline-btn-${req.id}`}
                     >
                       <X className="w-3 h-3" /> Decline
@@ -152,28 +153,28 @@ function BalanceCard({ title, amount, onClick, isFiltered, icon: Icon, colorThem
       whileTap={{ scale: 0.98 }}
       onClick={onClick}
       className={cn(
-        "relative overflow-hidden p-5 rounded-[24px] clay-card bg-surface transition-all duration-200 cursor-pointer select-none border",
+        "relative overflow-hidden p-5 rounded-2xl bg-white dark:bg-white/[0.02] border backdrop-blur-md transition-all duration-300 cursor-pointer select-none",
         isFiltered 
-          ? (isOwed ? 'border-[#4ECDC4] shadow-[0_0_15px_rgba(78,205,196,0.15)] bg-surface/90' : 'border-[#FF6B6B] shadow-[0_0_15px_rgba(255,107,107,0.15)] bg-surface/90')
-          : 'border-border'
+          ? 'border-[#FF6B6B] shadow-lg shadow-[rgba(255,107,107,0.15)] bg-white dark:bg-white/[0.04]'
+          : 'border-black/[0.06] dark:border-white/[0.08] hover:border-black/[0.12] dark:hover:border-white/[0.15] hover:bg-black/[0.01] dark:hover:bg-white/[0.04]'
       )}
       id={`balance-card-${title.toLowerCase().replace(/\s+/g, '-')}`}
     >
-      <div className="absolute right-3 top-3 opacity-[0.03] pointer-events-none">
-        {Icon && <Icon className="w-12 h-12" />}
+      <div className="absolute right-3 top-3 opacity-5 pointer-events-none">
+        {Icon && <Icon className="w-12 h-12 text-[#FF6B6B]" />}
       </div>
-      <span className="text-[9px] font-black uppercase tracking-[0.15em] text-[#8E8E93] block mb-2">
+      <span className="text-[9px] font-bold uppercase tracking-[0.15em] text-zinc-500 dark:text-[#94A3B8]/60 block mb-2">
         {title}
       </span>
       <h3 className={cn(
         "text-2xl font-black tracking-tight",
-        isOwed ? "text-[#4ECDC4]" : "text-[#FF6B6B]"
+        isOwed ? "text-[#FF6B6B]" : "text-[#FF7C7C]"
       )}>
         <AnimatedCounter value={amount} />
       </h3>
-      <div className="mt-4 flex items-center justify-between text-[8px] font-black uppercase tracking-widest text-[#8E8E93] border-t border-border pt-2">
+      <div className="mt-4 flex items-center justify-between text-[8px] font-bold uppercase tracking-widest text-zinc-400 dark:text-[#94A3B8]/40 border-t border-black/[0.05] dark:border-white/[0.05] pt-2">
         <span>{isFiltered ? 'Active Filter' : 'Click to filter'}</span>
-        <span className={cn(isOwed ? "text-[#4ECDC4]" : "text-[#FF6B6B]")}>
+        <span className={cn(isOwed ? "text-[#FF6B6B]" : "text-[#FF7C7C]")}>
           {isFiltered ? '●' : '→'}
         </span>
       </div>
@@ -181,7 +182,7 @@ function BalanceCard({ title, amount, onClick, isFiltered, icon: Icon, colorThem
   );
 }
 
-// Internal sub-component: ContactSearch redesigned to fully adopt Claymorphism styling
+// Internal sub-component: ContactSearch redesigned to fully adopt Glassmorphism styling
 function ContactSearch({ userId, onAddFriend, onFocusInput, searchInputRef }) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
@@ -284,7 +285,7 @@ function ContactSearch({ userId, onAddFriend, onFocusInput, searchInputRef }) {
   return (
     <div className="relative flex flex-col flex-1 min-h-0 font-sans space-y-3.5" ref={containerRef} id="contact-search-block">
       <div className="relative shrink-0">
-        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-foreground/30">
+        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[#94A3B8]/40">
           <Search className="w-4 h-4" />
         </span>
         <input
@@ -297,13 +298,13 @@ function ContactSearch({ userId, onAddFriend, onFocusInput, searchInputRef }) {
           }}
           onFocus={() => setShowDropdown(true)}
           placeholder=" Enter username "
-          className="w-full clay-inset bg-transparent border-0 rounded-2xl px-4 py-3.5 pl-11 pr-10 focus:ring-1 focus:ring-[#FF6B6B]/30 outline-none transition-all duration-200 text-foreground placeholder-[#8E8E93]/60 text-xs font-medium"
+          className="w-full bg-white/[0.02] border border-white/[0.08] rounded-2xl px-4 py-3.5 pl-11 pr-10 focus:border-[#FF6B6B]/60 focus:ring-1 focus:ring-[#FF6B6B]/30 outline-none transition-all duration-200 text-white placeholder-[#94A3B8]/40 text-xs font-medium"
           id="contact-search-input"
         />
         {query && (
           <button
             onClick={() => { setQuery(''); setResults([]); }}
-            className="absolute right-4 top-1/2 -translate-y-1/2 text-foreground/30 hover:text-foreground transition-colors cursor-pointer"
+            className="absolute right-4 top-1/2 -translate-y-1/2 text-[#94A3B8]/40 hover:text-white transition-colors cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
@@ -318,7 +319,7 @@ function ContactSearch({ userId, onAddFriend, onFocusInput, searchInputRef }) {
       {/* Recent searches display block */}
       {recentSearches.length > 0 && !query && (
         <div className="flex flex-wrap items-center gap-1.5 pt-1 shrink-0" id="recent-searches">
-          <span className="text-[8px] font-black uppercase tracking-[0.1em] text-foreground/20 mr-1">
+          <span className="text-[8px] font-bold uppercase tracking-[0.15em] text-[#94A3B8]/40 mr-1">
             Recents:
           </span>
           {recentSearches.map((term) => (
@@ -328,7 +329,7 @@ function ContactSearch({ userId, onAddFriend, onFocusInput, searchInputRef }) {
                 setQuery(term);
                 setShowDropdown(true);
               }}
-              className="flex items-center gap-1.5 px-3 py-1 bg-surface-light hover:bg-surface border border-border text-[#8E8E93] rounded-full text-[10px] font-bold cursor-pointer transition-colors duration-150"
+              className="flex items-center gap-1.5 px-3 py-1 bg-white/[0.02] hover:bg-white/[0.04] border border-white/[0.08] text-[#94A3B8] rounded-full text-[10px] font-bold cursor-pointer transition-colors duration-150"
               id={`recent-term-${term}`}
             >
               <span>@{term}</span>
@@ -347,15 +348,15 @@ function ContactSearch({ userId, onAddFriend, onFocusInput, searchInputRef }) {
       {/* Results Section */}
       {showDropdown && query && (
         <div 
-          className="flex-1 min-h-0 flex flex-col clay p-4 overflow-hidden transform origin-top transition-all duration-200 mt-2"
+          className="flex-1 min-h-0 flex flex-col bg-white dark:bg-[#111118]/95 border border-black/[0.06] dark:border-white/[0.08] p-4 rounded-2xl shadow-2xl overflow-hidden transform origin-top transition-all duration-200 mt-2"
           id="search-results-dropdown"
         >
-          <div className="text-[9px] uppercase font-black tracking-widest text-[#8E8E93] mb-3 border-b border-border pb-1.5 shrink-0">
+          <div className="text-[9px] uppercase font-bold tracking-widest text-zinc-400 dark:text-[#94A3B8]/40 mb-3 border-b border-black/[0.05] dark:border-white/[0.05] pb-1.5 shrink-0">
             Discovered Zavr Profiles
           </div>
 
           {results.length === 0 && !loading ? (
-            <div className="text-center py-6 text-foreground/30 font-black text-[10px] uppercase tracking-wider shrink-0" id="results-empty">
+            <div className="text-center py-6 text-zinc-400 dark:text-[#94A3B8]/30 font-bold text-[10px] uppercase tracking-wider shrink-0" id="results-empty">
               No matching profiles found
             </div>
           ) : (
@@ -363,11 +364,11 @@ function ContactSearch({ userId, onAddFriend, onFocusInput, searchInputRef }) {
               {results.map((profile) => (
                 <div
                   key={profile.id}
-                  className="flex items-center justify-between p-2 hover:bg-surface-light rounded-xl transition-all duration-150"
+                  className="flex items-center justify-between p-2 hover:bg-black/[0.02] dark:hover:bg-white/[0.02] rounded-xl transition-all duration-150"
                   id={`profile-card-${profile.id}`}
                 >
                   <div className="flex items-center gap-2.5 min-w-0">
-                    <div className="w-9 h-9 rounded-full bg-surface-light border border-border flex items-center justify-center font-black text-foreground/90 text-xs uppercase shadow-inner select-none shrink-0 border-border overflow-hidden">
+                    <div className="w-9 h-9 rounded-full bg-black/[0.02] dark:bg-white/[0.02] border border-black/[0.06] dark:border-white/[0.08] flex items-center justify-center font-bold text-zinc-800 dark:text-white text-xs uppercase shadow-inner select-none shrink-0 overflow-hidden">
                       {profile.avatar_url ? (
                         <img
                           src={profile.avatar_url}
@@ -380,17 +381,17 @@ function ContactSearch({ userId, onAddFriend, onFocusInput, searchInputRef }) {
                       )}
                     </div>
                     <div className="flex flex-col min-w-0">
-                      <span className="text-xs font-bold text-foreground truncate">@{profile.username}</span>
-                      <span className="text-[9px] text-[#8E8E93] truncate">{profile.full_name || 'Zavr Friend'}</span>
+                      <span className="text-xs font-bold text-zinc-900 dark:text-white truncate">@{profile.username}</span>
+                      <span className="text-[9px] text-zinc-500 dark:text-[#94A3B8]/60 truncate">{profile.full_name || 'Zavr Friend'}</span>
                     </div>
                   </div>
 
                   <button
                     onClick={() => handleTriggerConnect(profile)}
-                    className="bg-[#4ECDC4] hover:bg-[#45B7AF] text-black rounded-lg px-3 py-1.5 font-black text-[9px] flex items-center gap-1 cursor-pointer transition-all duration-150 shadow-md active:scale-95 uppercase tracking-wider flex-shrink-0"
+                    className="bg-gradient-to-r from-[#FF7C7C] to-[#FF6B6B] text-white rounded-lg px-3 py-1.5 font-bold text-[9px] flex items-center gap-1 cursor-pointer transition-all duration-150 shadow-md active:scale-95 uppercase tracking-wider flex-shrink-0"
                     id={`connect-btn-${profile.id}`}
                   >
-                    <UserPlus className="w-3 h-3 text-black" /> Link
+                    <UserPlus className="w-3 h-3 text-white" /> Link
                   </button>
                 </div>
               ))}
@@ -412,10 +413,10 @@ function DebtList({ debts, userId, onSettle, loading }) {
   return (
     <div className="space-y-4 font-sans" id="debt-list-block">
       <div className="flex items-center justify-between">
-        <h3 className="text-xl font-bold tracking-tight text-foreground serif-heading">
+        <h3 className="text-xl font-bold tracking-tight text-zinc-900 dark:text-white">
           Settlement Ledgers
         </h3>
-        <span className="px-2.5 py-1 rounded-lg clay-inset bg-foreground/5 text-[8px] font-black text-foreground/50 uppercase tracking-widest">
+        <span className="px-2.5 py-1 rounded-lg bg-black/[0.01] dark:bg-white/[0.02] border border-black/[0.06] dark:border-white/[0.08] text-[8px] font-bold text-zinc-500 dark:text-[#94A3B8]/60 uppercase tracking-widest">
           {debts.length} Records
         </span>
       </div>
@@ -431,25 +432,25 @@ function DebtList({ debts, userId, onSettle, loading }) {
             <motion.div
               layout
               key={item.id}
-              className="clay-card p-4.5 bg-surface flex flex-col gap-3 border border-border"
+              className="bg-white dark:bg-white/[0.02] border border-black/[0.06] dark:border-white/[0.08] backdrop-blur-md p-5 rounded-2xl flex flex-col gap-3 shadow-sm dark:shadow-md"
               id={`debt-row-${item.id}`}
             >
               {/* Header: User Profile Details + Amount */}
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-10 h-10 rounded-xl clay-inset flex items-center justify-center text-foreground/90 font-black text-xs shrink-0 select-none">
+                  <div className="w-10 h-10 rounded-xl bg-black/[0.02] dark:bg-white/[0.02] border border-black/[0.06] dark:border-white/[0.08] flex items-center justify-center text-zinc-800 dark:text-white font-bold text-xs shrink-0 select-none">
                     {partnerProfile?.username?.charAt(0)?.toUpperCase() || 'U'}
                   </div>
                   <div className="min-w-0">
                     <div className="flex items-baseline gap-1.5 flex-wrap">
-                      <span className="text-sm font-bold text-foreground truncate">
+                      <span className="text-sm font-bold text-zinc-900 dark:text-white truncate">
                         {partnerProfile?.full_name || 'Zavr Member'}
                       </span>
-                      <span className="text-[10px] text-foreground/40 truncate">
+                      <span className="text-[10px] text-zinc-400 dark:text-[#94A3B8]/40 truncate">
                         @{partnerProfile?.username || 'user'}
                       </span>
                     </div>
-                    <p className="text-xs text-foreground/60 font-medium truncate mt-0.5">
+                    <p className="text-xs text-zinc-500 dark:text-[#94A3B8]/60 font-medium truncate mt-0.5">
                       {item.purpose || 'No description listed'}
                     </p>
                   </div>
@@ -458,25 +459,25 @@ function DebtList({ debts, userId, onSettle, loading }) {
                 <div className="text-right flex-shrink-0">
                   <span className={cn(
                     "text-base font-black tracking-tight",
-                    isLent ? "text-[#4ECDC4]" : "text-[#FF6B6B]"
+                    isLent ? "text-[#FF6B6B]" : "text-[#FF7C7C]"
                   )}>
                     {isLent ? '+' : '-'} ₹{Number(item.amount).toLocaleString('en-IN')}
                   </span>
-                  <span className="text-[8px] text-foreground/40 uppercase tracking-wider block mt-0.5">
+                  <span className="text-[8px] text-zinc-400 dark:text-[#94A3B8]/40 uppercase tracking-wider block mt-0.5">
                     {isLent ? 'owes you' : 'you owe'}
                   </span>
                 </div>
               </div>
 
               {/* Footer: Date Info + Action / Status badges */}
-              <div className="flex items-center justify-between gap-4 pt-3 border-t border-border mt-1">
+              <div className="flex items-center justify-between gap-4 pt-3 border-t border-black/[0.05] dark:border-white/[0.05] mt-1">
                 <div>
                   {item.due_date ? (
-                    <span className="text-[9px] text-[#8E8E93] font-mono">
+                    <span className="text-[9px] text-zinc-500 dark:text-[#94A3B8]/60 font-mono">
                       DUE: {new Date(item.due_date).toLocaleDateString()}
                     </span>
                   ) : (
-                    <span className="text-[8px] text-foreground/20 font-mono uppercase tracking-widest">
+                    <span className="text-[8px] text-zinc-400 dark:text-[#94A3B8]/30 font-mono uppercase tracking-widest">
                       No Deadline
                     </span>
                   )}
@@ -484,15 +485,15 @@ function DebtList({ debts, userId, onSettle, loading }) {
 
                 <div className="flex items-center gap-2 flex-shrink-0">
                   {settled ? (
-                    <span className="text-emerald-500 bg-emerald-500/10 border border-emerald-500/20 text-[8px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider">
+                    <span className="text-emerald-500 dark:text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 text-[8px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider">
                       Paid
                     </span>
                   ) : overdue ? (
-                    <span className="text-red-500 bg-red-500/10 border border-red-500/20 text-[8px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider animate-pulse">
+                    <span className="text-red-500 bg-red-500/10 border border-red-500/20 text-[8px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider animate-pulse">
                       Overdue
                     </span>
                   ) : (
-                    <span className="text-amber-500 bg-amber-500/10 border border-amber-500/20 text-[8px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider">
+                    <span className="text-amber-500 bg-amber-500/10 border border-amber-500/20 text-[8px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider">
                       Pending
                     </span>
                   )}
@@ -501,7 +502,7 @@ function DebtList({ debts, userId, onSettle, loading }) {
                     <button
                       onClick={() => onSettle(item.id)}
                       disabled={loading}
-                      className="clay-inset bg-surface hover:bg-surface-light text-foreground border border-border rounded-xl px-3 py-1.5 text-[9px] font-black transition-all cursor-pointer shadow-md active:scale-95 flex items-center gap-1 shrink-0 uppercase tracking-wider"
+                      className="bg-black/[0.02] dark:bg-white/[0.02] hover:bg-black/[0.04] dark:hover:bg-white/[0.04] text-zinc-700 dark:text-white border border-black/[0.06] dark:border-white/[0.08] rounded-xl px-3 py-1.5 text-[9px] font-bold transition-all cursor-pointer shadow-md active:scale-95 flex items-center gap-1 shrink-0 uppercase tracking-wider"
                     >
                       {loading ? (
                         <Loader2 className="w-3 h-3 animate-spin text-[#FF6B6B]" />
@@ -524,24 +525,24 @@ function DebtList({ debts, userId, onSettle, loading }) {
 function EmptyDebtState({ onLinkContactsClick }) {
   return (
     <div 
-      className="clay-card p-12 text-center flex flex-col items-center justify-center space-y-4 bg-surface/40 border border-border"
+      className="bg-white dark:bg-white/[0.02] border border-black/[0.06] dark:border-white/[0.08] backdrop-blur-md p-12 text-center flex flex-col items-center justify-center space-y-4 rounded-2xl shadow-sm dark:shadow-md"
       id="empty-debt-state"
     >
-      <div className="w-12 h-12 rounded-xl clay-inset flex items-center justify-center text-foreground/30">
+      <div className="w-12 h-12 rounded-xl bg-black/[0.01] dark:bg-white/[0.02] border border-black/[0.06] dark:border-white/[0.08] flex items-center justify-center text-zinc-400 dark:text-[#94A3B8]/40">
         <Wallet size={24} />
       </div>
       <div className="space-y-1">
-        <h4 className="text-foreground font-bold text-sm">
+        <h4 className="text-zinc-950 dark:text-white font-bold text-sm">
           No Active Debts
         </h4>
-        <p className="text-xs text-foreground/30 font-medium">
+        <p className="text-xs text-zinc-400 dark:text-[#94A3B8]/40 font-medium">
           Your settlement boards are perfectly clear.
         </p>
       </div>
       <button
         type="button"
         onClick={onLinkContactsClick}
-        className="px-5 py-2.5 clay-inset bg-surface hover:bg-surface-light text-foreground border border-border rounded-xl text-[9px] font-black uppercase tracking-widest transition-all cursor-pointer shadow-md"
+        className="px-5 py-2.5 bg-gradient-to-r from-[#FF7C7C] to-[#FF6B6B] text-white rounded-xl text-[9px] font-bold uppercase tracking-widest transition-all cursor-pointer shadow-md"
         id="link-contacts-button"
       >
         Link Contacts
@@ -553,15 +554,15 @@ function EmptyDebtState({ onLinkContactsClick }) {
 // Skeleton Card component during load state
 function SkeletonCard() {
   return (
-    <div className="clay-card p-4.5 bg-surface animate-pulse flex items-center justify-between border border-border">
+    <div className="bg-white dark:bg-white/[0.02] border border-black/[0.06] dark:border-white/[0.08] backdrop-blur-md p-5 rounded-2xl animate-pulse flex items-center justify-between">
       <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-xl clay-inset"></div>
+        <div className="w-10 h-10 rounded-xl bg-black/[0.04] dark:bg-white/[0.04]"></div>
         <div className="space-y-2">
-          <div className="h-3 w-20 bg-surface-light rounded"></div>
-          <div className="h-2 w-28 bg-surface-light rounded"></div>
+          <div className="h-3 w-20 bg-black/[0.04] dark:bg-white/[0.04] rounded"></div>
+          <div className="h-2 w-28 bg-black/[0.02] dark:bg-white/[0.02] rounded"></div>
         </div>
       </div>
-      <div className="h-4 w-12 bg-surface-light rounded-lg"></div>
+      <div className="h-4 w-12 bg-black/[0.04] dark:bg-white/[0.04] rounded-lg"></div>
     </div>
   );
 }
@@ -580,7 +581,7 @@ function BottomNavigation({ onPlusClick }) {
   ];
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-40 px-6 py-6 bg-surface/85 backdrop-blur-2xl flex items-center justify-around border-t border-border" id="bottom-navigation-bar">
+    <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md z-40 px-6 py-5 bg-white/90 dark:bg-[#111118]/85 border-t border-black/[0.06] dark:border-white/[0.06] backdrop-blur-2xl flex items-center justify-around shadow-lg dark:shadow-[0_-10px_35px_rgba(0,0,0,0.5)]" id="bottom-navigation-bar">
       {navItems.map((item, i) => {
         if (i === 2) {
           return (
@@ -590,7 +591,7 @@ function BottomNavigation({ onPlusClick }) {
                 whileTap={{ scale: 1.08, rotate: 45 }}
                 transition={{ type: "tween", duration: 0.2 }}
                 onClick={onPlusClick}
-                className="absolute -top-16 left-1/2 -translate-x-1/2 w-16 h-16 clay-coral rounded-2xl flex items-center justify-center text-white border-4 border-background shadow-2xl cursor-pointer"
+                className="absolute -top-16 left-1/2 -translate-x-1/2 w-16 h-16 clay-coral rounded-2xl flex items-center justify-center text-white border-4 border-white dark:border-[#111118] shadow-2xl cursor-pointer"
                 id="zettl-nav-plus-button"
               >
                 <Plus className="w-8 h-8" />
@@ -608,7 +609,7 @@ function BottomNavigation({ onPlusClick }) {
             onClick={() => navigate(item.path)}
             className={cn(
               "flex flex-col items-center gap-1.5 transition-all focus:outline-none cursor-pointer",
-              isActive ? "text-[#FF6B6B] scale-110 font-bold" : "opacity-20 hover:opacity-40 text-foreground"
+              isActive ? "text-[#FF6B6B] scale-110 font-bold" : "opacity-30 dark:opacity-20 hover:opacity-60 text-zinc-500 dark:text-white"
             )}
             id={`nav-item-${item.label.toLowerCase()}`}
           >
@@ -629,8 +630,7 @@ export default function ZettlPage() {
   const [profile, setProfile] = useState(null);
 
   const currentUser = useStore((state) => state.currentUser);
-  const theme = useStore((state) => state.theme);
-  const setTheme = useStore((state) => state.setTheme);
+  const { theme, setTheme } = useTheme();
 
   const getTimeGreeting = () => {
     const hour = new Date().getHours();
@@ -1098,31 +1098,31 @@ export default function ZettlPage() {
       {/* FIXED POSITION HEADER SECTION FLOATING COMPONENT - Matches Layout.tsx ProfileHeader */}
       <div className="fixed top-0 left-0 right-0 z-[95] px-4 pt-4 pointer-events-none" id="zettl-header">
         <div 
-          className="w-full max-w-md mx-auto flex pointer-events-auto justify-between items-center p-4 clay relative"
+          className="w-full max-w-md mx-auto flex pointer-events-auto bg-white/90 dark:bg-[#111118]/80 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.08] rounded-2xl p-3.5 justify-between items-center shadow-md dark:shadow-lg relative"
         >
           {/* Profile Left */}
           <div className="flex items-center gap-3 min-w-0 cursor-pointer" onClick={() => navigate('/profile')}>
             <div className="relative flex-shrink-0">
-              <div className="w-12 h-12 rounded-full p-0.5 flex items-center justify-center overflow-hidden bg-surface-light border border-border animate-fade-in">
+              <div className="w-12 h-12 rounded-full p-0.5 flex items-center justify-center overflow-hidden bg-black/[0.03] dark:bg-white/[0.04] border border-black/[0.08] dark:border-white/[0.08]">
                 <img 
                   src={avatarUrl} 
                   alt="Profile Avatar" 
                   className="w-full h-full object-cover rounded-full"
                 />
               </div>
-              <div className="absolute -bottom-1 -right-1 w-5 h-5 clay-coral rounded-lg flex items-center justify-center text-[8px] font-black text-white border-2 border-surface">
+              <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-gradient-to-r from-[#FF7C7C] to-[#FF6B6B] rounded-lg flex items-center justify-center text-[8px] font-black text-white border-2 border-white dark:border-[#111118]">
                 {activeUser.level || 1}
               </div>
             </div>
             
             <div className="flex flex-col min-w-0 font-sans">
-              <p className="text-[9px] font-black text-[#8E8E93] tracking-[0.2em] uppercase truncate">
+              <p className="text-[9px] font-bold text-zinc-500 dark:text-[#94A3B8]/60 tracking-[0.2em] uppercase truncate">
                 {getTimeGreeting()}
               </p>
-              <h2 className="text-sm font-black text-foreground tracking-tight leading-none truncate mt-0.5" style={{ letterSpacing: '-0.02em' }}>
+              <h2 className="text-sm font-black text-zinc-900 dark:text-white tracking-tight leading-none truncate mt-0.5" style={{ letterSpacing: '-0.02em' }}>
                 {activeUser.fullName.includes('@') ? activeUser.fullName.split('@')[0] : activeUser.fullName.split(' ')[0] || 'User'}
               </h2>
-              <p className="text-[9px] text-[#8E8E93] font-medium truncate mt-0.5">
+              <p className="text-[9px] text-zinc-400 dark:text-[#94A3B8]/40 font-medium truncate mt-0.5">
                 @{activeUser.username}
               </p>
             </div>
@@ -1131,24 +1131,24 @@ export default function ZettlPage() {
           {/* Right Controls */}
           <div className="flex items-center gap-2 flex-shrink-0">
             {/* Streak Counter */}
-            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-surface-light border border-border shadow-inner">
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-black/[0.02] dark:bg-white/[0.02] border border-black/[0.06] dark:border-white/[0.08] shadow-sm dark:shadow-inner">
               <Flame size={14} className={cn(
                 "transition-all",
-                (activeUser.streak || 0) > 0 ? "text-orange-500 animate-pulse" : "text-foreground/20"
+                (activeUser.streak || 0) > 0 ? "text-orange-500 animate-pulse" : "text-zinc-300 dark:text-[#94A3B8]/30"
               )} />
-              <span className="text-xs font-black text-foreground">{activeUser.streak || 0}</span>
+              <span className="text-xs font-bold text-zinc-800 dark:text-white">{activeUser.streak || 0}</span>
             </div>
 
             {/* Theme Toggle */}
             <button
               onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-              className="p-2.5 rounded-xl bg-surface-light hover:bg-surface border border-border hover:text-[#FF6B6B] text-foreground/70 transition-all active:scale-95 cursor-pointer flex items-center justify-center"
+              className="p-2.5 rounded-xl bg-black/[0.02] dark:bg-white/[0.02] hover:bg-black/[0.04] dark:hover:bg-white/[0.06] border border-black/[0.06] dark:border-white/[0.05] hover:text-[#FF6B6B] text-zinc-600 dark:text-[#94A3B8] transition-all active:scale-95 cursor-pointer flex items-center justify-center"
             >
               {theme === 'dark' ? <Sun size={14} /> : <Moon size={14} />}
             </button>
 
             {/* Friend Request Bell */}
-            <div className="text-foreground hover:text-[#FF6B6B] flex items-center">
+            <div className="text-zinc-600 dark:text-white hover:text-[#FF6B6B] flex items-center">
               <FriendRequestBell
                 userId={userId}
                 pendingRequests={friendRequests}
@@ -1194,13 +1194,13 @@ export default function ZettlPage() {
             className="flex items-center justify-between px-4 py-3 bg-[#FF6B6B]/5 border border-[#FF6B6B]/20 rounded-xl text-xs font-medium"
             id="filter-banner"
           >
-            <span className="text-[#FF6B6B] text-[9px] font-black uppercase tracking-wider flex items-center gap-1.5">
+            <span className="text-[#FF6B6B] text-[9px] font-bold uppercase tracking-wider flex items-center gap-1.5">
               <span className="w-1.5 h-1.5 rounded-full bg-[#FF6B6B] animate-pulse" />
               Showing {filter === 'lent' ? 'owed to you' : 'you owe'}
             </span>
             <button
               onClick={() => setFilter('all')}
-              className="font-black text-[#FF6B6B] hover:text-[#FF6B6B]/80 text-[9px] uppercase tracking-wider cursor-pointer"
+              className="font-bold text-[#FF6B6B] hover:text-[#FF6B6B]/80 text-[9px] uppercase tracking-wider cursor-pointer"
             >
               Clear Filter [X]
             </button>
@@ -1263,7 +1263,7 @@ export default function ZettlPage() {
             whileHover={{ scale: 1.1 }}
             whileTap={{ scale: 0.95 }}
             onClick={() => setIsContactBookOpen(true)}
-            className="w-14 h-14 rounded-full bg-[#FF6B6B] hover:bg-[#FF6B6B]/90 text-white flex items-center justify-center shadow-xl shadow-[#FF6B6B]/30 cursor-pointer pointer-events-auto transition-all"
+            className="w-14 h-14 rounded-full bg-gradient-to-r from-[#FF7C7C] to-[#FF6B6B] text-white flex items-center justify-center shadow-lg shadow-[rgba(255,107,107,0.35)] hover:shadow-[rgba(255,107,107,0.5)] cursor-pointer pointer-events-auto transition-all"
             id="open-contact-book-fab"
           >
             <UserPlus size={22} />

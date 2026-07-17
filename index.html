@@ -5,6 +5,66 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Zavr - Save Smarter, Together</title>
     <link rel="icon" type="image/svg+xml" href="/logo.svg" />
+    <script>
+      (function() {
+        // Prevent early MetaMask / Web3 unhandled exceptions or connection errors in the sandbox iframe
+        const safeMockEthereum = {
+          isMetaMask: true,
+          isConnected: function() { return true; },
+          request: async function(requestInfo) {
+            if (!requestInfo || typeof requestInfo !== 'object') return null;
+            const method = requestInfo.method;
+            if (method === 'eth_requestAccounts' || method === 'eth_accounts') {
+              return ['0x71C7656EC7ab88b098defB751B7401B5f6d8976F'];
+            }
+            if (method === 'eth_chainId') {
+              return '0x1'; // Mainnet
+            }
+            if (method === 'net_version') {
+              return '1';
+            }
+            return null;
+          },
+          on: function(eventName, callback) {
+            return safeMockEthereum;
+          },
+          removeListener: function(eventName, callback) {
+            return safeMockEthereum;
+          },
+          providers: []
+        };
+
+        try {
+          Object.defineProperty(window, 'ethereum', {
+            value: safeMockEthereum,
+            writable: true,
+            configurable: true
+          });
+        } catch (e) {}
+
+        // Set up global error/rejection interceptors immediately
+        window.addEventListener('error', function(event) {
+          try {
+            const msg = (event.message || (event.error && event.error.message) || '').toLowerCase();
+            if (msg.includes('metamask') || msg.includes('ethereum') || msg.includes('web3') || msg.includes('wallet')) {
+              event.preventDefault();
+              event.stopPropagation();
+            }
+          } catch (err) {}
+        }, true);
+
+        window.addEventListener('unhandledrejection', function(event) {
+          try {
+            const reason = event.reason;
+            const msg = (reason ? (reason.message || String(reason)) : '').toLowerCase();
+            if (msg.includes('metamask') || msg.includes('ethereum') || msg.includes('web3') || msg.includes('wallet')) {
+              event.preventDefault();
+              event.stopPropagation();
+            }
+          } catch (err) {}
+        }, true);
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

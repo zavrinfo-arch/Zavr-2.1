@@ -125,6 +125,7 @@ export interface Notification {
   type: 'streak' | 'goal' | 'group' | 'reminder' | 'achievement' | 'motivational';
   read: boolean;
   timestamp: string;
+  data?: string;
 }
 
 export interface Quest {

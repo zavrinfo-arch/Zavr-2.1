@@ -320,8 +320,8 @@ export default function Onboarding() {
       {/* Top Header Row detailing step and system logs */}
       <div className="w-full max-w-xl mx-auto px-6 pt-8 pb-2 flex items-center justify-between">
         <div className="flex flex-col">
-          <span className="text-white font-bold text-lg tracking-tight font-sans">ZAVR</span>
-          <span className="text-[10px] uppercase text-[#8E8E93] tracking-[0.2em] font-medium font-mono">
+          <span className="text-zinc-900 dark:text-white font-bold text-lg tracking-tight font-sans">ZAVR</span>
+          <span className="text-[10px] uppercase text-zinc-500 dark:text-[#8E8E93] tracking-[0.2em] font-medium font-mono">
             STEP {step} OF 4
           </span>
         </div>
@@ -337,7 +337,7 @@ export default function Onboarding() {
                 toast.error('Failed to log out', { id });
               }
             }}
-            className="text-[10px] uppercase font-bold text-white/40 hover:text-white transition-colors duration-300 tracking-[0.1em] font-mono border border-white/[0.08] hover:border-white/20 px-3 py-1.5 rounded-full cursor-pointer bg-white/[0.02]"
+            className="text-[10px] uppercase font-bold text-zinc-500 dark:text-white/40 hover:text-zinc-800 dark:hover:text-white transition-colors duration-300 tracking-[0.1em] font-mono border border-black/[0.08] dark:border-white/[0.08] hover:border-black/[0.15] dark:hover:border-white/20 px-3 py-1.5 rounded-full cursor-pointer bg-black/[0.01] dark:bg-white/[0.02]"
           >
             Log Out
           </button>
@@ -366,15 +366,15 @@ export default function Onboarding() {
                   className="space-y-5"
                 >
                   <div className="text-left mb-6">
-                    <h1 className="text-2xl font-bold text-white tracking-tight leading-tight">Personal Details</h1>
-                    <p className="text-xs text-[#8E8E93] mt-1">Let us customize your financial environment.</p>
+                    <h1 className="text-2xl font-bold text-zinc-900 dark:text-white tracking-tight leading-tight">Personal Details</h1>
+                    <p className="text-xs text-zinc-500 dark:text-[#94A3B8] mt-1">Let us customize your financial environment.</p>
                   </div>
 
                   {/* Full Name */}
                   <div className="space-y-1.5 text-left">
-                    <label className={NeoLuxuryStyles.label}>Full Name *Label</label>
+                    <label className={NeoLuxuryStyles.label}>Full Name</label>
                     <div className={NeoLuxuryStyles.inputContainer}>
-                      <User className="text-[#8E8E93] w-4 h-4 mr-3 shrink-0" />
+                      <User className="text-[#94A3B8] w-4 h-4 mr-3 shrink-0 transition-colors group-focus-within:text-[#FF6B6B]" />
                       <input
                         type="text"
                         placeholder="John Doe"
@@ -384,19 +384,19 @@ export default function Onboarding() {
                       />
                     </div>
                     {fullName && fullName.trim().length < 3 && (
-                      <p className="text-[10px] text-coral/80 ml-2">Must be at least 3 characters</p>
+                      <p className="text-[10px] text-[#FF6B6B] ml-2">Must be at least 3 characters</p>
                     )}
                   </div>
 
                   {/* Username */}
                   <div className="space-y-1.5 text-left">
-                    <label className={NeoLuxuryStyles.label}>Unique Username *Label</label>
+                    <label className={NeoLuxuryStyles.label}>Unique Username</label>
                     <div className={cn(
                       NeoLuxuryStyles.inputContainer,
                       usernameAvailable === true && "border-emerald-500/40 focus-within:border-emerald-500/60",
-                      usernameAvailable === false && "border-coral/40 focus-within:border-coral/60"
+                      usernameAvailable === false && "border-[#FF8A8A]/40 focus-within:border-[#FF6B6B]/60"
                     )}>
-                      <span className="text-[#8E8E93] text-sm mr-1 select-none font-mono">@</span>
+                      <span className="text-[#94A3B8] text-sm mr-1 select-none font-mono">@</span>
                       <input
                         type="text"
                         placeholder="username"
@@ -405,17 +405,17 @@ export default function Onboarding() {
                         className={NeoLuxuryStyles.input}
                       />
                       {usernameCheckLoading && (
-                        <Loader2 className="w-4 h-4 text-white/50 animate-spin ml-2 shrink-0" />
+                        <Loader2 className="w-4 h-4 text-zinc-400 dark:text-white/50 animate-spin ml-2 shrink-0" />
                       )}
                       {usernameAvailable === true && !usernameCheckLoading && (
                         <Check className="w-4 h-4 text-emerald-400 ml-2 shrink-0" />
                       )}
                       {usernameAvailable === false && !usernameCheckLoading && (
-                        <AlertCircle className="w-4 h-4 text-coral ml-2 shrink-0" />
+                        <AlertCircle className="w-4 h-4 text-[#FF6B6B] ml-2 shrink-0" />
                       )}
                     </div>
                     {usernameError ? (
-                      <p className="text-[10px] text-coral/80 ml-2">{usernameError}</p>
+                      <p className="text-[10px] text-[#FF6B6B] ml-2">{usernameError}</p>
                     ) : usernameAvailable === true ? (
                       <p className="text-[10px] text-emerald-400 ml-2">Username is available</p>
                     ) : null}
@@ -425,7 +425,7 @@ export default function Onboarding() {
                   <div className="space-y-1.5 text-left">
                     <label className={NeoLuxuryStyles.label}>Phone Number (Optional)</label>
                     <div className={NeoLuxuryStyles.inputContainer}>
-                      <Phone className="text-[#8E8E93] w-4 h-4 mr-3 shrink-0" />
+                      <Phone className="text-[#94A3B8] w-4 h-4 mr-3 shrink-0" />
                       <input
                         type="tel"
                         placeholder="+91 98765 43210"
@@ -440,12 +440,12 @@ export default function Onboarding() {
                   <div className="space-y-1.5 text-left">
                     <label className={NeoLuxuryStyles.label}>Date of Birth</label>
                     <div className={NeoLuxuryStyles.inputContainer}>
-                      <Calendar className="text-[#8E8E93] w-4 h-4 mr-3 shrink-0" />
+                      <Calendar className="text-[#94A3B8] w-4 h-4 mr-3 shrink-0" />
                       <input
                         type="date"
                         value={dob}
                         onChange={(e) => setDob(e.target.value)}
-                        className={cn(NeoLuxuryStyles.input, "text-[#F5F5F7] [color-scheme:dark]")}
+                        className={cn(NeoLuxuryStyles.input, "text-zinc-800 dark:text-white dark:[color-scheme:dark]")}
                       />
                     </div>
                   </div>
@@ -458,40 +458,40 @@ export default function Onboarding() {
                         const isSelected = gender === opt.id;
                         return (
                           <motion.button
-                            key={opt.id}
-                            id={`gender-opt-${opt.id}`}
-                            type="button"
-                            role="radio"
-                            aria-checked={isSelected}
-                            tabIndex={0}
-                            onClick={() => setGender(opt.id)}
-                            onKeyDown={(e) => handleGenderKeyDown(e, idx)}
-                            whileHover={{ scale: 1.01 }}
-                            whileTap={{ scale: 0.98 }}
-                            className={cn(
-                              "flex flex-col text-left p-4 rounded-2xl border transition-all duration-200 relative select-none cursor-pointer group outline-none min-h-[48px] justify-center focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[#050505]",
-                              isSelected 
-                                ? "bg-gradient-to-b from-white/10 to-white/[0.02] border-white text-white shadow-[0_8px_25px_rgba(255,255,255,0.08)]" 
-                                : "bg-white/[0.01] border-white/[0.04] text-[#8E8E93] hover:text-white hover:bg-white/[0.03] hover:border-white/[0.12]"
-                            )}
+                             key={opt.id}
+                             id={`gender-opt-${opt.id}`}
+                             type="button"
+                             role="radio"
+                             aria-checked={isSelected}
+                             tabIndex={0}
+                             onClick={() => setGender(opt.id)}
+                             onKeyDown={(e) => handleGenderKeyDown(e, idx)}
+                             whileHover={{ scale: 1.01 }}
+                             whileTap={{ scale: 0.98 }}
+                             className={cn(
+                               "flex flex-col text-left p-4 rounded-2xl border transition-all duration-300 relative select-none cursor-pointer group outline-none min-h-[48px] justify-center focus-visible:ring-2 focus-visible:ring-[#FF6B6B] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a0a0f]",
+                               isSelected 
+                                 ? "bg-[#FF6B6B]/5 dark:bg-gradient-to-r dark:from-[#FF6B6B]/15 dark:to-[#FF7C7C]/5 border-[#FF6B6B] text-zinc-900 dark:text-white shadow-sm dark:shadow-[rgba(255,107,107,0.15)]" 
+                                 : "bg-white dark:bg-white/[0.01] border-black/[0.08] dark:border-white/[0.04] text-zinc-500 dark:text-[#94A3B8] hover:text-zinc-800 dark:hover:text-white hover:bg-black/[0.02] hover:dark:bg-white/[0.03] hover:border-black/[0.12] hover:dark:border-white/[0.12]"
+                             )}
                           >
                             <div className="flex items-center justify-between w-full">
                               <div className="flex flex-col">
                                 <span className={cn(
                                   "text-xs font-bold uppercase tracking-wider transition-colors duration-200",
-                                  isSelected ? "text-white" : "text-[#8E8E93] group-hover:text-white"
+                                  isSelected ? "text-zinc-950 dark:text-white" : "text-zinc-500 dark:text-[#94A3B8] group-hover:text-zinc-800 dark:group-hover:text-white"
                                 )}>
                                   {opt.label}
                                 </span>
-                                <span className="text-[10px] text-[#5C5C60] leading-snug mt-0.5 group-hover:text-[#8E8E93] transition-colors duration-200">
+                                <span className="text-[10px] text-zinc-400 dark:text-[#64748B] leading-snug mt-0.5 group-hover:text-zinc-600 dark:group-hover:text-[#94A3B8] transition-colors duration-200">
                                   {opt.description}
                                 </span>
                               </div>
                               <div className={cn(
                                 "w-5 h-5 rounded-full border flex items-center justify-center shrink-0 transition-all duration-200",
                                 isSelected 
-                                  ? "bg-white border-white text-black" 
-                                  : "border-white/10 bg-[#0f0f11] text-transparent group-hover:border-white/30"
+                                  ? "bg-gradient-to-r from-[#FF7C7C] to-[#FF6B6B] border-[#FF6B6B] text-white shadow-[0_0_10px_rgba(255,107,107,0.5)]" 
+                                  : "border-black/10 dark:border-white/10 bg-black/[0.02] dark:bg-[#111118] text-transparent group-hover:border-black/20 dark:group-hover:border-white/30"
                               )}>
                                 {isSelected && <Check size={10} strokeWidth={3.5} />}
                               </div>
@@ -513,8 +513,8 @@ export default function Onboarding() {
                   className="space-y-6"
                 >
                   <div className="text-left mb-4">
-                    <h1 className="text-2xl font-bold text-white tracking-tight leading-tight">Choose your avatar</h1>
-                    <p className="text-xs text-[#8E8E93] mt-1">Select an identity character that speaks to you.</p>
+                    <h1 className="text-2xl font-bold text-zinc-900 dark:text-white tracking-tight leading-tight">Choose your avatar</h1>
+                    <p className="text-xs text-zinc-500 dark:text-[#94A3B8] mt-1">Select an identity character that speaks to you.</p>
                   </div>
 
                   <div className="grid grid-cols-5 gap-3 max-h-[44vh] overflow-y-auto pr-1 hide-scrollbar">
@@ -526,10 +526,10 @@ export default function Onboarding() {
                           type="button"
                           onClick={() => setSelectedAvatar(avatar)}
                           className={cn(
-                            "aspect-square rounded-2xl overflow-hidden border bg-[#1E1E1E] transition-all duration-300 relative group flex items-center justify-center p-1",
+                            "aspect-square rounded-2xl overflow-hidden border bg-black/[0.02] dark:bg-[#111118] border-black/[0.08] dark:border-white/[0.08] transition-all duration-300 relative group flex items-center justify-center p-1",
                             isSelected 
-                              ? "border-white scale-105 shadow-[0_0_15px_rgba(255,255,255,0.4)]" 
-                              : "border-white/[0.08] hover:border-white/30 hover:scale-102"
+                              ? "border-[#FF6B6B] scale-105 shadow-[0_0_15px_rgba(255,107,107,0.4)]" 
+                              : "border-black/[0.08] dark:border-white/[0.08] hover:border-[#FF8A8A]/40 hover:scale-102"
                           )}
                         >
                           <img 
@@ -540,7 +540,7 @@ export default function Onboarding() {
                           />
                           {isSelected && (
                             <div className="absolute inset-x-0 bottom-0 top-0 bg-black/20 flex items-center justify-center">
-                              <div className="bg-white text-black p-1 rounded-full shadow-lg">
+                              <div className="bg-gradient-to-r from-[#FF7C7C] to-[#FF6B6B] text-white p-1 rounded-full shadow-lg">
                                 <Check size={10} strokeWidth={4} />
                               </div>
                             </div>
@@ -561,8 +561,8 @@ export default function Onboarding() {
                   className="space-y-5"
                 >
                   <div className="text-left mb-4">
-                    <h1 className="text-2xl font-bold text-white tracking-tight leading-tight">What are you saving for?</h1>
-                    <p className="text-xs text-[#8E8E93] mt-1">Select 2 to 5 savings categories to build your core visual goals.</p>
+                    <h1 className="text-2xl font-bold text-zinc-900 dark:text-white tracking-tight leading-tight">What are you saving for?</h1>
+                    <p className="text-xs text-zinc-500 dark:text-[#94A3B8] mt-1">Select 2 to 5 savings categories to build your core visual goals.</p>
                   </div>
 
                   <div className="grid grid-cols-2 gap-3 max-h-[44vh] overflow-y-auto pr-1 hide-scrollbar">
@@ -575,38 +575,40 @@ export default function Onboarding() {
                           type="button"
                           onClick={() => handleToggleCategory(cat.id)}
                           className={cn(
-                            "flex flex-col text-left p-4 rounded-2xl border transition-all duration-300 relative select-none cursor-pointer group",
+                            "flex flex-col text-left p-4 rounded-2xl border transition-all duration-300 relative select-none cursor-pointer group outline-none",
                             isSelected 
-                              ? "bg-gradient-to-b from-white/10 to-white/[0.02] border-white text-white shadow-[0_8px_25px_rgba(255,255,255,0.08)]" 
-                              : "bg-white/[0.01] border-white/[0.04] text-[#8E8E93] hover:text-white hover:bg-white/[0.03] hover:border-white/[0.12]"
+                              ? "bg-[#FF6B6B]/5 dark:bg-gradient-to-r dark:from-[#FF6B6B]/15 dark:to-[#FF7C7C]/5 border-[#FF6B6B] text-zinc-900 dark:text-white shadow-sm dark:shadow-[rgba(255,107,107,0.15)]" 
+                              : "bg-white dark:bg-white/[0.01] border-black/[0.08] dark:border-white/[0.04] text-zinc-500 dark:text-[#94A3B8] hover:text-zinc-800 dark:hover:text-white hover:bg-black/[0.02] hover:dark:bg-white/[0.03] hover:border-black/[0.12] hover:dark:border-white/[0.12]"
                           )}
                         >
                           <div className="flex items-center justify-between w-full mb-3">
                             <div className={cn(
                               "p-2.5 rounded-xl transition-all duration-300",
-                              isSelected ? "bg-white text-[#050505]" : "bg-white/[0.04] text-white/60 group-hover:bg-white/10"
+                              isSelected 
+                                ? "bg-gradient-to-r from-[#FF7C7C] to-[#FF6B6B] text-white shadow-[0_0_10px_rgba(255,107,107,0.3)]" 
+                                : "bg-black/[0.04] dark:bg-white/[0.04] text-zinc-500 dark:text-white/60 group-hover:bg-black/[0.08] dark:group-hover:bg-white/10"
                             )}>
                               <IconComponent size={14} />
                             </div>
                             {isSelected && (
-                              <div className="w-5 h-5 rounded-full bg-white text-black flex items-center justify-center">
+                              <div className="w-5 h-5 rounded-full bg-gradient-to-r from-[#FF7C7C] to-[#FF6B6B] text-white flex items-center justify-center shadow-[0_0_8px_rgba(255,107,107,0.4)]">
                                 <Check size={10} strokeWidth={3.5} />
                               </div>
                             )}
                           </div>
                           
-                          <span className="text-xs font-bold uppercase tracking-wider text-white mb-0.5">{cat.label}</span>
-                          <span className="text-[10px] text-[#8E8E93] leading-snug">{cat.description}</span>
+                          <span className="text-xs font-bold uppercase tracking-wider text-zinc-900 dark:text-white mb-0.5">{cat.label}</span>
+                          <span className="text-[10px] text-zinc-500 dark:text-[#94A3B8] leading-snug">{cat.description}</span>
                         </button>
                       );
                     })}
                   </div>
                   
-                  <div className="flex items-center justify-between px-2 pt-2 border-t border-white/[0.04]">
-                    <span className="text-[10px] uppercase font-bold text-[#8E8E93] tracking-widest font-mono">
+                  <div className="flex items-center justify-between px-2 pt-2 border-t border-black/[0.06] dark:border-white/[0.04]">
+                    <span className="text-[10px] uppercase font-bold text-[#FF6B6B] tracking-widest font-mono shadow-[0_0_8px_rgba(255,107,107,0.2)]">
                       Selected: {selectedCategories.length} / 5
                     </span>
-                    <span className="text-[10px] text-[#4E4E52] uppercase font-bold tracking-widest font-mono">
+                    <span className="text-[10px] text-zinc-400 dark:text-[#64748B] uppercase font-bold tracking-widest font-mono">
                       Min 2 Required
                     </span>
                   </div>
@@ -622,8 +624,8 @@ export default function Onboarding() {
                   className="space-y-6 text-center"
                 >
                   <div className="flex flex-col items-center justify-center my-4 relative">
-                    <div className="absolute inset-0 bg-white/5 blur-2xl rounded-full scale-130 animate-pulse" />
-                    <div className="relative w-24 h-24 rounded-full border-2 border-white/20 p-1 bg-black/60 shadow-[0_10px_35px_rgba(0,0,0,0.8)] overflow-hidden">
+                    <div className="absolute inset-0 bg-[#FF6B6B]/10 blur-2xl rounded-full scale-130 animate-pulse" />
+                    <div className="relative w-24 h-24 rounded-full border-2 border-[#FF8A8A]/40 p-1 bg-black/[0.02] dark:bg-[#111118] shadow-[0_10px_35px_rgba(255,107,107,0.2)] overflow-hidden">
                       <img 
                         src={selectedAvatar?.url || `https://api.dicebear.com/7.x/lorelei/svg?seed=${username}`}
                         alt="Selected Avatar" 
@@ -631,45 +633,45 @@ export default function Onboarding() {
                       />
                     </div>
                     <div className="mt-4">
-                      <h1 className="text-2xl font-extrabold text-white tracking-tight leading-tight">
+                      <h1 className="text-2xl font-extrabold text-zinc-900 dark:text-white tracking-tight leading-tight">
                         Welcome, {fullName}!
                       </h1>
-                      <p className="text-xs text-[#8E8E93] mt-1">@ {username}</p>
+                      <p className="text-xs text-[#FF6B6B] font-bold mt-1 font-mono">@ {username}</p>
                     </div>
                   </div>
 
                   {/* Feature Cards Showcase */}
                   <div className="space-y-3.5 text-left">
                     {/* Social Goal Card */}
-                    <div className="flex items-start gap-3.5 p-4 rounded-2xl bg-white/[0.02] border border-white/[0.04]">
+                    <div className="flex items-start gap-3.5 p-4 rounded-2xl bg-black/[0.01] dark:bg-white/[0.02] border border-black/[0.06] dark:border-white/[0.04] hover:border-[#FF8A8A]/20 transition-colors duration-300">
                       <div className="p-2 bg-purple-500/10 text-purple-400 rounded-xl shrink-0 mt-0.5">
                         <Users size={16} />
                       </div>
                       <div>
-                        <h4 className="text-xs font-bold text-white uppercase tracking-wider">Social & Collaborative Goals</h4>
-                        <p className="text-[10px] text-[#8E8E93] mt-0.5 leading-relaxed">Save up with friends seamlessly. Launch split accounts, set targets, and support group quests with total ledger tracking.</p>
+                        <h4 className="text-xs font-bold text-zinc-900 dark:text-white uppercase tracking-wider">Social & Collaborative Goals</h4>
+                        <p className="text-[10px] text-zinc-500 dark:text-[#94A3B8] mt-0.5 leading-relaxed">Save up with friends seamlessly. Launch split accounts, set targets, and support group quests with total ledger tracking.</p>
                       </div>
                     </div>
 
                     {/* Streak Milestones Card */}
-                    <div className="flex items-start gap-3.5 p-4 rounded-2xl bg-white/[0.02] border border-white/[0.04]">
+                    <div className="flex items-start gap-3.5 p-4 rounded-2xl bg-black/[0.01] dark:bg-white/[0.02] border border-black/[0.06] dark:border-white/[0.04] hover:border-[#FF8A8A]/20 transition-colors duration-300">
                       <div className="p-2 bg-amber-500/10 text-amber-400 rounded-xl shrink-0 mt-0.5">
                         <Trophy size={16} />
                       </div>
                       <div>
-                        <h4 className="text-xs font-bold text-white uppercase tracking-wider">Daily Streak Milestones</h4>
-                        <p className="text-[10px] text-[#8E8E93] mt-0.5 leading-relaxed">Consistently deposit to protect and grow saving streaks. Collect ultra-rare visual accomplishment badges as milestones.</p>
+                        <h4 className="text-xs font-bold text-zinc-900 dark:text-white uppercase tracking-wider">Daily Streak Milestones</h4>
+                        <p className="text-[10px] text-zinc-500 dark:text-[#94A3B8] mt-0.5 leading-relaxed">Consistently deposit to protect and grow saving streaks. Collect ultra-rare visual accomplishment badges as milestones.</p>
                       </div>
                     </div>
 
                     {/* Financial Splitting Card */}
-                    <div className="flex items-start gap-3.5 p-4 rounded-2xl bg-white/[0.02] border border-white/[0.04]">
+                    <div className="flex items-start gap-3.5 p-4 rounded-2xl bg-black/[0.01] dark:bg-white/[0.02] border border-black/[0.06] dark:border-white/[0.04] hover:border-[#FF8A8A]/20 transition-colors duration-300">
                       <div className="p-2 bg-emerald-500/10 text-emerald-400 rounded-xl shrink-0 mt-0.5">
                         <Landmark size={16} />
                       </div>
                       <div>
-                        <h4 className="text-xs font-bold text-white uppercase tracking-wider">Financial Splitting Circles</h4>
-                        <p className="text-[10px] text-[#8E8E93] mt-0.5 leading-relaxed">Ditch the awkward calculations. Instantly share dinner bills, rent splits or subscription micro-savings in secure circles.</p>
+                        <h4 className="text-xs font-bold text-zinc-900 dark:text-white uppercase tracking-wider">Financial Splitting Circles</h4>
+                        <p className="text-[10px] text-zinc-500 dark:text-[#94A3B8] mt-0.5 leading-relaxed">Ditch the awkward calculations. Instantly share dinner bills, rent splits or subscription micro-savings in secure circles.</p>
                       </div>
                     </div>
                   </div>
@@ -679,7 +681,7 @@ export default function Onboarding() {
           </div>
 
           {/* Core Interactive Control Actions footer panel */}
-          <div className="pt-5 border-t border-white/[0.04] flex items-center gap-4">
+          <div className="pt-5 border-t border-black/[0.06] dark:border-white/[0.04] flex items-center gap-4">
             {step > 1 && (
               <button 
                 onClick={handleBack}
