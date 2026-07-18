@@ -553,7 +553,7 @@ export default function Goals({ onAddMoney, onWithdraw }: {
                       <div className="flex items-center gap-4">
                         <GoalSparkline goalId={goal.id} color="#FF6B6B" transactions={transactions} />
                         <span className="text-lg font-bold text-[#FF6B6B]">
-                          {Math.round((goal.currentAmount / goal.targetAmount) * 100)}%
+                          {Math.min(100, Math.round((goal.currentAmount / goal.targetAmount) * 100))}%
                         </span>
                       </div>
                     </div>
@@ -568,6 +568,24 @@ export default function Goals({ onAddMoney, onWithdraw }: {
 
                     <div className="flex flex-col gap-4 pt-2">
                       {(() => {
+                        if (goal.completed) {
+                          return (
+                            <div className="space-y-4">
+                              <div className="p-4 bg-emerald-500/[0.04] text-center border border-emerald-500/10 rounded-2xl">
+                                <p className="text-[10px] font-bold text-emerald-400 uppercase tracking-[0.2em]">Goal completed! 🎉</p>
+                              </div>
+                              <div className="flex gap-4">
+                                <button 
+                                  onClick={() => onWithdraw(goal.id, 'solo')}
+                                  className="w-full h-14 bg-black/[0.02] dark:bg-white/[0.02] border border-black/[0.06] dark:border-white/[0.08] text-zinc-500 dark:text-[#94A3B8] hover:text-zinc-800 dark:hover:text-white hover:bg-black/[0.04] dark:hover:bg-white/[0.06] text-[10px] font-bold uppercase tracking-[0.20em] rounded-2xl flex items-center justify-center gap-2 hover:-translate-y-0.5 active:translate-y-0 active:scale-95 transition-all duration-300 cursor-pointer"
+                                >
+                                  <MinusCircle size={14} /> Withdraw
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        }
+
                         const needed = getNeededThisPeriod(goal);
                         const contributed = getContributedThisPeriod(goal.id, goal.frequency);
                         const remaining = Math.max(0, needed - contributed);
@@ -739,7 +757,7 @@ export default function Goals({ onAddMoney, onWithdraw }: {
                         <span className="text-zinc-500 dark:text-[#94A3B8]/60">Group Progress</span>
                         <div className="flex items-center gap-4">
                           <GoalSparkline goalId={goal.id} color="#4ECDC4" transactions={transactions} />
-                          <span className="text-lg font-bold text-[#4ECDC4]">{Math.round((goal.totalCollected / goal.targetAmount) * 100)}%</span>
+                          <span className="text-lg font-bold text-[#4ECDC4]">{Math.min(100, Math.round((goal.totalCollected / goal.targetAmount) * 100))}%</span>
                         </div>
                       </div>
                       <div className="h-2.5 w-full bg-black/[0.04] dark:bg-white/[0.04] rounded-full overflow-hidden">
@@ -784,7 +802,7 @@ export default function Goals({ onAddMoney, onWithdraw }: {
                                   {member.name} {member.userId === currentUser?.id && '(You)'}
                                   {member.contributed === 0 && <span className="text-[8px] text-red-500 ml-2 font-bold uppercase tracking-widest">Inactive</span>}
                                 </p>
-                                <p className="text-[10px] text-zinc-400 dark:text-[#94A3B8]/40 font-bold uppercase tracking-wider mt-0.5">{Math.round((member.contributed / myShare) * 100)}% completed</p>
+                                <p className="text-[10px] text-zinc-400 dark:text-[#94A3B8]/40 font-bold uppercase tracking-wider mt-0.5">{Math.min(100, Math.round((member.contributed / myShare) * 100))}% completed</p>
                               </div>
                             </div>
                             <div className="flex items-center gap-4">
@@ -810,6 +828,24 @@ export default function Goals({ onAddMoney, onWithdraw }: {
 
                     <div className="flex flex-col gap-4">
                       {(() => {
+                        if (goal.completed) {
+                          return (
+                            <div className="space-y-4">
+                              <div className="p-4 bg-emerald-500/[0.04] text-center border border-emerald-500/10 rounded-2xl">
+                                <p className="text-[10px] font-bold text-emerald-400 uppercase tracking-[0.2em]">Goal completed! 🎉</p>
+                              </div>
+                              <div className="flex gap-4">
+                                <button 
+                                  onClick={() => onWithdraw(goal.id, 'group')}
+                                  className="w-full h-14 bg-black/[0.02] dark:bg-white/[0.02] border border-black/[0.06] dark:border-white/[0.08] text-zinc-500 dark:text-[#94A3B8] hover:text-zinc-800 dark:hover:text-white hover:bg-black/[0.04] dark:hover:bg-white/[0.06] text-[10px] font-bold uppercase tracking-[0.20em] rounded-2xl flex items-center justify-center gap-2 hover:-translate-y-0.5 active:translate-y-0 active:scale-95 transition-all duration-300 cursor-pointer"
+                                >
+                                  <MinusCircle size={14} /> Withdraw
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        }
+
                         const needed = getNeededThisPeriod(goal);
                         const contributed = getContributedThisPeriod(goal.id, goal.frequency);
                         const remaining = Math.max(0, needed - contributed);
@@ -904,41 +940,78 @@ export default function Goals({ onAddMoney, onWithdraw }: {
                   <div className="space-y-4">
                     <div className="flex justify-between items-end">
                       <div>
-                        <p className="text-[10px] text-zinc-500 dark:text-[#94A3B8]/60 font-bold uppercase tracking-widest mb-2">Total Saved</p>
+                        <p className="text-[10px] text-zinc-500 dark:text-[#94A3B8]/60 font-bold uppercase tracking-widest mb-2">
+                          {goal.targetAmount > 0 ? "Progress" : "Total Saved"}
+                        </p>
                         <p className="text-3xl font-black text-zinc-900 dark:text-white">
                           {formatCurrency(goal.currentAmount, currentUser?.preferences?.currency)}
+                          {goal.targetAmount > 0 && (
+                            <span className="text-sm text-zinc-400 dark:text-[#94A3B8]/40 font-bold ml-3">
+                              / {formatCurrency(goal.targetAmount, currentUser?.preferences?.currency)}
+                            </span>
+                          )}
                         </p>
                       </div>
                       <div className="flex items-center gap-4">
                         <GoalSparkline goalId={goal.id} color="#F59E0B" transactions={transactions} />
+                        {goal.targetAmount > 0 && (
+                          <span className="text-lg font-bold text-[#F59E0B]">
+                            {Math.min(100, Math.round((goal.currentAmount / goal.targetAmount) * 100))}%
+                          </span>
+                        )}
                       </div>
                     </div>
+                    {goal.targetAmount > 0 && (
+                      <div className="h-2.5 w-full bg-black/[0.04] dark:bg-white/[0.04] rounded-full overflow-hidden">
+                        <motion.div 
+                          initial={{ width: 0 }}
+                          animate={{ width: `${Math.min(100, (goal.currentAmount / goal.targetAmount) * 100)}%` }}
+                          className="h-full bg-gradient-to-r from-amber-400 to-amber-500 rounded-full"
+                        />
+                      </div>
+                    )}
                   </div>
 
                   <div className="flex flex-col gap-4 pt-2">
-                    <div className="space-y-4">
-                      <div className="p-4 bg-black/[0.01] dark:bg-white/[0.02] border border-black/[0.06] dark:border-white/[0.05] rounded-2xl text-center">
-                        <p className="text-[8px] font-bold text-zinc-500 dark:text-[#94A3B8]/60 uppercase tracking-[0.2em] mb-1">Routine Saving</p>
-                        <p className="text-xl font-black text-amber-400">
-                          {formatCurrency(goal.routineAmount, currentUser?.preferences?.currency)}
-                          <span className="text-[10px] font-bold ml-1 text-zinc-400 dark:text-[#94A3B8]/40">/{goal.frequency}</span>
-                        </p>
+                    {goal.completed ? (
+                      <div className="space-y-4">
+                        <div className="p-4 bg-emerald-500/[0.04] text-center border border-emerald-500/10 rounded-2xl">
+                          <p className="text-[10px] font-bold text-emerald-400 uppercase tracking-[0.2em]">Goal completed! 🎉</p>
+                        </div>
+                        <div className="flex gap-4">
+                          <button 
+                            onClick={() => onWithdraw(goal.id, 'emergency')}
+                            className="w-full h-14 bg-black/[0.02] dark:bg-white/[0.02] border border-black/[0.06] dark:border-white/[0.08] text-zinc-500 dark:text-[#94A3B8] hover:text-zinc-800 dark:hover:text-white hover:bg-black/[0.04] dark:hover:bg-white/[0.06] text-[10px] font-bold uppercase tracking-[0.20em] rounded-2xl flex items-center justify-center gap-2 hover:-translate-y-0.5 active:translate-y-0 active:scale-95 transition-all duration-300 cursor-pointer"
+                          >
+                            <MinusCircle size={14} /> Withdraw
+                          </button>
+                        </div>
                       </div>
-                      <div className="flex gap-4">
-                        <button 
-                          onClick={() => onAddMoney(goal.id, 'emergency', goal.routineAmount)}
-                          className="flex-1 h-14 bg-gradient-to-r from-[#FF7C7C] to-[#FF6B6B] text-white text-[10px] font-bold uppercase tracking-[0.20em] rounded-2xl flex items-center justify-center gap-2 shadow-lg shadow-[rgba(255,107,107,0.15)] hover:shadow-[0_8px_25px_rgba(255,107,107,0.3)] hover:-translate-y-0.5 active:translate-y-0 active:scale-95 transition-all duration-300 text-white cursor-pointer"
-                        >
-                          <Plus size={14} /> Add {formatCurrency(goal.routineAmount, currentUser?.preferences?.currency)}
-                        </button>
-                        <button 
-                          onClick={() => onWithdraw(goal.id, 'emergency')}
-                          className="flex-1 h-14 bg-black/[0.02] dark:bg-white/[0.02] border border-black/[0.06] dark:border-white/[0.08] text-zinc-500 dark:text-[#94A3B8] hover:text-zinc-800 dark:hover:text-white hover:bg-black/[0.04] dark:hover:bg-white/[0.06] text-[10px] font-bold uppercase tracking-[0.20em] rounded-2xl flex items-center justify-center gap-2 hover:-translate-y-0.5 active:translate-y-0 active:scale-95 transition-all duration-300 cursor-pointer"
-                        >
-                          <MinusCircle size={14} /> Withdraw
-                        </button>
+                    ) : (
+                      <div className="space-y-4">
+                        <div className="p-4 bg-black/[0.01] dark:bg-white/[0.02] border border-black/[0.06] dark:border-white/[0.05] rounded-2xl text-center">
+                          <p className="text-[8px] font-bold text-zinc-500 dark:text-[#94A3B8]/60 uppercase tracking-[0.2em] mb-1">Routine Saving</p>
+                          <p className="text-xl font-black text-amber-400">
+                            {formatCurrency(goal.routineAmount, currentUser?.preferences?.currency)}
+                            <span className="text-[10px] font-bold ml-1 text-zinc-400 dark:text-[#94A3B8]/40">/{goal.frequency}</span>
+                          </p>
+                        </div>
+                        <div className="flex gap-4">
+                          <button 
+                            onClick={() => onAddMoney(goal.id, 'emergency', goal.routineAmount)}
+                            className="flex-1 h-14 bg-gradient-to-r from-[#FF7C7C] to-[#FF6B6B] text-white text-[10px] font-bold uppercase tracking-[0.20em] rounded-2xl flex items-center justify-center gap-2 shadow-lg shadow-[rgba(255,107,107,0.15)] hover:shadow-[0_8px_25px_rgba(255,107,107,0.3)] hover:-translate-y-0.5 active:translate-y-0 active:scale-95 transition-all duration-300 text-white cursor-pointer"
+                          >
+                            <Plus size={14} /> Add {formatCurrency(goal.routineAmount, currentUser?.preferences?.currency)}
+                          </button>
+                          <button 
+                            onClick={() => onWithdraw(goal.id, 'emergency')}
+                            className="flex-1 h-14 bg-black/[0.02] dark:bg-white/[0.02] border border-black/[0.06] dark:border-white/[0.08] text-zinc-500 dark:text-[#94A3B8] hover:text-zinc-800 dark:hover:text-white hover:bg-black/[0.04] dark:hover:bg-white/[0.06] text-[10px] font-bold uppercase tracking-[0.20em] rounded-2xl flex items-center justify-center gap-2 hover:-translate-y-0.5 active:translate-y-0 active:scale-95 transition-all duration-300 cursor-pointer"
+                          >
+                            <MinusCircle size={14} /> Withdraw
+                          </button>
+                        </div>
                       </div>
-                    </div>
+                    )}
                   </div>
                 </div>
               ))

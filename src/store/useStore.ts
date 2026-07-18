@@ -134,8 +134,8 @@ interface AppState {
   removeGroupMember: (goalId: string, userId: string) => void;
   
   // Transaction & Contribution
-  addContribution: (goalId: string, amount: number, type: 'solo' | 'group' | 'emergency') => void;
-  withdrawMoney: (goalId: string, amount: number, type: 'solo' | 'group' | 'emergency') => void;
+  addContribution: (goalId: string, amount: number, type: 'solo' | 'group' | 'emergency') => Promise<void>;
+  withdrawMoney: (goalId: string, amount: number, type: 'solo' | 'group' | 'emergency') => Promise<void>;
   deleteTransaction: (id: string) => Promise<void>;
   clearAllHistory: () => Promise<void>;
   
@@ -1004,7 +1004,7 @@ export const useStore = create<AppState>()(
         )
       })),
 
-      addContribution: (goalId, amount, type) => {
+      addContribution: async (goalId, amount, type) => {
         const state = get();
         const now = new Date();
         const timestamp = now.toISOString();
@@ -1021,6 +1021,10 @@ export const useStore = create<AppState>()(
           goalName = goal.name;
           category = goal.category;
           
+          if (goal.currentAmount + amount > goal.targetAmount) {
+            throw new Error("Goal target reached. You cannot add more money.");
+          }
+          
           const newAmount = goal.currentAmount + amount;
           const isCompleted = newAmount >= goal.targetAmount;
           
@@ -1036,7 +1040,7 @@ export const useStore = create<AppState>()(
           }));
 
           const updatedGoal = get().soloGoals.find(g => g.id === goalId);
-          if (updatedGoal) supabaseService.saveSoloGoal(updatedGoal);
+          if (updatedGoal) await supabaseService.saveSoloGoal(updatedGoal);
 
           if (isCompleted) {
             get().addNotification({
@@ -1052,25 +1056,50 @@ export const useStore = create<AppState>()(
           goalName = goal.name;
           category = 'Emergency';
           
+          if (goal.targetAmount && goal.targetAmount > 0) {
+            if (goal.currentAmount + amount > goal.targetAmount) {
+              throw new Error("Goal target reached. You cannot add more money.");
+            }
+          }
+          
           const newAmount = goal.currentAmount + amount;
+          const isCompleted = (goal.targetAmount && goal.targetAmount > 0) ? (newAmount >= goal.targetAmount) : false;
           
           set((state) => ({
             emergencyGoals: state.emergencyGoals.map(g => 
               g.id === goalId ? { 
                 ...g, 
-                currentAmount: newAmount
+                currentAmount: newAmount,
+                completed: isCompleted,
+                completedAt: isCompleted ? timestamp : g.completedAt
               } : g
             )
           }));
+
+          const updatedGoal = get().emergencyGoals.find(g => g.id === goalId);
+          if (updatedGoal) await supabaseService.saveEmergencyGoal(updatedGoal);
+
+          if (isCompleted) {
+            get().addNotification({
+              userId,
+              title: 'Emergency Fund Completed!',
+              message: `Congratulations! You reached your target for ${goalName}.`,
+              type: 'goal'
+            });
+          }
         } else {
           const goal = state.groupGoals.find(g => g.id === goalId);
           if (!goal) return;
           goalName = goal.name;
           
+          const newTotal = goal.totalCollected + amount;
+          if (newTotal > goal.targetAmount) {
+            throw new Error("Goal target reached. You cannot add more money.");
+          }
+          
           const updatedMembers = goal.members.map(m => 
             m.userId === userId ? { ...m, contributed: m.contributed + amount } : m
           );
-          const newTotal = goal.totalCollected + amount;
           const isCompleted = newTotal >= goal.targetAmount;
 
           set((state) => ({
@@ -1086,7 +1115,7 @@ export const useStore = create<AppState>()(
           }));
 
           const updatedGoal = get().groupGoals.find(g => g.id === goalId);
-          if (updatedGoal) supabaseService.saveGroupGoal(updatedGoal);
+          if (updatedGoal) await supabaseService.saveGroupGoal(updatedGoal);
 
           if (isCompleted) {
             goal.members.forEach(m => {
@@ -1116,7 +1145,7 @@ export const useStore = create<AppState>()(
         set((state) => ({
           transactions: [newTransaction, ...state.transactions]
         }));
-        supabaseService.saveTransaction(newTransaction);
+        await supabaseService.saveTransaction(newTransaction);
 
         // Update Streak
         const { currentStreak, lastContributionDate, streakHistory } = state.streakData;
@@ -1207,7 +1236,7 @@ export const useStore = create<AppState>()(
         get().updateChallengeProgress(amount);
       },
 
-      withdrawMoney: (goalId, amount, type) => {
+      withdrawMoney: async (goalId, amount, type) => {
         const state = get();
         const now = new Date();
         const timestamp = now.toISOString();
@@ -1239,7 +1268,7 @@ export const useStore = create<AppState>()(
           }));
 
           const updatedGoal = get().soloGoals.find(g => g.id === goalId);
-          if (updatedGoal) supabaseService.saveSoloGoal(updatedGoal);
+          if (updatedGoal) await supabaseService.saveSoloGoal(updatedGoal);
         } else if (type === 'emergency') {
           const goal = state.emergencyGoals.find(g => g.id === goalId);
           if (!goal) return;
@@ -1249,15 +1278,20 @@ export const useStore = create<AppState>()(
           category = 'Emergency';
           
           const newAmount = goal.currentAmount - amount;
+          const isCompleted = (goal.targetAmount && goal.targetAmount > 0) ? (newAmount >= goal.targetAmount) : false;
           
           set((state) => ({
             emergencyGoals: state.emergencyGoals.map(g => 
               g.id === goalId ? { 
                 ...g, 
-                currentAmount: newAmount
+                currentAmount: newAmount,
+                completed: isCompleted
               } : g
             )
           }));
+
+          const updatedGoal = get().emergencyGoals.find(g => g.id === goalId);
+          if (updatedGoal) await supabaseService.saveEmergencyGoal(updatedGoal);
         } else {
           const goal = state.groupGoals.find(g => g.id === goalId);
           if (!goal) return;
@@ -1284,7 +1318,7 @@ export const useStore = create<AppState>()(
           }));
 
           const updatedGoal = get().groupGoals.find(g => g.id === goalId);
-          if (updatedGoal) supabaseService.saveGroupGoal(updatedGoal);
+          if (updatedGoal) await supabaseService.saveGroupGoal(updatedGoal);
         }
 
         // Add Transaction (Negative amount for withdrawal)
@@ -1303,7 +1337,7 @@ export const useStore = create<AppState>()(
         set((state) => ({
           transactions: [newTransaction, ...state.transactions]
         }));
-        supabaseService.saveTransaction(newTransaction);
+        await supabaseService.saveTransaction(newTransaction);
 
         get().addNotification({
           userId,
@@ -1324,9 +1358,49 @@ export const useStore = create<AppState>()(
       clearAllHistory: async () => {
         const state = get();
         if (!state.currentUser) return;
-        set({ transactions: [] });
-        await supabaseService.clearAllTransactions(state.currentUser.id);
-        get().refreshData();
+        
+        console.log('[STORE] Starting clearAllHistory for user:', state.currentUser.id);
+        const userId = state.currentUser.id;
+
+        // 1. Instantly and synchronously clear transactions and reset all goal balances to 0 in local state to avoid race conditions
+        const updatedSoloGoals = state.soloGoals.map(g => ({ ...g, currentAmount: 0 }));
+        const updatedEmergencyGoals = state.emergencyGoals.map(g => ({ ...g, currentAmount: 0 }));
+        const updatedGroupGoals = state.groupGoals.map(g => {
+          const isCreator = g.creatorId === userId;
+          const updatedMembers = g.members.map(m => {
+            if (isCreator || m.userId === userId) {
+              return { ...m, contributed: 0 };
+            }
+            return m;
+          });
+          return {
+            ...g,
+            totalCollected: isCreator ? 0 : Math.max(0, (g.totalCollected || 0) - (g.members.find(m => m.userId === userId)?.contributed || 0)),
+            members: updatedMembers
+          };
+        });
+
+        set({
+          transactions: [],
+          soloGoals: updatedSoloGoals,
+          emergencyGoals: updatedEmergencyGoals,
+          groupGoals: updatedGroupGoals
+        });
+
+        // 2. Clear database records completely
+        try {
+          const res = await supabaseService.clearAllTransactions(userId);
+          if (res && res.error) {
+            console.error('[STORE] Error from clearAllTransactions:', res.error);
+          }
+        } catch (err) {
+          console.error('[STORE] Exception in clearAllTransactions:', err);
+        }
+
+        // 3. Clear any active refreshData promise to force full sync and wait for it to complete
+        activeRefreshDataPromise = null;
+        await get().refreshData();
+        console.log('[STORE] Completed clearAllHistory and state refreshed successfully.');
       },
 
       checkReminders: () => {

@@ -109,6 +109,7 @@ export interface EmergencyGoal {
   id: string;
   userId: string;
   name: string;
+  targetAmount: number;
   currentAmount: number;
   frequency: SavingFrequency;
   routineAmount: number;

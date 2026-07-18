@@ -391,6 +391,7 @@ function PlusModal({ action, setAction, onClose, selectedGoal, initialAmount }: 
       id: generateUUID(),
       userId: currentUser.id,
       name: formData.name,
+      targetAmount: formData.target,
       currentAmount: 0,
       frequency: formData.frequency,
       routineAmount: formData.routineAmount,
@@ -476,6 +477,7 @@ function PlusModal({ action, setAction, onClose, selectedGoal, initialAmount }: 
   };
 
   const [showWithdrawConfirm, setShowWithdrawConfirm] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleJoinGroup = (e: React.FormEvent) => {
     e.preventDefault();
@@ -488,36 +490,50 @@ function PlusModal({ action, setAction, onClose, selectedGoal, initialAmount }: 
     }
   };
 
-  const handleContribute = (e: React.FormEvent) => {
+  const handleContribute = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
+
     const amount = parseFloat(formData.amount);
     if (isNaN(amount) || amount <= 0) return toast.error('Invalid amount');
     
-    addContribution(selectedGoal.id, amount, selectedGoal.type);
-    
-    confetti({
-      particleCount: 100,
-      spread: 70,
-      origin: { y: 0.6 },
-      colors: ['#FF6321', '#FF9E21', '#ffffff']
-    });
-    
-    toast.success('Contribution added!');
-    onClose();
+    setIsSubmitting(true);
+    try {
+      await addContribution(selectedGoal.id, amount, selectedGoal.type);
+      
+      confetti({
+        particleCount: 100,
+        spread: 70,
+        origin: { y: 0.6 },
+        colors: ['#FF6321', '#FF9E21', '#ffffff']
+      });
+      
+      toast.success('Contribution added!');
+      onClose();
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err.message || 'Failed to save contribution');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  const handleWithdraw = (e: React.FormEvent) => {
+  const handleWithdraw = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
+
     const amount = parseFloat(formData.amount);
     if (isNaN(amount) || amount <= 0) return toast.error('Invalid amount');
     
     const goal = selectedGoal.type === 'solo' 
       ? soloGoals.find(g => g.id === selectedGoal.id)
+      : selectedGoal.type === 'emergency'
+      ? emergencyGoals.find(g => g.id === selectedGoal.id)
       : groupGoals.find(g => g.id === selectedGoal.id);
 
     if (!goal) return;
 
-    if (selectedGoal.type === 'solo') {
+    if (selectedGoal.type === 'solo' || selectedGoal.type === 'emergency') {
       if ((goal as any).currentAmount < amount) return toast.error('Insufficient balance');
     } else {
       const member = (goal as any).members.find((m: any) => m.userId === currentUser?.id);
@@ -529,10 +545,18 @@ function PlusModal({ action, setAction, onClose, selectedGoal, initialAmount }: 
       return;
     }
 
-    withdrawMoney(selectedGoal.id, amount, selectedGoal.type);
-    toast.success('Withdrawal successful!');
-    setShowWithdrawConfirm(false);
-    onClose();
+    setIsSubmitting(true);
+    try {
+      await withdrawMoney(selectedGoal.id, amount, selectedGoal.type);
+      toast.success('Withdrawal successful!');
+      setShowWithdrawConfirm(false);
+      onClose();
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err.message || 'Failed to withdraw money');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -648,8 +672,8 @@ function PlusModal({ action, setAction, onClose, selectedGoal, initialAmount }: 
               </div>
             </div>
 
-            <div className={cn("grid gap-4", action === 'emergency' ? "hidden" : "grid-cols-2")}>
-              <div className="space-y-2">
+            <div className="grid gap-4 grid-cols-2">
+              <div className={cn("space-y-2", action === 'emergency' ? "col-span-2" : "col-span-1")}>
                 <label className="text-[10px] font-bold uppercase tracking-widest opacity-40 ml-4">Target Amount</label>
                 <div className="flex items-center clay-inset rounded-2xl px-4 py-4">
                   <CreditCard size={20} className="opacity-20 mr-3" />

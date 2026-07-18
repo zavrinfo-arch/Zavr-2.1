@@ -96,6 +96,19 @@ export const supabaseService = {
       if (updates.onboardingCompleted !== undefined) profilesUpdates.onboarding_completed = updates.onboardingCompleted;
       if (updates.personalDetailsFilled !== undefined) profilesUpdates.personal_details_filled = updates.personalDetailsFilled;
       if ((updates as any).savingCategories !== undefined) profilesUpdates.saving_categories = (updates as any).savingCategories;
+      
+      // Map user progress, streaks, XP, level, preferences, and login times
+      if (updates.streak !== undefined) profilesUpdates.streak = updates.streak;
+      if (updates.xp !== undefined) profilesUpdates.xp = updates.xp;
+      if (updates.level !== undefined) profilesUpdates.level = updates.level;
+      if (updates.streakFreezeCount !== undefined) profilesUpdates.streak_freeze_count = updates.streakFreezeCount;
+      if (updates.interests !== undefined) profilesUpdates.interests = updates.interests;
+      if (updates.badges !== undefined) profilesUpdates.badges = updates.badges;
+      if (updates.preferences !== undefined) profilesUpdates.preferences = updates.preferences;
+      if (updates.lastLoginDate !== undefined) {
+        profilesUpdates.last_login_date = updates.lastLoginDate;
+        profilesUpdates.last_login_at = updates.lastLoginDate;
+      }
 
       let profilesError = null;
       let data = null;
@@ -296,11 +309,12 @@ export const supabaseService = {
       if (fallbackQuery.data) {
         data = fallbackQuery.data.map((g: any) => ({
           ...g,
+          targetAmount: g.target_amount || 0,
+          completed: g.completed || false,
+          completed_at: g.completed_at || null,
           category: 'Emergency',
           frequency: 'weekly',
-          routine_amount: 100,
-          completed: false,
-          completed_at: null
+          routine_amount: 100
         }));
         error = null;
       } else {
@@ -313,6 +327,7 @@ export const supabaseService = {
         id: g.id,
         userId: g.user_id,
         name: g.name,
+        targetAmount: g.target_amount || (g.targetAmount || 0),
         currentAmount: g.current_amount || 0,
         frequency: g.frequency || 'weekly',
         routineAmount: g.routine_amount || 100,
@@ -523,10 +538,34 @@ export const supabaseService = {
   // Transactions
   async getTransactions(userId: string) {
     await this.ensureSession();
-    const { data, error } = await supabase
+    
+    // 1. Fetch group goal IDs that this user is a member of
+    const { data: memberGoals, error: memberError } = await supabase
+      .from('group_goal_members')
+      .select('goal_id')
+      .eq('user_id', userId);
+
+    if (memberError) {
+      console.error('[supabaseService] Error fetching member goals:', memberError);
+    }
+
+    const groupGoalIds = memberGoals ? memberGoals.map((m: any) => m.goal_id).filter(Boolean) : [];
+
+    // 2. Query transactions using a valid PostgREST filter
+    const query = supabase
       .from('transactions')
       .select('id,goal_id,goal_name,amount,type,goal_type,timestamp,category,user_id')
-      .or(`user_id.eq.${userId},goal_id.in.(select goal_id from group_goal_members where user_id.eq.${userId})`);
+      .order('timestamp', { ascending: false });
+
+    let result;
+    if (groupGoalIds.length > 0) {
+      const filterString = `user_id.eq.${userId},goal_id.in.(${groupGoalIds.join(',')})`;
+      result = await query.or(filterString);
+    } else {
+      result = await query.eq('user_id', userId);
+    }
+
+    const { data, error } = result;
     
     if (data) {
       const mapped = data.map((t: any) => ({
@@ -610,16 +649,42 @@ export const supabaseService = {
     const { data: tx } = await supabase.from('transactions').select('*').eq('id', transactionId).maybeSingle();
     if (!tx) throw new Error('Transaction not found');
 
-    const { amount, type, goal_id, goal_type } = tx;
+    const { amount, type, goal_id, goal_type, user_id } = tx;
 
     // 2. Update balance
     const table = goal_type === 'solo' ? 'solo_goals' : goal_type === 'group' ? 'group_goals' : 'emergency_goals';
     const field = goal_type === 'group' ? 'total_collected' : 'current_amount';
 
-    const { data: goal } = await supabase.from(table).select(field).eq('id', goal_id).maybeSingle();
-    if (goal) {
-      const adjustment = type === 'deposit' ? -amount : amount;
-      await supabase.from(table).update({ [field]: goal[field] + adjustment }).eq('id', goal_id);
+    if (goal_type === 'group') {
+      const { data: goal } = await supabase.from('group_goals').select('*').eq('id', goal_id).maybeSingle();
+      if (goal) {
+        // Since deposits are positive and withdrawals are negative (amount in withdrawal is negative e.g. -500),
+        // deleting them means we want to adjust the balance by -amount.
+        // e.g. deleting deposit of 500 => adjustment = -500.
+        // e.g. deleting withdrawal of -500 => adjustment = 500 (puts the money back).
+        const adjustment = -amount;
+        const newTotal = (goal.total_collected || goal.current_amount || 0) + adjustment;
+        
+        const members = Array.isArray(goal.members) ? goal.members : [];
+        const updatedMembers = members.map((m: any) => {
+          if (m.userId === user_id) {
+            return { ...m, contributed: Math.max(0, (m.contributed || 0) + adjustment) };
+          }
+          return m;
+        });
+
+        await supabase.from('group_goals').update({
+          total_collected: newTotal,
+          current_amount: newTotal, // minimal fallback
+          members: updatedMembers
+        }).eq('id', goal_id);
+      }
+    } else {
+      const { data: goal } = await supabase.from(table).select(field).eq('id', goal_id).maybeSingle();
+      if (goal) {
+        const adjustment = -amount;
+        await supabase.from(table).update({ [field]: (goal[field] || 0) + adjustment }).eq('id', goal_id);
+      }
     }
 
     // 3. Delete
@@ -629,17 +694,53 @@ export const supabaseService = {
 
   async clearAllTransactions(userId: string) {
     await this.ensureSession();
-    // 1. Delete all transactions
+    // 1. Delete all transactions of this user
     const { error } = await supabase.from('transactions').delete().eq('user_id', userId);
     if (error) return { error };
 
-    // 2. Reset balances
+    // 2. Reset solo and emergency goals
     await supabase.from('solo_goals').update({ current_amount: 0 }).eq('user_id', userId);
     await supabase.from('emergency_goals').update({ current_amount: 0 }).eq('user_id', userId);
     
-    // For group goals, we usually only reset the specific creator's collected if we want to be aggressive,
-    // but the user said "reset all goal balances to zero".
-    await supabase.from('group_goals').update({ total_collected: 0 }).eq('creator_id', userId);
+    // 3. Reset group goals that the user is part of (as creator or member)
+    const { data: groupGoals } = await supabase.from('group_goals').select('*');
+    if (groupGoals) {
+      for (const g of groupGoals) {
+        const isCreator = g.creator_id === userId;
+        const members = Array.isArray(g.members) ? g.members : [];
+        const isMember = members.some((m: any) => m.userId === userId);
+        
+        if (isCreator) {
+          // Reset entire goal if they are the creator
+          const updatedMembers = members.map((m: any) => ({ ...m, contributed: 0 }));
+          await supabase.from('group_goals')
+            .update({ 
+              total_collected: 0, 
+              members: updatedMembers,
+              current_amount: 0 // in case of minimal schema fallback
+            })
+            .eq('id', g.id);
+        } else if (isMember) {
+          // If they are just a member, reset only their own contribution
+          let memberContribution = 0;
+          const updatedMembers = members.map((m: any) => {
+            if (m.userId === userId) {
+              memberContribution = m.contributed || 0;
+              return { ...m, contributed: 0 };
+            }
+            return m;
+          });
+          const newCollected = Math.max(0, (g.total_collected || g.current_amount || 0) - memberContribution);
+          await supabase.from('group_goals')
+            .update({ 
+              total_collected: newCollected, 
+              members: updatedMembers,
+              current_amount: newCollected // in case of minimal schema fallback
+            })
+            .eq('id', g.id);
+        }
+      }
+    }
 
     return { error: null };
   },

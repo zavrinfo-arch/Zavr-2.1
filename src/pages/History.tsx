@@ -27,7 +27,7 @@ export default function TransactionHistory() {
   const { transactions, currentUser, refreshData, deleteTransaction, clearAllHistory } = useStore();
   const { theme } = useTheme();
   const isDark = theme === 'dark';
-  const [filter, setFilter] = useState<'all' | 'solo' | 'group'>('all');
+  const [filter, setFilter] = useState<'all' | 'solo' | 'group' | 'emergency'>('all');
   const [timeFilter, setTimeFilter] = useState<'all' | 'month' | 'week'>('all');
   const [confirmDelete, setConfirmDelete] = useState<{
     isOpen: boolean;
@@ -234,7 +234,7 @@ export default function TransactionHistory() {
         {/* Filters */}
         <div className="space-y-6">
           <div className="flex gap-3 overflow-x-auto hide-scrollbar pb-2">
-            {['all', 'solo', 'group'].map((f) => (
+            {['all', 'solo', 'group', 'emergency'].map((f) => (
               <button
                 key={f}
                 onClick={() => setFilter(f as any)}

@@ -284,12 +284,12 @@ export default function Home({ onAddMoney, onWithdraw }: {
 
                   <div className="space-y-2">
                     <div className="flex justify-between text-[9px] font-bold uppercase tracking-widest text-zinc-500 dark:text-[#94A3B8]">
-                      <span>{('targetAmount' in goal) ? 'Progress' : 'Total Saved'}</span>
-                      {('targetAmount' in goal) && (
-                        <span className="text-zinc-800 dark:text-white font-bold">{Math.round((('totalCollected' in goal ? goal.totalCollected : goal.currentAmount) / goal.targetAmount) * 100)}%</span>
+                      <span>{(goal.targetAmount && goal.targetAmount > 0) ? 'Progress' : 'Total Saved'}</span>
+                      {(goal.targetAmount && goal.targetAmount > 0) && (
+                        <span className="text-zinc-800 dark:text-white font-bold">{Math.min(100, Math.round((('totalCollected' in goal ? goal.totalCollected : goal.currentAmount) / goal.targetAmount) * 100))}%</span>
                       )}
                     </div>
-                    {('targetAmount' in goal) ? (
+                    {(goal.targetAmount && goal.targetAmount > 0) ? (
                       <div className="h-1.5 w-full bg-black/[0.04] dark:bg-white/[0.04] rounded-full overflow-hidden">
                         <motion.div 
                           initial={{ width: 0 }}
@@ -302,17 +302,36 @@ export default function Home({ onAddMoney, onWithdraw }: {
                       </div>
                     ) : (
                       <div className="text-xl font-extrabold text-zinc-900 dark:text-white">
-                        {formatCurrency(goal.currentAmount, currentUser?.preferences?.currency)}
+                        {formatCurrency(('currentAmount' in goal ? goal.currentAmount : 0), currentUser?.preferences?.currency)}
                       </div>
                     )}
                   </div>
 
                   <div className="flex flex-col gap-3">
                     {(() => {
+                      const type = 'members' in goal ? 'group' : ('deadline' in goal ? 'solo' : 'emergency');
+
+                      if (goal.completed) {
+                        return (
+                          <div className="space-y-3">
+                            <div className="p-4 bg-emerald-500/[0.04] text-center border border-emerald-500/10 rounded-xl">
+                              <p className="text-[10px] font-bold text-emerald-400 uppercase tracking-[0.2em]">Goal completed! 🎉</p>
+                            </div>
+                            <div className="flex gap-3">
+                              <button 
+                                onClick={() => onWithdraw(goal.id, type)}
+                                className="w-full h-11 bg-black/[0.02] dark:bg-white/[0.02] border border-black/[0.06] dark:border-white/[0.08] text-[10px] font-bold uppercase tracking-wider flex items-center justify-center gap-2 hover:bg-black/[0.04] dark:hover:bg-white/[0.06] transition-all duration-300 rounded-xl text-zinc-700 dark:text-white cursor-pointer"
+                              >
+                                <Minus size={14} /> Withdraw
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      }
+
                       const needed = getNeededThisPeriod(goal);
                       const contributed = getContributedThisPeriod(goal.id, goal.frequency);
                       const remaining = Math.max(0, needed - contributed);
-                      const type = 'members' in goal ? 'group' : ('deadline' in goal ? 'solo' : 'emergency');
 
                       if (remaining > 0) {
                         return (
