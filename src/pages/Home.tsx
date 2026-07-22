@@ -8,7 +8,7 @@ import { motion } from 'motion/react';
 import { useStore } from '../store/useStore';
 import { 
   Sparkles, Target, Calculator, TrendingUp, Flame, Trophy, ChevronRight,
-  Plus, Minus, Clock, Users, Eye, EyeOff
+  Plus, Minus, Clock, Users, Eye, EyeOff, Calendar
 } from 'lucide-react';
 import GamingDashboard from '../components/GamingDashboard';
 import { formatCurrency, cn } from '../lib/utils';
@@ -43,33 +43,39 @@ export default function Home({ onAddMoney, onWithdraw }: {
   const getNeededThisPeriod = (goal: any) => {
     if (!goal.frequency || goal.completed) return 0;
     
-    // For emergency goals, we use target / some arbitrary period or just the routine amount
-    // The user said "select the amount they needed to save and saving routine"
-    // So target is total, frequency is routine. 
-    // We need to know how many periods. Since no deadline, maybe we assume a default or just use the target/frequency?
-    // Actually, the user said "select the amount they needed to save and saving routine".
-    // Let's assume the "target" is the total goal, and we need a "routine amount".
-    // Wait, the PlusModal I wrote just has "target". I should probably add "routineAmount" or calculate it.
-    // If no deadline, we can't calculate "needed". 
-    // Let's assume for emergency goals, the user specifies a "Routine Amount" instead of a deadline.
-    
-    if ('deadline' in goal) {
-      const days = differenceInDays(parseISO(goal.deadline), new Date());
-      if (days <= 0) return 0;
+    if ('deadline' in goal && goal.deadline) {
+      let days = 0;
+      try {
+        const parsed = parseISO(goal.deadline);
+        if (!isNaN(parsed.getTime())) {
+          days = differenceInDays(parsed, new Date());
+        }
+      } catch (e) {
+        days = 0;
+      }
+
       let periods = 1;
-      if (goal.frequency === 'daily') periods = days;
-      else if (goal.frequency === 'weekly') periods = Math.ceil(days / 7);
-      else if (goal.frequency === 'monthly') periods = Math.ceil(days / 30);
+      if (days > 0) {
+        if (goal.frequency === 'daily') periods = Math.max(1, days);
+        else if (goal.frequency === 'weekly') periods = Math.max(1, Math.ceil(days / 7));
+        else if (goal.frequency === 'monthly') periods = Math.max(1, Math.ceil(days / 30));
+      } else {
+        if (goal.frequency === 'daily') periods = 365;
+        else if (goal.frequency === 'weekly') periods = 52;
+        else if (goal.frequency === 'monthly') periods = 12;
+      }
       
-      const remaining = goal.targetAmount - ('totalCollected' in goal ? goal.totalCollected : goal.currentAmount);
-      return Math.ceil(remaining / Math.max(1, periods));
+      const remaining = Math.max(0, (goal.targetAmount || 0) - ('totalCollected' in goal ? goal.totalCollected : goal.currentAmount));
+      if (remaining <= 0) return 0;
+
+      const perPersonRemaining = ('memberCount' in goal && goal.memberCount > 1) 
+        ? remaining / goal.memberCount 
+        : remaining;
+
+      return Math.max(0, Math.ceil(perPersonRemaining / Math.max(1, periods)));
     }
     
-    // For Emergency goals (no deadline), let's assume a default period of 12 months if not specified
-    // Or better, let's just use a fixed routine of 10% of target per month?
-    // User said: "select the amount they needed to save and saving routine"
-    // I'll update PlusModal to include a routine amount for emergency goals.
-    return goal.routineAmount || Math.ceil(goal.targetAmount / 10); 
+    return goal.routineAmount || Math.ceil((goal.targetAmount || 0) / 10); 
   };
 
   const getContributedThisPeriod = (goalId: string, frequency: string) => {
@@ -272,9 +278,21 @@ export default function Home({ onAddMoney, onWithdraw }: {
                       </div>
                       <div>
                         <h4 className="font-bold text-sm text-zinc-900 dark:text-white">{goal.name}</h4>
-                        <p className="text-[9px] text-zinc-500 dark:text-[#94A3B8]/60 font-bold uppercase tracking-widest">
-                          {'members' in goal ? 'Group' : 'Solo'}
-                        </p>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <p className="text-[9px] text-zinc-500 dark:text-[#94A3B8]/60 font-bold uppercase tracking-widest">
+                            {'members' in goal ? 'Group' : 'Solo'}
+                          </p>
+                          {'deadline' in goal && goal.deadline && (() => {
+                            const diff = differenceInDays(parseISO(goal.deadline), new Date());
+                            const daysLeft = Math.max(0, diff);
+                            return (
+                              <span className="text-[9px] font-bold text-zinc-600 dark:text-[#94A3B8] flex items-center gap-1">
+                                • <Calendar size={10} className={'members' in goal ? "text-[#4ECDC4]" : "text-[#FF6B6B]"} />
+                                {daysLeft}d left
+                              </span>
+                            );
+                          })()}
+                        </div>
                       </div>
                     </div>
                     <div className="px-2 py-1 rounded-lg bg-black/[0.02] dark:bg-white/[0.04] border border-black/[0.06] dark:border-white/[0.05] text-[8px] font-bold text-zinc-500 dark:text-[#94A3B8] uppercase">

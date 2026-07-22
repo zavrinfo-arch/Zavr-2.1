@@ -403,23 +403,57 @@ function PlusModal({ action, setAction, onClose, selectedGoal, initialAmount }: 
     onClose();
   };
 
-  const calculateNeededPerPeriod = () => {
-    if (!formData.target || !formData.deadline) return 0;
-    const days = differenceInDays(parseISO(formData.deadline), new Date());
-    if (days <= 0) return 0;
+  const calculateGoalMetrics = () => {
+    const totalTarget = formData.target || 0;
+    const memberCount = Math.max(1, formData.memberCount || 1);
+    const perPersonTarget = action === 'group-create' ? totalTarget / memberCount : totalTarget;
+
+    let daysLeft = 0;
+    let hasDeadline = false;
+
+    if (formData.deadline) {
+      try {
+        const parsed = parseISO(formData.deadline);
+        if (!isNaN(parsed.getTime())) {
+          daysLeft = Math.max(1, differenceInDays(parsed, new Date()));
+          hasDeadline = true;
+        }
+      } catch (e) {
+        daysLeft = 0;
+      }
+    }
+
+    const weeksLeft = Math.max(1, Math.ceil(daysLeft / 7));
+    const monthsLeft = Math.max(1, Math.ceil(daysLeft / 30));
 
     let periods = 1;
-    if (formData.frequency === 'daily') periods = days;
-    else if (formData.frequency === 'weekly') periods = Math.ceil(days / 7);
-    else if (formData.frequency === 'monthly') periods = Math.ceil(days / 30);
+    if (hasDeadline && daysLeft > 0) {
+      if (formData.frequency === 'daily') periods = daysLeft;
+      else if (formData.frequency === 'weekly') periods = weeksLeft;
+      else if (formData.frequency === 'monthly') periods = monthsLeft;
+    } else {
+      if (formData.frequency === 'daily') periods = 365;
+      else if (formData.frequency === 'weekly') periods = 52;
+      else if (formData.frequency === 'monthly') periods = 12;
+    }
 
-    const totalTarget = formData.target;
-    const perPersonTarget = action === 'group-create' ? totalTarget / formData.memberCount : totalTarget;
-    
-    return Math.ceil(perPersonTarget / Math.max(1, periods));
+    const neededPerPeriod = (totalTarget > 0) 
+      ? Math.ceil(perPersonTarget / Math.max(1, periods)) 
+      : 0;
+
+    return {
+      neededPerPeriod,
+      daysLeft,
+      weeksLeft,
+      monthsLeft,
+      periodsLeft: periods,
+      perPersonTarget,
+      hasDeadline
+    };
   };
 
-  const neededPerPeriod = calculateNeededPerPeriod();
+  const goalMetrics = calculateGoalMetrics();
+  const neededPerPeriod = goalMetrics.neededPerPeriod;
 
   const handleCreateSolo = (e: React.FormEvent) => {
     e.preventDefault();
@@ -778,12 +812,12 @@ function PlusModal({ action, setAction, onClose, selectedGoal, initialAmount }: 
             <motion.div 
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              className="clay-inset p-5 rounded-2xl bg-surface border border-border"
+              className="clay-inset p-5 rounded-2xl bg-surface border border-border space-y-4"
             >
-              <div className="flex justify-between items-center">
+              <div className="flex justify-between items-start gap-2">
                 <div>
-                  <p className="text-[10px] font-black uppercase tracking-[0.2em] opacity-20">Estimated Routine</p>
-                  <p className="text-2xl font-black mt-1">
+                  <p className="text-[10px] font-black uppercase tracking-[0.2em] opacity-30">Estimated Routine</p>
+                  <p className="text-2xl font-black mt-1 text-[#FF6B6B]">
                     {action === 'emergency' 
                       ? formatCurrency(formData.routineAmount, currentUser?.preferences?.currency)
                       : formatCurrency(neededPerPeriod, currentUser?.preferences?.currency)}
@@ -792,18 +826,49 @@ function PlusModal({ action, setAction, onClose, selectedGoal, initialAmount }: 
                 </div>
                 {action !== 'emergency' && (
                   <div className="text-right">
-                    <p className="text-[10px] font-black uppercase tracking-[0.2em] opacity-20">Target</p>
-                    <p className="text-sm font-bold opacity-60 mt-1">{formatCurrency(formData.target, currentUser?.preferences?.currency)}</p>
+                    <p className="text-[10px] font-black uppercase tracking-[0.2em] opacity-30">
+                      {action === 'group-create' ? 'Group Target' : 'Target'}
+                    </p>
+                    <p className="text-sm font-bold opacity-80 mt-1">
+                      {formatCurrency(formData.target, currentUser?.preferences?.currency)}
+                    </p>
+                    {action === 'group-create' && (
+                      <p className="text-[9px] font-bold text-[#4ECDC4] mt-0.5">
+                        ({formatCurrency(goalMetrics.perPersonTarget, currentUser?.preferences?.currency)} / member)
+                      </p>
+                    )}
                   </div>
                 )}
               </div>
-              <div className="mt-4 pt-4 border-t border-border">
-                <p className="text-[9px] opacity-30 leading-relaxed">
+
+              {action !== 'emergency' && goalMetrics.hasDeadline && (
+                <div className="grid grid-cols-3 gap-2 py-2.5 px-3 bg-black/[0.02] dark:bg-white/[0.02] border border-border/50 rounded-xl text-center">
+                  <div>
+                    <p className="text-[8px] font-black uppercase tracking-wider opacity-40">Days Left</p>
+                    <p className="text-xs font-black text-foreground mt-0.5">{goalMetrics.daysLeft} Days</p>
+                  </div>
+                  <div>
+                    <p className="text-[8px] font-black uppercase tracking-wider opacity-40">Weeks Left</p>
+                    <p className="text-xs font-black text-foreground mt-0.5">{goalMetrics.weeksLeft} Weeks</p>
+                  </div>
+                  <div>
+                    <p className="text-[8px] font-black uppercase tracking-wider opacity-40">Months Left</p>
+                    <p className="text-xs font-black text-foreground mt-0.5">{goalMetrics.monthsLeft} Months</p>
+                  </div>
+                </div>
+              )}
+
+              <div className="pt-3 border-t border-border">
+                <p className="text-[9px] opacity-60 leading-relaxed">
                   {action === 'emergency'
                     ? `You will save this amount ${formData.frequency} to build your emergency fund. There is no fixed target, save as much as you need.`
                     : action === 'group-create' 
-                    ? `Each of the ${formData.memberCount} members needs to contribute this amount to reach the ${formatCurrency(formData.target, currentUser?.preferences?.currency)} goal by the deadline.`
-                    : `You need to save this amount ${formData.frequency} to reach your ${formatCurrency(formData.target, currentUser?.preferences?.currency)} goal by the deadline.`}
+                    ? goalMetrics.hasDeadline
+                      ? `Target deadline in ${goalMetrics.daysLeft} days (${goalMetrics.periodsLeft} ${formData.frequency} cycles) by ${formatDateSafely(formData.deadline)}. Each of the ${formData.memberCount || 1} members contributes ${formatCurrency(neededPerPeriod, currentUser?.preferences?.currency)} per ${formData.frequency}.`
+                      : `Each of the ${formData.memberCount || 1} members needs to contribute ${formatCurrency(neededPerPeriod, currentUser?.preferences?.currency)} per ${formData.frequency}. Select a deadline to calculate exact completion days.`
+                    : goalMetrics.hasDeadline
+                      ? `Target deadline in ${goalMetrics.daysLeft} days (${goalMetrics.periodsLeft} ${formData.frequency} cycles) by ${formatDateSafely(formData.deadline)}. Save ${formatCurrency(neededPerPeriod, currentUser?.preferences?.currency)} per ${formData.frequency}.`
+                      : `You need to save ${formatCurrency(neededPerPeriod, currentUser?.preferences?.currency)} per ${formData.frequency}. Select a deadline date to calculate exact completion days.`}
                 </p>
               </div>
             </motion.div>

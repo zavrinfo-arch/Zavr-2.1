@@ -1348,11 +1348,64 @@ export const useStore = create<AppState>()(
       },
 
       deleteTransaction: async (id) => {
-        set((state) => ({
-          transactions: state.transactions.filter(t => t.id !== id)
-        }));
-        await supabaseService.deleteTransaction(id);
-        get().refreshData();
+        const state = get();
+        const tx = state.transactions.find(t => t.id === id);
+        if (!tx) return;
+
+        const { amount, goalType, goalId, userId } = tx;
+        const adjustment = -amount;
+
+        console.log('[STORE] Starting deleteTransaction for ID:', id, 'adjustment:', adjustment);
+
+        // Synchronously apply local updates to keep the UI extremely snappy
+        const updatedSoloGoals = state.soloGoals.map(g => {
+          if (goalType === 'solo' && g.id === goalId) {
+            return { ...g, currentAmount: Math.max(0, (g.currentAmount || 0) + adjustment) };
+          }
+          return g;
+        });
+
+        const updatedEmergencyGoals = state.emergencyGoals.map(g => {
+          if (goalType === 'emergency' && g.id === goalId) {
+            return { ...g, currentAmount: Math.max(0, (g.currentAmount || 0) + adjustment) };
+          }
+          return g;
+        });
+
+        const updatedGroupGoals = state.groupGoals.map(g => {
+          if (goalType === 'group' && g.id === goalId) {
+            const updatedMembers = g.members.map(m => {
+              if (m.userId === userId) {
+                return { ...m, contributed: Math.max(0, (m.contributed || 0) + adjustment) };
+              }
+              return m;
+            });
+            const newCollected = Math.max(0, (g.totalCollected || 0) + adjustment);
+            return {
+              ...g,
+              totalCollected: newCollected,
+              members: updatedMembers
+            };
+          }
+          return g;
+        });
+
+        set({
+          transactions: state.transactions.filter(t => t.id !== id),
+          soloGoals: updatedSoloGoals,
+          emergencyGoals: updatedEmergencyGoals,
+          groupGoals: updatedGroupGoals
+        });
+
+        // Delete from database
+        try {
+          await supabaseService.deleteTransaction(id);
+        } catch (err) {
+          console.error('[STORE] Failed to delete transaction from database:', err);
+        }
+
+        // Force data refresh to align with any concurrent updates on server
+        await get().refreshData();
       },
 
       clearAllHistory: async () => {
@@ -1557,6 +1610,38 @@ export const useStore = create<AppState>()(
       clearGoalHistory: async (goalId, type) => {
         const state = get();
         if (!state.currentUser) return;
+
+        console.log('[STORE] Starting clearGoalHistory for goalId:', goalId, 'type:', type);
+
+        // 1. Instantly clear locally to prevent delays or stuttering in UI
+        const updatedSoloGoals = state.soloGoals.map(g => {
+          if (type === 'solo' && g.id === goalId) {
+            return { ...g, currentAmount: 0 };
+          }
+          return g;
+        });
+
+        const updatedEmergencyGoals = state.emergencyGoals.map(g => {
+          if (type === 'emergency' && g.id === goalId) {
+            return { ...g, currentAmount: 0 };
+          }
+          return g;
+        });
+
+        const updatedGroupGoals = state.groupGoals.map(g => {
+          if (type === 'group' && g.id === goalId) {
+            const updatedMembers = g.members.map(m => ({ ...m, contributed: 0 }));
+            return { ...g, totalCollected: 0, members: updatedMembers };
+          }
+          return g;
+        });
+
+        set({
+          transactions: state.transactions.filter(t => t.goalId !== goalId),
+          soloGoals: updatedSoloGoals,
+          emergencyGoals: updatedEmergencyGoals,
+          groupGoals: updatedGroupGoals
+        });
 
         try {
           // Delete transactions for this goal in DB

@@ -297,6 +297,15 @@ async function sendSafeNotification(supabaseClient: any, notificationData: {
   read?: boolean;
 }) {
   try {
+    // 0. Ensure user exists in auth.users first to avoid violating foreign key constraints
+    if (supabaseClient.auth && supabaseClient.auth.admin && typeof supabaseClient.auth.admin.getUserById === 'function') {
+      const { data: authData, error: authError } = await supabaseClient.auth.admin.getUserById(notificationData.user_id);
+      if (authError || !authData || !authData.user) {
+        console.log(`[sendSafeNotification] User ${notificationData.user_id} not found in auth.users. Skipping notification to avoid FK violation.`);
+        return;
+      }
+    }
+
     // 1. Ensure user exists in user_profiles to satisfy notifications_user_id_fkey constraint
     const { data: up, error: upError } = await supabaseClient
       .from('user_profiles')

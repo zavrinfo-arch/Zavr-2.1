@@ -33,8 +33,11 @@ export default function TransactionHistory() {
     isOpen: boolean;
     id: string | 'all';
   }>({ isOpen: false, id: '' });
+  const [isOperating, setIsOperating] = useState(false);
 
   const handleConfirmAction = async () => {
+    if (isOperating) return;
+    setIsOperating(true);
     try {
       if (confirmDelete.id === 'all') {
         await clearAllHistory();
@@ -45,7 +48,10 @@ export default function TransactionHistory() {
       }
       setConfirmDelete({ isOpen: false, id: '' });
     } catch (err) {
+      console.error('[HISTORY] Operation failed:', err);
       toast.error('Operation failed');
+    } finally {
+      setIsOperating(false);
     }
   };
 
@@ -155,15 +161,26 @@ export default function TransactionHistory() {
 
                 <div className="flex gap-4">
                   <button 
+                    disabled={isOperating}
                     onClick={() => setConfirmDelete({ isOpen: false, id: '' })}
-                    className="flex-1 h-12 bg-black/[0.02] dark:bg-white/[0.02] border border-black/[0.06] dark:border-white/[0.08] text-zinc-500 dark:text-[#94A3B8] rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-black/[0.04] dark:hover:bg-white/[0.04] transition-all cursor-pointer"
+                    className={cn(
+                      "flex-1 h-12 bg-black/[0.02] dark:bg-white/[0.02] border border-black/[0.06] dark:border-white/[0.08] text-zinc-500 dark:text-[#94A3B8] rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-black/[0.04] dark:hover:bg-white/[0.04] transition-all cursor-pointer",
+                      isOperating && "opacity-50 cursor-not-allowed"
+                    )}
                   >
                     Cancel
                   </button>
                   <button 
+                    disabled={isOperating}
                     onClick={handleConfirmAction}
-                    className="flex-1 h-12 bg-gradient-to-r from-[#FF7C7C] to-[#FF6B6B] text-white rounded-xl text-[10px] font-bold uppercase tracking-widest shadow-lg shadow-[rgba(255,107,107,0.35)] transition-all cursor-pointer"
+                    className={cn(
+                      "flex-1 h-12 bg-gradient-to-r from-[#FF7C7C] to-[#FF6B6B] text-white rounded-xl text-[10px] font-bold uppercase tracking-widest shadow-lg shadow-[rgba(255,107,107,0.35)] transition-all cursor-pointer flex items-center justify-center gap-2",
+                      isOperating && "opacity-80 cursor-not-allowed"
+                    )}
                   >
+                    {isOperating ? (
+                      <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    ) : null}
                     {confirmDelete.id === 'all' ? 'Clear All' : 'Delete'}
                   </button>
                 </div>

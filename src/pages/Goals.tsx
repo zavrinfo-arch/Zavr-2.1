@@ -177,40 +177,82 @@ export default function Goals({ onAddMoney, onWithdraw }: {
   };
 
   const calculateNeeded = (target: number, current: number, deadline: string, frequency: string) => {
-    const daysLeft = differenceInDays(parseISO(deadline), new Date());
-    if (daysLeft <= 0) return 0;
-    
-    const remaining = target - current;
+    const remaining = Math.max(0, target - current);
     if (remaining <= 0) return 0;
 
-    switch (frequency) {
-      case 'daily':
-        return remaining / daysLeft;
-      case 'weekly':
-        return remaining / (daysLeft / 7);
-      case 'monthly':
-        return remaining / (daysLeft / 30);
-      default:
-        return remaining / daysLeft;
+    let daysLeft = 0;
+    if (deadline) {
+      try {
+        const parsed = parseISO(deadline);
+        if (!isNaN(parsed.getTime())) {
+          daysLeft = differenceInDays(parsed, new Date());
+        }
+      } catch (e) {
+        daysLeft = 0;
+      }
+    }
+
+    if (daysLeft > 0) {
+      switch (frequency) {
+        case 'daily':
+          return Math.ceil(remaining / daysLeft);
+        case 'weekly':
+          return Math.ceil(remaining / Math.max(1, Math.ceil(daysLeft / 7)));
+        case 'monthly':
+          return Math.ceil(remaining / Math.max(1, Math.ceil(daysLeft / 30)));
+        default:
+          return Math.ceil(remaining / daysLeft);
+      }
+    } else {
+      switch (frequency) {
+        case 'daily':
+          return Math.ceil(remaining / 365);
+        case 'weekly':
+          return Math.ceil(remaining / 52);
+        case 'monthly':
+          return Math.ceil(remaining / 12);
+        default:
+          return Math.ceil(remaining / 12);
+      }
     }
   };
 
   const getNeededThisPeriod = (goal: any) => {
     if (!goal.frequency || goal.completed) return 0;
     
-    if ('deadline' in goal) {
-      const days = differenceInDays(parseISO(goal.deadline), new Date());
-      if (days <= 0) return 0;
+    if ('deadline' in goal && goal.deadline) {
+      let days = 0;
+      try {
+        const parsed = parseISO(goal.deadline);
+        if (!isNaN(parsed.getTime())) {
+          days = differenceInDays(parsed, new Date());
+        }
+      } catch (e) {
+        days = 0;
+      }
+
       let periods = 1;
-      if (goal.frequency === 'daily') periods = days;
-      else if (goal.frequency === 'weekly') periods = Math.ceil(days / 7);
-      else if (goal.frequency === 'monthly') periods = Math.ceil(days / 30);
+      if (days > 0) {
+        if (goal.frequency === 'daily') periods = Math.max(1, days);
+        else if (goal.frequency === 'weekly') periods = Math.max(1, Math.ceil(days / 7));
+        else if (goal.frequency === 'monthly') periods = Math.max(1, Math.ceil(days / 30));
+      } else {
+        if (goal.frequency === 'daily') periods = 365;
+        else if (goal.frequency === 'weekly') periods = 52;
+        else if (goal.frequency === 'monthly') periods = 12;
+      }
       
-      const remaining = goal.targetAmount - ('totalCollected' in goal ? goal.totalCollected : goal.currentAmount);
-      return Math.ceil(remaining / Math.max(1, periods));
+      const remaining = Math.max(0, (goal.targetAmount || 0) - ('totalCollected' in goal ? goal.totalCollected : goal.currentAmount));
+      if (remaining <= 0) return 0;
+
+      const perPersonRemaining = ('memberCount' in goal && goal.memberCount > 1) 
+        ? remaining / goal.memberCount 
+        : remaining;
+
+      return Math.max(0, Math.ceil(perPersonRemaining / Math.max(1, periods)));
     }
     
-    return goal.routineAmount || Math.ceil(goal.targetAmount / 10); 
+    return goal.routineAmount || Math.ceil((goal.targetAmount || 0) / 10); 
   };
 
   const getContributedThisPeriod = (goalId: string, frequency: string) => {
@@ -223,6 +265,58 @@ export default function Goals({ onAddMoney, onWithdraw }: {
     return transactions
       .filter(t => t.goalId === goalId && isAfter(parseISO(t.timestamp), start) && t.amount > 0)
       .reduce((sum, t) => sum + t.amount, 0);
+  };
+
+  const calculateEditModalMetrics = () => {
+    if (!editModal.goal) return null;
+    const target = editModal.goal.targetAmount || 0;
+    const deadline = editModal.goal.deadline || '';
+    const frequency = editModal.goal.frequency || 'weekly';
+    const isGroup = editModal.type === 'group';
+    const memberCount = isGroup ? (editModal.goal.memberCount || editModal.goal.members?.length || 1) : 1;
+    const perPersonTarget = isGroup ? target / Math.max(1, memberCount) : target;
+
+    let daysLeft = 0;
+    let hasDeadline = false;
+
+    if (deadline) {
+      try {
+        const parsed = parseISO(deadline);
+        if (!isNaN(parsed.getTime())) {
+          daysLeft = Math.max(1, differenceInDays(parsed, new Date()));
+          hasDeadline = true;
+        }
+      } catch (e) {
+        daysLeft = 0;
+      }
+    }
+
+    const weeksLeft = Math.max(1, Math.ceil(daysLeft / 7));
+    const monthsLeft = Math.max(1, Math.ceil(daysLeft / 30));
+
+    let periods = 1;
+    if (hasDeadline && daysLeft > 0) {
+      if (frequency === 'daily') periods = daysLeft;
+      else if (frequency === 'weekly') periods = weeksLeft;
+      else if (frequency === 'monthly') periods = monthsLeft;
+    } else {
+      if (frequency === 'daily') periods = 365;
+      else if (frequency === 'weekly') periods = 52;
+      else if (frequency === 'monthly') periods = 12;
+    }
+
+    const neededPerPeriod = (target > 0) ? Math.ceil(perPersonTarget / Math.max(1, periods)) : 0;
+
+    return {
+      neededPerPeriod,
+      daysLeft,
+      weeksLeft,
+      monthsLeft,
+      periodsLeft: periods,
+      perPersonTarget,
+      hasDeadline,
+      memberCount
+    };
   };
 
   return (
@@ -352,6 +446,80 @@ export default function Goals({ onAddMoney, onWithdraw }: {
                       </p>
                     )}
                   </div>
+                  <div className="space-y-1.5 text-left">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 dark:text-[#94A3B8]/40 ml-4">Saving Routine</label>
+                    <div className="flex p-1 bg-black/[0.02] dark:bg-white/[0.02] border border-black/[0.08] dark:border-white/[0.08] rounded-2xl">
+                      {(['daily', 'weekly', 'monthly'] as const).map((freq) => (
+                        <button
+                          key={freq}
+                          type="button"
+                          onClick={() => setEditModal({ ...editModal, goal: { ...editModal.goal, frequency: freq } })}
+                          className={cn(
+                            "flex-1 py-2.5 rounded-xl text-xs font-bold transition-all capitalize",
+                            editModal.goal.frequency === freq ? "bg-gradient-to-r from-[#FF7C7C] to-[#FF6B6B] text-white shadow-md" : "text-zinc-500 dark:text-[#94A3B8]/60 hover:text-zinc-800 dark:hover:text-white"
+                          )}
+                        >
+                          {freq}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {(() => {
+                    const metrics = calculateEditModalMetrics();
+                    if (!metrics) return null;
+                    return (
+                      <div className="clay-inset p-4 rounded-2xl bg-black/[0.02] dark:bg-white/[0.02] border border-black/[0.08] dark:border-white/[0.08] space-y-3 text-left">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500 dark:text-[#94A3B8]/60">Estimated Routine</p>
+                            <p className="text-xl font-black text-[#FF6B6B] mt-0.5">
+                              {formatCurrency(metrics.neededPerPeriod, currentUser?.preferences?.currency)}
+                              <span className="text-[10px] font-bold ml-1 text-zinc-400">/{editModal.goal.frequency}</span>
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500 dark:text-[#94A3B8]/60">
+                              {editModal.type === 'group' ? 'Group Target' : 'Target'}
+                            </p>
+                            <p className="text-sm font-bold text-zinc-800 dark:text-white mt-0.5">
+                              {formatCurrency(editModal.goal.targetAmount, currentUser?.preferences?.currency)}
+                            </p>
+                            {editModal.type === 'group' && (
+                              <p className="text-[9px] font-bold text-[#4ECDC4]">
+                                ({formatCurrency(metrics.perPersonTarget, currentUser?.preferences?.currency)} / member)
+                              </p>
+                            )}
+                          </div>
+                        </div>
+
+                        {metrics.hasDeadline && (
+                          <div className="grid grid-cols-3 gap-2 py-2 px-3 bg-black/[0.02] dark:bg-white/[0.02] border border-black/[0.06] dark:border-white/[0.06] rounded-xl text-center">
+                            <div>
+                              <p className="text-[8px] font-black uppercase tracking-wider text-zinc-500 dark:text-[#94A3B8]/60">Days Left</p>
+                              <p className="text-xs font-black text-zinc-900 dark:text-white">{metrics.daysLeft} Days</p>
+                            </div>
+                            <div>
+                              <p className="text-[8px] font-black uppercase tracking-wider text-zinc-500 dark:text-[#94A3B8]/60">Weeks Left</p>
+                              <p className="text-xs font-black text-zinc-900 dark:text-white">{metrics.weeksLeft} Weeks</p>
+                            </div>
+                            <div>
+                              <p className="text-[8px] font-black uppercase tracking-wider text-zinc-500 dark:text-[#94A3B8]/60">Months Left</p>
+                              <p className="text-xs font-black text-zinc-900 dark:text-white">{metrics.monthsLeft} Months</p>
+                            </div>
+                          </div>
+                        )}
+
+                        <p className="text-[9px] text-zinc-500 dark:text-[#94A3B8]/70 leading-relaxed pt-1 border-t border-black/[0.06] dark:border-white/[0.06]">
+                          {metrics.hasDeadline
+                            ? editModal.type === 'group'
+                              ? `Completes in ${metrics.daysLeft} days (${metrics.periodsLeft} ${editModal.goal.frequency} cycles) by ${formatDateSafely(editModal.goal.deadline)}. Each member saves ${formatCurrency(metrics.neededPerPeriod, currentUser?.preferences?.currency)} / ${editModal.goal.frequency}.`
+                              : `Completes in ${metrics.daysLeft} days (${metrics.periodsLeft} ${editModal.goal.frequency} cycles) by ${formatDateSafely(editModal.goal.deadline)}. Save ${formatCurrency(metrics.neededPerPeriod, currentUser?.preferences?.currency)} / ${editModal.goal.frequency}.`
+                            : `Select a deadline date to calculate exact days to complete target.`}
+                        </p>
+                      </div>
+                    );
+                  })()}
                   <button 
                     type="submit"
                     className="w-full h-14 bg-gradient-to-r from-[#FF7C7C] to-[#FF6B6B] text-white rounded-2xl text-xs font-black uppercase tracking-widest shadow-lg shadow-[rgba(255,107,107,0.35)] hover:-translate-y-0.5 active:translate-y-0 active:scale-95 transition-all cursor-pointer"
@@ -492,10 +660,24 @@ export default function Goals({ onAddMoney, onWithdraw }: {
                       </div>
                       <div>
                         <h4 className="text-2xl font-bold tracking-tight text-zinc-900 dark:text-white">{goal.name}</h4>
-                        <div className="flex items-center gap-3 mt-1">
+                        <div className="flex items-center gap-3 mt-1 flex-wrap">
                           <p className="text-[10px] text-zinc-500 dark:text-[#94A3B8]/60 font-bold uppercase tracking-[0.2em]">{goal.category}</p>
                           <span className="w-1 h-1 rounded-full bg-black/10 dark:bg-white/10" />
                           <p className="text-[10px] text-[#FF6B6B] font-bold uppercase tracking-[0.2em]">{goal.frequency}</p>
+                          {goal.deadline && (() => {
+                            const diff = differenceInDays(parseISO(goal.deadline), new Date());
+                            const daysLeft = Math.max(0, diff);
+                            const weeksLeft = Math.ceil(daysLeft / 7);
+                            return (
+                              <>
+                                <span className="w-1 h-1 rounded-full bg-black/10 dark:bg-white/10" />
+                                <p className="text-[10px] text-zinc-600 dark:text-[#94A3B8] font-bold uppercase tracking-wider flex items-center gap-1">
+                                  <Calendar size={11} className="text-[#FF6B6B]" />
+                                  <span>{daysLeft} Days Left ({weeksLeft} wks)</span>
+                                </p>
+                              </>
+                            );
+                          })()}
                         </div>
                       </div>
                     </div>
@@ -664,7 +846,7 @@ export default function Goals({ onAddMoney, onWithdraw }: {
                         </div>
                         <div>
                           <h4 className="text-2xl font-bold tracking-tight text-zinc-900 dark:text-white">{goal.name}</h4>
-                          <div className="flex items-center gap-3 mt-1">
+                          <div className="flex items-center gap-3 mt-1 flex-wrap">
                             <button 
                               onClick={() => copyToClipboard(goal.groupId)}
                               className="flex items-center gap-2 text-[#4ECDC4] text-[10px] font-bold bg-[#4ECDC4]/10 px-3 py-1 rounded-full uppercase tracking-widest cursor-pointer hover:bg-[#4ECDC4]/20 transition-all duration-300"
@@ -673,6 +855,20 @@ export default function Goals({ onAddMoney, onWithdraw }: {
                             </button>
                             <span className="w-1 h-1 rounded-full bg-black/10 dark:bg-white/10" />
                             <p className="text-[10px] text-[#4ECDC4] font-bold uppercase tracking-[0.2em]">{goal.frequency}</p>
+                            {goal.deadline && (() => {
+                              const diff = differenceInDays(parseISO(goal.deadline), new Date());
+                              const daysLeft = Math.max(0, diff);
+                              const weeksLeft = Math.ceil(daysLeft / 7);
+                              return (
+                                <>
+                                  <span className="w-1 h-1 rounded-full bg-black/10 dark:bg-white/10" />
+                                  <p className="text-[10px] text-zinc-600 dark:text-[#94A3B8] font-bold uppercase tracking-wider flex items-center gap-1">
+                                    <Calendar size={11} className="text-[#4ECDC4]" />
+                                    <span>{daysLeft} Days Left ({weeksLeft} wks)</span>
+                                  </p>
+                                </>
+                              );
+                            })()}
                           </div>
                         </div>
                       </div>
