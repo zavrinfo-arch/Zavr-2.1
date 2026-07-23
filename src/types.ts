@@ -240,12 +240,13 @@ export interface ExpenseSplit {
   settledAt?: string;
 }
 
-export interface ZettlReminder {
+export interface FriendDropdownOption {
   id: string;
-  zettlId?: string;
-  expenseSplitId?: string;
-  remindedToUserId: string;
-  remindedAt: string;
-  type: 'manual' | 'auto';
-  notificationSent: boolean;
+  friend_id: string;
+  friendId?: string;
+  username: string;
+  full_name: string;
+  avatar_url?: string;
 }
+
+export * from './types/index';

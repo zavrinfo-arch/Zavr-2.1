@@ -6,6 +6,7 @@ import { useStore } from '../store/useStore';
 import { cn } from '../lib/utils';
 import { formatDistanceToNow, parseISO } from 'date-fns';
 import NotificationBell from './NotificationBell';
+import RefreshButton from './RefreshButton';
 import { useTheme } from '../context/ThemeContext';
 
 import { AVATARS_50 } from '../constants/avatars';
@@ -148,6 +149,9 @@ export default function ProfileHeader() {
             )} />
             <span className="text-xs font-bold text-zinc-800 dark:text-white">{activeUser.streak || 0}</span>
           </div>
+
+          {/* Refresh / Sync Button */}
+          <RefreshButton showLabel={false} />
 
           {/* Theme Toggle */}
           <button

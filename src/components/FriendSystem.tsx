@@ -129,8 +129,12 @@ export default function FriendSystem() {
     setActionLoading(prev => ({ ...prev, [reqId]: true }));
     try {
       await acceptFriend(reqId);
+      await useStore.getState().refreshFriendsForDropdown(true);
+      await useStore.getState().refreshAllData();
+      toast.success('Connection accepted! Added to your friends list.');
     } catch (err: any) {
       console.error('[FRIEND-SYSTEM] Accept failed:', err);
+      toast.error('Failed to accept friend request');
     } finally {
       setActionLoading(prev => ({ ...prev, [reqId]: false }));
     }
@@ -251,7 +255,7 @@ export default function FriendSystem() {
               ) : (
                 <div className="space-y-2 pt-1">
                   {searchResults.map((user) => {
-                    const existingFriend = friends.find(f => f.friendId === user.id);
+                    const existingFriend = friends.find(f => f.friendId === user.id || f.userId === user.id);
                     const isAccepted = existingFriend?.status === 'accepted';
                     const isPending = existingFriend?.status === 'pending';
                     const isIncoming = existingFriend?.type === 'incoming';

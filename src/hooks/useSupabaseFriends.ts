@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { useStore } from '../store/useStore';
+import { friendService, clearFriendsCache } from '../services/friendService';
 import { Friend, User } from '../types';
 import toast from 'react-hot-toast';
 
@@ -22,44 +23,11 @@ export function useSupabaseFriends() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Helper: Search users matching a username (case-insensitive)
+  // Helper: Search users matching a username or full name (case-insensitive)
   const searchUsers = useCallback(async (searchTerm: string): Promise<User[]> => {
     if (!searchTerm || searchTerm.trim() === '') return [];
     try {
-      const { data, error: searchError } = await supabase
-        .from('profiles')
-        .select('*')
-        .ilike('username', `%${searchTerm.trim()}%`)
-        .neq('id', currentUser?.id || '')
-        .limit(10);
-
-      if (searchError) throw searchError;
-
-      return (data || []).map((p: any) => ({
-        id: p.id,
-        fullName: p.full_name || p.fullName || '',
-        username: p.username,
-        email: p.email || '',
-        phone: p.phone || '',
-        dob: p.birth_date || p.dob || '',
-        location: p.location || '',
-        avatar: p.avatar_url || p.avatar || `https://api.dicebear.com/7.x/lorelei/svg?seed=${p.username}`,
-        avatarId: p.avatar_id || '',
-        streak: p.streak || 0,
-        onboardingCompleted: p.onboarding_completed || false,
-        interests: p.interests || [],
-        badges: p.badges || [],
-        createdAt: p.created_at || '',
-        lastLoginDate: p.last_login_date || null,
-        streakFreezeCount: p.streak_freeze_count || 0,
-        xp: p.xp || 0,
-        level: p.level || 1,
-        preferences: p.preferences || {
-          currency: 'INR',
-          notificationsEnabled: true,
-          reminders: { enabled: false, time: '12:00', frequency: 'daily' }
-        }
-      }));
+      return await friendService.searchUsers(searchTerm, currentUser?.id);
     } catch (err: any) {
       console.error('[useSupabaseFriends] searchUsers failed:', err);
       return [];
@@ -68,92 +36,96 @@ export function useSupabaseFriends() {
 
   // Load friends and pending requests from Supabase
   const loadFriendData = useCallback(async () => {
-    const activeUserId = currentUser?.id;
+    const activeUserId = currentUser?.id || useStore.getState().session?.user?.id;
     if (!activeUserId) return;
 
     setLoading(true);
     setError(null);
     try {
-      // 1. Fetch from 'friendships' table if exists, fallback to 'friends' table
-      let rawFriends: any[] = [];
-      let usedTable = 'friendships';
-      
-      const { data: friendshipsData, error: friendshipsErr } = await supabase
-        .from('friendships')
+      // 1. Fetch established friends from 'friends' table
+      const { data: friendsData, error: friendsErr } = await supabase
+        .from('friends')
         .select('*')
-        .or(`sender_id.eq.${activeUserId},receiver_id.eq.${activeUserId}`);
+        .or(`user_id.eq.${activeUserId},friend_id.eq.${activeUserId}`);
 
-      if (!friendshipsErr && friendshipsData) {
-        rawFriends = friendshipsData;
-      } else {
-        // Fallback to legacy 'friends' table
-        const { data: friendsData, error: friendsErr } = await supabase
-          .from('friends')
-          .select('*')
-          .or(`user_id.eq.${activeUserId},friend_id.eq.${activeUserId}`);
-        
-        if (friendsErr) throw friendsErr;
-        rawFriends = (friendsData || []).map((f: any) => ({
-          id: f.id,
-          sender_id: f.user_id,
-          receiver_id: f.friend_id,
-          status: f.status || 'accepted',
-          created_at: f.created_at
-        }));
-        usedTable = 'friends';
+      if (friendsErr) {
+        console.warn('[useSupabaseFriends] Error loading friends table:', friendsErr.message);
       }
 
-      if (rawFriends.length === 0) {
-        setFriendsList([]);
-        setPendingRequests([]);
-        return;
-      }
-
-      // Gather distinct targets profile IDs
-      const targetIds = Array.from(
-        new Set(
-          rawFriends.flatMap((f: any) => [f.sender_id, f.receiver_id])
-        )
-      ).filter(id => id !== activeUserId);
-
-      if (targetIds.length === 0) {
-        setFriendsList([]);
-        setPendingRequests([]);
-        return;
-      }
-
-      const { data: profiles, error: profileErr } = await supabase
-        .from('profiles')
+      // 2. Fetch pending requests from 'friend_requests' table
+      const { data: requestsData, error: requestsErr } = await supabase
+        .from('friend_requests')
         .select('*')
-        .in('id', targetIds);
+        .or(`sender_id.eq.${activeUserId},receiver_id.eq.${activeUserId}`)
+        .eq('status', 'pending');
 
-      if (profileErr) throw profileErr;
+      if (requestsErr) {
+        console.warn('[useSupabaseFriends] Error loading friend_requests table:', requestsErr.message);
+      }
 
-      const profilesMap = new Map<string, any>();
-      (profiles || []).forEach((p: any) => {
-        profilesMap.set(p.id, p);
+      const establishedRows = friendsData || [];
+      const pendingRows = requestsData || [];
+
+      // Collect target profile IDs
+      const targetUserIds = new Set<string>();
+      establishedRows.forEach((f: any) => {
+        const targetId = f.user_id === activeUserId ? f.friend_id : f.user_id;
+        if (targetId && targetId !== activeUserId) targetUserIds.add(targetId);
+      });
+      pendingRows.forEach((r: any) => {
+        const targetId = r.sender_id === activeUserId ? r.receiver_id : r.sender_id;
+        if (targetId && targetId !== activeUserId) targetUserIds.add(targetId);
       });
 
-      const mappedFriends: Friend[] = rawFriends.map((f: any) => {
-        const isSender = f.sender_id === activeUserId;
-        const targetId = isSender ? f.receiver_id : f.sender_id;
-        const profile = profilesMap.get(targetId);
+      const profileMap = new Map<string, any>();
+      if (targetUserIds.size > 0) {
+        const { data: profiles } = await supabase
+          .from('profiles')
+          .select('id, username, full_name, avatar_url')
+          .in('id', Array.from(targetUserIds));
 
+        (profiles || []).forEach((p: any) => profileMap.set(p.id, p));
+      }
+
+      // Build established friends
+      const mappedFriends: Friend[] = establishedRows.map((f: any) => {
+        const targetId = f.user_id === activeUserId ? f.friend_id : f.user_id;
+        const profile = profileMap.get(targetId);
+        const username = profile?.username || `user_${targetId.slice(0, 6)}`;
         return {
           id: f.id,
-          userId: f.sender_id,
+          userId: activeUserId,
           friendId: targetId,
-          friendUsername: profile?.username || 'user',
-          friendFullName: profile?.full_name || profile?.fullName || 'Zettl Friend',
-          friendAvatar: profile?.avatar_url || profile?.avatar || `https://api.dicebear.com/7.x/lorelei/svg?seed=${profile?.username || targetId}`,
-          status: f.status as 'pending' | 'accepted' | 'blocked',
-          type: (isSender ? 'outgoing' : 'incoming') as 'outgoing' | 'incoming',
+          friendUsername: username,
+          friendFullName: profile?.full_name || username || 'Zettl Friend',
+          friendAvatar: profile?.avatar_url || `https://api.dicebear.com/7.x/lorelei/svg?seed=${username}`,
+          status: 'accepted',
+          type: 'outgoing',
           createdAt: f.created_at
         };
       });
 
-      setFriendsList(mappedFriends.filter(f => f.status === 'accepted'));
-      setPendingRequests(mappedFriends.filter(f => f.status === 'pending'));
+      // Build pending requests
+      const mappedPending: Friend[] = pendingRows.map((r: any) => {
+        const isSender = r.sender_id === activeUserId;
+        const targetId = isSender ? r.receiver_id : r.sender_id;
+        const profile = profileMap.get(targetId);
+        const username = profile?.username || `user_${targetId.slice(0, 6)}`;
+        return {
+          id: r.id,
+          userId: r.sender_id,
+          friendId: targetId,
+          friendUsername: username,
+          friendFullName: profile?.full_name || username || 'Zettl Friend',
+          friendAvatar: profile?.avatar_url || `https://api.dicebear.com/7.x/lorelei/svg?seed=${username}`,
+          status: 'pending',
+          type: isSender ? 'outgoing' : 'incoming',
+          createdAt: r.created_at
+        };
+      });
+
+      setFriendsList(mappedFriends);
+      setPendingRequests(mappedPending);
     } catch (err: any) {
       console.error('[useSupabaseFriends] loadFriendData failed:', err);
       setError(err.message || 'Failed to load connections');
@@ -164,150 +136,73 @@ export function useSupabaseFriends() {
 
   // Send friend request by receiver's username
   const sendFriendRequest = useCallback(async (receiverUsername: string): Promise<void> => {
-    const activeUserId = currentUser?.id;
+    const activeUserId = currentUser?.id || useStore.getState().session?.user?.id;
     if (!activeUserId) {
       toast.error('Not authenticated');
       return;
     }
 
     try {
-      const { data: profile, error: profileErr } = await supabase
-        .from('profiles')
-        .select('id, username')
-        .ilike('username', receiverUsername.trim())
-        .maybeSingle();
-
-      if (profileErr) throw profileErr;
-      if (!profile) {
-        toast.error('User profile not found');
-        return;
-      }
-
-      if (profile.id === activeUserId) {
-        toast.error('You cannot link yourself');
-        return;
-      }
-
-      // Check if relationship already exists in friendships
-      const { data: existing, error: existErr } = await supabase
-        .from('friendships')
-        .select('*')
-        .in('sender_id', [activeUserId, profile.id])
-        .in('receiver_id', [activeUserId, profile.id])
-        .maybeSingle();
-
-      if (existing) {
-        toast.error(existing.status === 'accepted' ? 'Already linked!' : 'A connection invitation is already pending');
-        return;
-      }
-
-      // Insert into friendships
-      const { error: insertError } = await supabase
-        .from('friendships')
-        .insert({
-          sender_id: activeUserId,
-          receiver_id: profile.id,
-          status: 'pending'
-        });
-
-      // Also support legacy friends table insertion if required
-      try {
-        await supabase
-          .from('friends')
-          .insert({
-            user_id: activeUserId,
-            friend_id: profile.id,
-            status: 'pending'
-          });
-      } catch (err) {
-        // Legacy insert error caught safely
-      }
-
-      if (insertError) throw insertError;
-
-      // Log in notifications/activities
-      try {
-        const notifData = { senderId: activeUserId };
-        await supabase.from('notifications').insert({
-          id: generateUUID(),
-          user_id: profile.id,
-          type: 'reminder',
-          title: '👥 Connection Invite',
-          message: `@${currentUser?.username || 'A user'} wants to link with you. |||DATA:${JSON.stringify(notifData)}`,
-          read: false
-        });
-      } catch (nErr) {
-        // Safe logging
-      }
-
+      await friendService.sendFriendRequestByUsername(receiverUsername);
       toast.success('Connection invite sent!');
+      clearFriendsCache();
+      await useStore.getState().refreshFriendsForDropdown(true);
+      await useStore.getState().refreshAllData();
       loadFriendData();
     } catch (err: any) {
       console.error('[useSupabaseFriends] sendFriendRequest failed:', err);
       toast.error(err.message || 'Failed to dispatch invite');
     }
-  }, [currentUser?.id, currentUser?.username, loadFriendData]);
+  }, [currentUser?.id, loadFriendData]);
 
   // Accept incoming friend request
   const acceptFriendRequest = useCallback(async (requestId: string): Promise<void> => {
+    const activeUserId = currentUser?.id || useStore.getState().session?.user?.id;
     try {
-      // Direct updates to both friendships and friends tables for complete synchronization
-      await supabase
-        .from('friendships')
-        .update({ status: 'accepted' })
-        .eq('id', requestId);
-
-      await supabase
-        .from('friends')
-        .update({ status: 'accepted' })
-        .eq('id', requestId);
-
-      // Attempt to find the sender's profile for notification
-      const { data: friendship } = await supabase
-        .from('friendships')
-        .select('sender_id')
-        .eq('id', requestId)
-        .maybeSingle();
-
-      if (friendship?.sender_id) {
-        try {
-          await supabase.from('notifications').insert({
-            id: generateUUID(),
-            user_id: friendship.sender_id,
-            type: 'achievement',
-            title: '🤝 Connection Accepted',
-            message: `@${currentUser?.username || 'Your friend'} accepted your link request!`,
-            read: false
-          });
-        } catch {}
-      }
-
+      await friendService.acceptFriendRequest(requestId, activeUserId);
       toast.success('Connection finalized!');
-      loadFriendData();
+      clearFriendsCache();
+      
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('friend-request-accepted', { detail: { requestId } }));
+      }
+      
+      await useStore.getState().refreshFriendsForDropdown(true);
+      await useStore.getState().refreshAllData();
+      await loadFriendData();
     } catch (err: any) {
       console.error('[useSupabaseFriends] acceptFriendRequest failed:', err);
       toast.error('Accept operation failed');
     }
-  }, [currentUser?.username, loadFriendData]);
+  }, [currentUser?.id, loadFriendData]);
 
   // Decline/Reject friend request
   const declineFriendRequest = useCallback(async (requestId: string): Promise<void> => {
     try {
-      await supabase
-        .from('friendships')
-        .delete()
-        .eq('id', requestId);
-
-      await supabase
-        .from('friends')
-        .delete()
-        .eq('id', requestId);
-
+      await friendService.rejectFriendRequest(requestId);
       toast.success('Invite declined');
-      loadFriendData();
+      clearFriendsCache();
+      await useStore.getState().refreshFriendsForDropdown(true);
+      await useStore.getState().refreshAllData();
+      await loadFriendData();
     } catch (err: any) {
       console.error('[useSupabaseFriends] declineFriendRequest failed:', err);
       toast.error('Decline operation failed');
+    }
+  }, [loadFriendData]);
+
+  // Remove friend connection
+  const removeFriendConnection = useCallback(async (friendId: string): Promise<void> => {
+    try {
+      await friendService.removeFriend(friendId);
+      toast.success('Connection removed');
+      clearFriendsCache();
+      await useStore.getState().refreshFriendsForDropdown(true);
+      await useStore.getState().refreshAllData();
+      await loadFriendData();
+    } catch (err: any) {
+      console.error('[useSupabaseFriends] removeFriendConnection failed:', err);
+      toast.error('Remove connection failed');
     }
   }, [loadFriendData]);
 
@@ -327,6 +222,7 @@ export function useSupabaseFriends() {
     sendFriendRequest,
     acceptFriendRequest,
     declineFriendRequest,
+    removeFriendConnection,
     refreshFriendData: loadFriendData
   };
 }

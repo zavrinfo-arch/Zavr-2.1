@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabaseClient';
-import { friendService } from '../services/friendService';
+import { friendService, clearFriendsCache } from '../services/friendService';
 import { debtService } from '../services/debtService';
 import { notificationService } from '../services/notificationService';
 import { useStore } from '../store/useStore';
@@ -247,6 +247,9 @@ export const ZettlProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     await friendService.acceptFriendRequest(requestId, activeUserId);
     toast.success('Connection request accepted!');
+    clearFriendsCache();
+    await useStore.getState().refreshFriendsForDropdown(true);
+    await useStore.getState().refreshAllData();
     fetchData();
   };
 

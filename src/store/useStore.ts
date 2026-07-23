@@ -9,10 +9,15 @@ import { Session } from '@supabase/supabase-js';
 import { 
   User, SoloGoal, GroupGoal, Transaction, Notification, 
   WeeklyChallenge, StreakData, Currency, Badge, EmergencyGoal,
-  Quest, FocusSession, Friend, ZettlGroup, PersonalZettl
-} from '../types';
+  Quest, FocusSession, Friend, ZettlGroup, PersonalZettl, FriendDropdownOption,
+  Debt, Debit, Debitor, CreateDebtData, CreateDebitData, CreateDebitorData,
+  DebtFilters, DebitFilters
+} from '../types/index';
 import { isSameDay, differenceInHours, parseISO, startOfWeek, isAfter, format } from 'date-fns';
 import { supabaseService } from '../services/supabaseService';
+import { friendService, clearFriendsCache } from '../services/friendService';
+import { debtService } from '../services/debtService';
+import { zettlService } from '../services/zettl.service';
 import { supabase, isConfigured } from '../lib/supabaseClient';
 import { fetchWithRetry } from '../lib/utils';
 import { setOnboardingCookie } from '../../lib/onboarding';
@@ -93,11 +98,42 @@ interface AppState {
   
   // Zettl State
   zettlFriends: Friend[];
+  friendsForDropdown: FriendDropdownOption[];
   zettlGroups: ZettlGroup[];
   personalZettls: PersonalZettl[];
+
+  // Debts, Debits & Debitors State
+  debts: Debt[];
+  debits: Debit[];
+  debitors: Debitor[];
+  selectedDebt: Debt | null;
+  selectedDebit: Debit | null;
+  debtLoading: boolean;
+  debtError: string | null;
+
+  // Debt & Debit Actions
+  fetchDebts: (filters?: DebtFilters) => Promise<Debt[]>;
+  fetchDebits: (filters?: DebitFilters) => Promise<Debit[]>;
+  fetchDebitors: () => Promise<Debitor[]>;
+  addDebt: (data: CreateDebtData) => Promise<Debt>;
+  addDebit: (data: CreateDebitData) => Promise<Debit>;
+  addDebitor: (data: CreateDebitorData) => Promise<Debitor>;
+  updateDebt: (debtId: string, updates: Partial<Debt>) => Promise<Debt>;
+  updateDebit: (debitId: string, updates: Partial<Debit>) => Promise<Debit>;
+  updateDebitor: (debitorId: string, updates: Partial<Debitor>) => Promise<Debitor>;
+  settleDebt: (debtId: string) => Promise<Debt>;
+  settleDebit: (debitId: string) => Promise<Debit>;
+  deleteDebt: (debtId: string) => Promise<void>;
+  deleteDebit: (debitId: string) => Promise<void>;
+  deleteDebitor: (debitorId: string) => Promise<void>;
+  setSelectedDebt: (debt: Debt | null) => void;
+  setSelectedDebit: (debit: Debit | null) => void;
+  refreshAllDebtData: (userId?: string) => Promise<void>;
   
   // Zettl Actions
   fetchZettlData: () => Promise<void>;
+  refreshFriendsForDropdown: (force?: boolean) => Promise<FriendDropdownOption[]>;
+  refreshAllData: () => Promise<void>;
   searchZettlUsers: (query: string) => Promise<User[]>;
   sendFriendRequest: (friendId: string) => Promise<void>;
   sendFriendRequestByUsername: (username: string) => Promise<void>;
@@ -210,8 +246,282 @@ export const useStore = create<AppState>()(
       
       // Zettl Initial State
       zettlFriends: [],
+      friendsForDropdown: [],
       zettlGroups: [],
       personalZettls: [],
+
+      // Debts, Debits & Debitors Initial State
+      debts: [],
+      debits: [],
+      debitors: [],
+      selectedDebt: null,
+      selectedDebit: null,
+      debtLoading: false,
+      debtError: null,
+
+      // Debt & Debit Actions Implementation
+      setSelectedDebt: (debt) => set({ selectedDebt: debt }),
+      setSelectedDebit: (debit) => set({ selectedDebit: debit }),
+
+      fetchDebts: async (filters) => {
+        const userId = get().currentUser?.id || get().session?.user?.id;
+        if (!userId) return [];
+        set({ debtLoading: true, debtError: null });
+        try {
+          const list = await debtService.getDebts(userId, filters);
+          set({ debts: list, debtLoading: false });
+          return list;
+        } catch (err: any) {
+          console.error('[STORE] fetchDebts error:', err);
+          set({ debtError: err.message || 'Failed to fetch debts', debtLoading: false });
+          return [];
+        }
+      },
+
+      fetchDebits: async (filters) => {
+        const userId = get().currentUser?.id || get().session?.user?.id;
+        if (!userId) return [];
+        set({ debtLoading: true, debtError: null });
+        try {
+          const list = await debtService.getDebits(userId, filters);
+          set({ debits: list, debtLoading: false });
+          return list;
+        } catch (err: any) {
+          console.error('[STORE] fetchDebits error:', err);
+          set({ debtError: err.message || 'Failed to fetch debits', debtLoading: false });
+          return [];
+        }
+      },
+
+      fetchDebitors: async () => {
+        const userId = get().currentUser?.id || get().session?.user?.id;
+        if (!userId) return [];
+        set({ debtLoading: true, debtError: null });
+        try {
+          const list = await debtService.getDebitors(userId);
+          set({ debitors: list, debtLoading: false });
+          return list;
+        } catch (err: any) {
+          console.error('[STORE] fetchDebitors error:', err);
+          set({ debtError: err.message || 'Failed to fetch debitors', debtLoading: false });
+          return [];
+        }
+      },
+
+      addDebt: async (data) => {
+        const userId = get().currentUser?.id || get().session?.user?.id;
+        if (!userId) throw new Error('User not authenticated');
+        set({ debtLoading: true, debtError: null });
+        try {
+          const created = await debtService.createDebt(data, userId);
+          set((state) => ({ 
+            debts: [created, ...state.debts], 
+            debtLoading: false 
+          }));
+          return created;
+        } catch (err: any) {
+          console.error('[STORE] addDebt error:', err);
+          set({ debtError: err.message || 'Failed to add debt', debtLoading: false });
+          throw err;
+        }
+      },
+
+      addDebit: async (data) => {
+        const userId = get().currentUser?.id || get().session?.user?.id;
+        if (!userId) throw new Error('User not authenticated');
+        set({ debtLoading: true, debtError: null });
+        try {
+          const created = await debtService.createDebit(data, userId);
+          set((state) => ({ 
+            debits: [created, ...state.debits], 
+            debtLoading: false 
+          }));
+          return created;
+        } catch (err: any) {
+          console.error('[STORE] addDebit error:', err);
+          set({ debtError: err.message || 'Failed to add debit', debtLoading: false });
+          throw err;
+        }
+      },
+
+      addDebitor: async (data) => {
+        const userId = get().currentUser?.id || get().session?.user?.id;
+        if (!userId) throw new Error('User not authenticated');
+        set({ debtLoading: true, debtError: null });
+        try {
+          const created = await debtService.createDebitor(data, userId);
+          set((state) => ({ 
+            debitors: [...state.debitors, created], 
+            debtLoading: false 
+          }));
+          return created;
+        } catch (err: any) {
+          console.error('[STORE] addDebitor error:', err);
+          set({ debtError: err.message || 'Failed to add debitor', debtLoading: false });
+          throw err;
+        }
+      },
+
+      updateDebt: async (debtId, updates) => {
+        set({ debtLoading: true, debtError: null });
+        try {
+          const updated = await debtService.updateDebt(debtId, updates);
+          set((state) => ({
+            debts: state.debts.map((d) => (d.id === debtId ? updated : d)),
+            selectedDebt: state.selectedDebt?.id === debtId ? updated : state.selectedDebt,
+            debtLoading: false
+          }));
+          return updated;
+        } catch (err: any) {
+          console.error('[STORE] updateDebt error:', err);
+          set({ debtError: err.message || 'Failed to update debt', debtLoading: false });
+          throw err;
+        }
+      },
+
+      updateDebit: async (debitId, updates) => {
+        set({ debtLoading: true, debtError: null });
+        try {
+          const updated = await debtService.updateDebit(debitId, updates);
+          set((state) => ({
+            debits: state.debits.map((d) => (d.id === debitId ? updated : d)),
+            selectedDebit: state.selectedDebit?.id === debitId ? updated : state.selectedDebit,
+            debtLoading: false
+          }));
+          return updated;
+        } catch (err: any) {
+          console.error('[STORE] updateDebit error:', err);
+          set({ debtError: err.message || 'Failed to update debit', debtLoading: false });
+          throw err;
+        }
+      },
+
+      updateDebitor: async (debitorId, updates) => {
+        set({ debtLoading: true, debtError: null });
+        try {
+          const { data, error } = await supabase
+            .from('debitors')
+            .update({ ...updates, updated_at: new Date().toISOString() })
+            .eq('id', debitorId)
+            .select('*')
+            .single();
+
+          if (error) throw error;
+          const updated = data as Debitor;
+
+          set((state) => ({
+            debitors: state.debitors.map((d) => (d.id === debitorId ? updated : d)),
+            debtLoading: false
+          }));
+          return updated;
+        } catch (err: any) {
+          console.error('[STORE] updateDebitor error:', err);
+          set({ debtError: err.message || 'Failed to update debitor', debtLoading: false });
+          throw err;
+        }
+      },
+
+      settleDebt: async (debtId) => {
+        set({ debtLoading: true, debtError: null });
+        try {
+          const settled = await debtService.settleDebt(debtId);
+          set((state) => ({
+            debts: state.debts.map((d) => (d.id === debtId ? settled : d)),
+            debtLoading: false
+          }));
+          return settled;
+        } catch (err: any) {
+          console.error('[STORE] settleDebt error:', err);
+          set({ debtError: err.message || 'Failed to settle debt', debtLoading: false });
+          throw err;
+        }
+      },
+
+      settleDebit: async (debitId) => {
+        set({ debtLoading: true, debtError: null });
+        try {
+          const settled = await debtService.settleDebit(debitId);
+          set((state) => ({
+            debits: state.debits.map((d) => (d.id === debitId ? settled : d)),
+            debtLoading: false
+          }));
+          return settled;
+        } catch (err: any) {
+          console.error('[STORE] settleDebit error:', err);
+          set({ debtError: err.message || 'Failed to settle debit', debtLoading: false });
+          throw err;
+        }
+      },
+
+      deleteDebt: async (debtId) => {
+        set({ debtLoading: true, debtError: null });
+        try {
+          await debtService.deleteDebt(debtId);
+          set((state) => ({
+            debts: state.debts.filter((d) => d.id !== debtId),
+            selectedDebt: state.selectedDebt?.id === debtId ? null : state.selectedDebt,
+            debtLoading: false
+          }));
+        } catch (err: any) {
+          console.error('[STORE] deleteDebt error:', err);
+          set({ debtError: err.message || 'Failed to delete debt', debtLoading: false });
+          throw err;
+        }
+      },
+
+      deleteDebit: async (debitId) => {
+        set({ debtLoading: true, debtError: null });
+        try {
+          await debtService.deleteDebit(debitId);
+          set((state) => ({
+            debits: state.debits.filter((d) => d.id !== debitId),
+            selectedDebit: state.selectedDebit?.id === debitId ? null : state.selectedDebit,
+            debtLoading: false
+          }));
+        } catch (err: any) {
+          console.error('[STORE] deleteDebit error:', err);
+          set({ debtError: err.message || 'Failed to delete debit', debtLoading: false });
+          throw err;
+        }
+      },
+
+      deleteDebitor: async (debitorId) => {
+        set({ debtLoading: true, debtError: null });
+        try {
+          const { error } = await supabase
+            .from('debitors')
+            .delete()
+            .eq('id', debitorId);
+
+          if (error) throw error;
+
+          set((state) => ({
+            debitors: state.debitors.filter((d) => d.id !== debitorId),
+            debtLoading: false
+          }));
+        } catch (err: any) {
+          console.error('[STORE] deleteDebitor error:', err);
+          set({ debtError: err.message || 'Failed to delete debitor', debtLoading: false });
+          throw err;
+        }
+      },
+
+      refreshAllDebtData: async (userIdParam) => {
+        const userId = userIdParam || get().currentUser?.id || get().session?.user?.id;
+        if (!userId) return;
+        set({ debtLoading: true, debtError: null });
+        try {
+          await Promise.all([
+            get().fetchDebts(),
+            get().fetchDebits(),
+            get().fetchDebitors()
+          ]);
+          set({ debtLoading: false });
+        } catch (err: any) {
+          console.error('[STORE] refreshAllDebtData error:', err);
+          set({ debtError: err.message || 'Failed to refresh all debt data', debtLoading: false });
+        }
+      },
 
       // Zettl Actions
       fetchZettlData: async () => {
@@ -257,22 +567,63 @@ export const useStore = create<AppState>()(
               reminderCount: z.reminder_count
             })) : []
           });
+
+          // Automatically trigger friends for dropdown sync
+          get().refreshFriendsForDropdown().catch(() => {});
         } catch (err) {
           console.error('Fetch Zettl data failed:', err);
-          // Ensure state remains consistent even on partial failure
           set({ zettlFriends: [], zettlGroups: [], personalZettls: [] });
+        }
+      },
+
+      refreshFriendsForDropdown: async (force = false) => {
+        try {
+          const userId = get().currentUser?.id || get().session?.user?.id;
+          if (!userId) {
+            set({ friendsForDropdown: [] });
+            return [];
+          }
+
+          if (force) {
+            clearFriendsCache();
+          }
+
+          // Retrieve fresh list via zettlService
+          const dropdownList = await zettlService.getFriendsForDropdown(userId);
+          const formattedList: FriendDropdownOption[] = dropdownList.map((f: any) => ({
+            id: f.id,
+            friend_id: f.friend_id || f.id,
+            friendId: f.friend_id || f.id,
+            username: f.username || 'user',
+            full_name: f.full_name || f.username || 'Friend',
+            avatar_url: f.avatar_url
+          }));
+
+          set({ friendsForDropdown: formattedList });
+          return formattedList;
+        } catch (err) {
+          console.error('[STORE] refreshFriendsForDropdown failed:', err);
+          return get().friendsForDropdown || [];
+        }
+      },
+
+      refreshAllData: async () => {
+        try {
+          await Promise.allSettled([
+            get().checkAuth(),
+            get().fetchZettlData(),
+            get().refreshFriendsForDropdown(true),
+            get().refreshData()
+          ]);
+        } catch (err) {
+          console.warn('[STORE] refreshAllData warning:', err);
         }
       },
 
       searchZettlUsers: async (query) => {
         try {
-          const res = await fetchWithRetry(`/api/users/search?q=${encodeURIComponent(query)}`, { credentials: 'include' });
-          if (!res.ok) {
-            const errData = await res.json();
-            console.error('[STORE] Search API error:', errData);
-            return [];
-          }
-          return await res.json();
+          const currentUserId = get().currentUser?.id;
+          return await friendService.searchUsers(query, currentUserId);
         } catch (err) {
           console.error('[STORE] Search failed:', err);
           return [];
@@ -291,6 +642,7 @@ export const useStore = create<AppState>()(
           throw new Error(err.error || 'Failed to send request');
         }
         await get().fetchZettlData();
+        await get().refreshFriendsForDropdown(true);
       },
 
       sendFriendRequestByUsername: async (username) => {
@@ -305,6 +657,7 @@ export const useStore = create<AppState>()(
           throw new Error(err.error || 'Failed to send request');
         }
         await get().fetchZettlData();
+        await get().refreshFriendsForDropdown(true);
       },
 
       respondToFriendRequest: async (requestId, status) => {
@@ -313,7 +666,16 @@ export const useStore = create<AppState>()(
           method: 'POST',
           credentials: 'include'
         });
+
+        clearFriendsCache();
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('friend-request-accepted', {
+            detail: { requestId, status }
+          }));
+        }
+
         await get().fetchZettlData();
+        await get().refreshFriendsForDropdown(true);
       },
 
       createZettlGroup: async (name, memberIds) => {

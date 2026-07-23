@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabaseClient';
+import { supabaseRealtimeService } from './supabaseRealtime';
 import { ChatListItem, ChatMessage, CreateRequestData, CreatePaymentData } from '../types/zettl.types';
 import { shouldDisableHeavyFeatures } from '../utils/previewFix';
 
@@ -513,33 +514,91 @@ export const zettlService = {
   },
 
   /**
-   * subscribeToChat(userId, friendId, callback) - handles real-time updates safely
+   * getFriendsForDropdown(userId) - returns formatted list of friends for dropdown menus
+   */
+  async getFriendsForDropdown(userId: string): Promise<Array<{ id: string; friend_id: string; friendId: string; username: string; full_name: string; avatar_url?: string }>> {
+    if (!userId) return [];
+    try {
+      // 1. Fetch connected friends from public.friends table
+      let { data: rawFriends, error: fErr } = await supabase
+        .from('friends')
+        .select('*')
+        .or(`user_id.eq.${userId},friend_id.eq.${userId}`);
+
+      if (fErr) {
+        console.warn('[ZETTL-SERVICE] Error fetching friends for dropdown:', fErr);
+        return [];
+      }
+
+      if (!rawFriends || rawFriends.length === 0) return [];
+
+      // Filter to accepted connections if status exists
+      const acceptedFriends = rawFriends.filter((f: any) => !f.status || f.status === 'accepted');
+      if (acceptedFriends.length === 0) return [];
+
+      // Extract unique friend profile IDs
+      const friendIds = Array.from(new Set(
+        acceptedFriends.map((f: any) => (f.user_id === userId ? f.friend_id : f.user_id)).filter(Boolean)
+      ));
+
+      if (friendIds.length === 0) return [];
+
+      // 2. Fetch profiles
+      const { data: profiles, error: pErr } = await supabase
+        .from('profiles')
+        .select('id, username, full_name, avatar_url')
+        .in('id', friendIds);
+
+      if (pErr) {
+        console.warn('[ZETTL-SERVICE] Warning fetching profiles for dropdown:', pErr);
+      }
+
+      const profileMap = new Map<string, any>();
+      (profiles || []).forEach((p: any) => profileMap.set(p.id, p));
+
+      return friendIds.map((fId: string) => {
+        const p = profileMap.get(fId);
+        const username = p?.username || `user_${fId.slice(0, 6)}`;
+        const full_name = p?.full_name || p?.username || 'Zettl Friend';
+        const avatar_url = p?.avatar_url || `https://api.dicebear.com/7.x/lorelei/svg?seed=${username}`;
+
+        return {
+          id: fId,
+          friend_id: fId,
+          friendId: fId,
+          username,
+          full_name,
+          avatar_url
+        };
+      });
+    } catch (err) {
+      console.error('[ZETTL-SERVICE] Error in getFriendsForDropdown:', err);
+      return [];
+    }
+  },
+
+  /**
+   * subscribeToChat(userId, friendId, callback) - handles real-time updates with auto-reconnect
    */
   subscribeToChat(userId: string, friendId: string, callback: () => void) {
     if (shouldDisableHeavyFeatures()) {
-      return () => {
-        // Safe mock unsubscribe channel for stable frame operations
-      };
+      return () => {};
     }
 
-    // Subscribe to Postgres changes on 'zettl_transactions' table
-    const channel = supabase
-      .channel(`zettl-chat-room-${friendId}`)
-      .on(
-         'postgres_changes',
-         {
-           event: '*',
-           schema: 'public',
-           table: 'zettl_transactions'
-         },
-         () => {
-           callback();
-         }
-      )
-      .subscribe();
+    const channelName = `zettl-chat-room-${friendId}`;
+
+    const unsubscribe = supabaseRealtimeService.subscribe({
+      channelName,
+      table: 'zettl_transactions',
+      event: '*',
+      callback: () => {
+        console.log(`💬 Realtime chat message received for channel ${channelName}`);
+        callback();
+      }
+    });
 
     return () => {
-      supabase.removeChannel(channel);
+      unsubscribe();
     };
   }
 };

@@ -67,7 +67,7 @@ export default function Goals({ onAddMoney, onWithdraw }: {
   const { 
     currentUser, soloGoals, groupGoals, emergencyGoals, transactions,
     deleteSoloGoal, leaveGroupGoal, removeGroupMember, refreshData,
-    nudgeGroup, updateSoloGoal, updateGroupGoal, deleteEmergencyGoal,
+    nudgeGroup, updateSoloGoal, updateGroupGoal, updateEmergencyGoal, deleteEmergencyGoal,
     clearGoalHistory, deleteGroupGoal, transferAdminRole
   } = useStore();
 
@@ -166,6 +166,13 @@ export default function Goals({ onAddMoney, onWithdraw }: {
       updateSoloGoal(editModal.goal.id, editModal.goal);
     } else if (editModal.type === 'group') {
       updateGroupGoal(editModal.goal.id, editModal.goal);
+    } else if (editModal.type === 'emergency') {
+      updateEmergencyGoal(editModal.goal.id, {
+        name: editModal.goal.name,
+        frequency: editModal.goal.frequency,
+        routineAmount: Number(editModal.goal.routineAmount) || 0,
+        targetAmount: 0
+      });
     }
     setEditModal({ isOpen: false, goal: null, type: 'solo' });
     toast.success('Goal updated!');
@@ -269,6 +276,18 @@ export default function Goals({ onAddMoney, onWithdraw }: {
 
   const calculateEditModalMetrics = () => {
     if (!editModal.goal) return null;
+    if (editModal.type === 'emergency') {
+      return {
+        neededPerPeriod: editModal.goal.routineAmount || 0,
+        daysLeft: 0,
+        weeksLeft: 0,
+        monthsLeft: 0,
+        periodsLeft: 0,
+        perPersonTarget: 0,
+        hasDeadline: false,
+        memberCount: 1
+      };
+    }
     const target = editModal.goal.targetAmount || 0;
     const deadline = editModal.goal.deadline || '';
     const frequency = editModal.goal.frequency || 'weekly';
@@ -423,29 +442,43 @@ export default function Goals({ onAddMoney, onWithdraw }: {
                       onChange={e => setEditModal({ ...editModal, goal: { ...editModal.goal, name: e.target.value } })}
                     />
                   </div>
-                  <div className="space-y-1.5 text-left">
-                    <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 dark:text-[#94A3B8]/40 ml-4">Target Amount</label>
-                    <input 
-                      type="number"
-                      className="w-full bg-black/[0.01] dark:bg-white/[0.02] border border-black/[0.08] dark:border-white/[0.08] hover:border-[#FF8A8A]/40 dark:hover:border-[#FF8A8A]/30 focus:border-[#FF6B6B]/60 dark:focus:border-[#FF6B6B]/60 rounded-2xl p-4 text-sm text-zinc-800 dark:text-white outline-none transition-all"
-                      value={editModal.goal.targetAmount}
-                      onChange={e => setEditModal({ ...editModal, goal: { ...editModal.goal, targetAmount: parseInt(e.target.value) } })}
-                    />
-                  </div>
-                  <div className="space-y-1.5 text-left">
-                    <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 dark:text-[#94A3B8]/40 ml-4">Deadline</label>
-                    <input 
-                      type="date"
-                      className="w-full bg-black/[0.01] dark:bg-white/[0.02] border border-black/[0.08] dark:border-white/[0.08] hover:border-[#FF8A8A]/40 dark:hover:border-[#FF8A8A]/30 focus:border-[#FF6B6B]/60 dark:focus:border-[#FF6B6B]/60 rounded-2xl p-4 text-sm text-zinc-800 dark:text-white outline-none transition-all dark:[color-scheme:dark]"
-                      value={editModal.goal.deadline}
-                      onChange={e => setEditModal({ ...editModal, goal: { ...editModal.goal, deadline: e.target.value } })}
-                    />
-                    {editModal.goal.deadline && (
-                      <p className="text-[10px] text-[#FF6B6B] font-black uppercase tracking-widest ml-4">
-                        Deadline Selected: {formatDateSafely(editModal.goal.deadline)}
-                      </p>
-                    )}
-                  </div>
+                  {editModal.type === 'emergency' ? (
+                    <div className="space-y-1.5 text-left">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 dark:text-[#94A3B8]/40 ml-4">Routine Amount</label>
+                      <input 
+                        type="number"
+                        className="w-full bg-black/[0.01] dark:bg-white/[0.02] border border-black/[0.08] dark:border-white/[0.08] hover:border-[#FF8A8A]/40 dark:hover:border-[#FF8A8A]/30 focus:border-[#FF6B6B]/60 dark:focus:border-[#FF6B6B]/60 rounded-2xl p-4 text-sm text-zinc-800 dark:text-white outline-none transition-all"
+                        value={editModal.goal.routineAmount || ''}
+                        onChange={e => setEditModal({ ...editModal, goal: { ...editModal.goal, routineAmount: parseInt(e.target.value) || 0 } })}
+                      />
+                    </div>
+                  ) : (
+                    <>
+                      <div className="space-y-1.5 text-left">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 dark:text-[#94A3B8]/40 ml-4">Target Amount</label>
+                        <input 
+                          type="number"
+                          className="w-full bg-black/[0.01] dark:bg-white/[0.02] border border-black/[0.08] dark:border-white/[0.08] hover:border-[#FF8A8A]/40 dark:hover:border-[#FF8A8A]/30 focus:border-[#FF6B6B]/60 dark:focus:border-[#FF6B6B]/60 rounded-2xl p-4 text-sm text-zinc-800 dark:text-white outline-none transition-all"
+                          value={editModal.goal.targetAmount}
+                          onChange={e => setEditModal({ ...editModal, goal: { ...editModal.goal, targetAmount: parseInt(e.target.value) || 0 } })}
+                        />
+                      </div>
+                      <div className="space-y-1.5 text-left">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 dark:text-[#94A3B8]/40 ml-4">Deadline</label>
+                        <input 
+                          type="date"
+                          className="w-full bg-black/[0.01] dark:bg-white/[0.02] border border-black/[0.08] dark:border-white/[0.08] hover:border-[#FF8A8A]/40 dark:hover:border-[#FF8A8A]/30 focus:border-[#FF6B6B]/60 dark:focus:border-[#FF6B6B]/60 rounded-2xl p-4 text-sm text-zinc-800 dark:text-white outline-none transition-all dark:[color-scheme:dark]"
+                          value={editModal.goal.deadline}
+                          onChange={e => setEditModal({ ...editModal, goal: { ...editModal.goal, deadline: e.target.value } })}
+                        />
+                        {editModal.goal.deadline && (
+                          <p className="text-[10px] text-[#FF6B6B] font-black uppercase tracking-widest ml-4">
+                            Deadline Selected: {formatDateSafely(editModal.goal.deadline)}
+                          </p>
+                        )}
+                      </div>
+                    </>
+                  )}
                   <div className="space-y-1.5 text-left">
                     <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 dark:text-[#94A3B8]/40 ml-4">Saving Routine</label>
                     <div className="flex p-1 bg-black/[0.02] dark:bg-white/[0.02] border border-black/[0.08] dark:border-white/[0.08] rounded-2xl">
@@ -472,25 +505,29 @@ export default function Goals({ onAddMoney, onWithdraw }: {
                       <div className="clay-inset p-4 rounded-2xl bg-black/[0.02] dark:bg-white/[0.02] border border-black/[0.08] dark:border-white/[0.08] space-y-3 text-left">
                         <div className="flex justify-between items-start">
                           <div>
-                            <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500 dark:text-[#94A3B8]/60">Estimated Routine</p>
+                            <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500 dark:text-[#94A3B8]/60">
+                              {editModal.type === 'emergency' ? 'Recurring Contribution' : 'Estimated Routine'}
+                            </p>
                             <p className="text-xl font-black text-[#FF6B6B] mt-0.5">
                               {formatCurrency(metrics.neededPerPeriod, currentUser?.preferences?.currency)}
                               <span className="text-[10px] font-bold ml-1 text-zinc-400">/{editModal.goal.frequency}</span>
                             </p>
                           </div>
-                          <div className="text-right">
-                            <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500 dark:text-[#94A3B8]/60">
-                              {editModal.type === 'group' ? 'Group Target' : 'Target'}
-                            </p>
-                            <p className="text-sm font-bold text-zinc-800 dark:text-white mt-0.5">
-                              {formatCurrency(editModal.goal.targetAmount, currentUser?.preferences?.currency)}
-                            </p>
-                            {editModal.type === 'group' && (
-                              <p className="text-[9px] font-bold text-[#4ECDC4]">
-                                ({formatCurrency(metrics.perPersonTarget, currentUser?.preferences?.currency)} / member)
+                          {editModal.type !== 'emergency' && (
+                            <div className="text-right">
+                              <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500 dark:text-[#94A3B8]/60">
+                                {editModal.type === 'group' ? 'Group Target' : 'Target'}
                               </p>
-                            )}
-                          </div>
+                              <p className="text-sm font-bold text-zinc-800 dark:text-white mt-0.5">
+                                {formatCurrency(editModal.goal.targetAmount, currentUser?.preferences?.currency)}
+                              </p>
+                              {editModal.type === 'group' && (
+                                <p className="text-[9px] font-bold text-[#4ECDC4]">
+                                  ({formatCurrency(metrics.perPersonTarget, currentUser?.preferences?.currency)} / member)
+                                </p>
+                              )}
+                            </div>
+                          )}
                         </div>
 
                         {metrics.hasDeadline && (
@@ -511,7 +548,9 @@ export default function Goals({ onAddMoney, onWithdraw }: {
                         )}
 
                         <p className="text-[9px] text-zinc-500 dark:text-[#94A3B8]/70 leading-relaxed pt-1 border-t border-black/[0.06] dark:border-white/[0.06]">
-                          {metrics.hasDeadline
+                          {editModal.type === 'emergency'
+                            ? `You save ${formatCurrency(metrics.neededPerPeriod, currentUser?.preferences?.currency)} ${editModal.goal.frequency} into your emergency fund.`
+                            : metrics.hasDeadline
                             ? editModal.type === 'group'
                               ? `Completes in ${metrics.daysLeft} days (${metrics.periodsLeft} ${editModal.goal.frequency} cycles) by ${formatDateSafely(editModal.goal.deadline)}. Each member saves ${formatCurrency(metrics.neededPerPeriod, currentUser?.preferences?.currency)} / ${editModal.goal.frequency}.`
                               : `Completes in ${metrics.daysLeft} days (${metrics.periodsLeft} ${editModal.goal.frequency} cycles) by ${formatDateSafely(editModal.goal.deadline)}. Save ${formatCurrency(metrics.neededPerPeriod, currentUser?.preferences?.currency)} / ${editModal.goal.frequency}.`

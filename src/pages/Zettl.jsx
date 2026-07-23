@@ -893,6 +893,8 @@ export default function ZettlPage() {
     try {
       await friendService.acceptFriendRequest(requestId, userId);
       toast.success('Friend request connected! Link created successfully.');
+      await useStore.getState().refreshFriendsForDropdown(true);
+      await useStore.getState().refreshAllData();
       fetchLedgersAndFriendsData();
       fetchFriends();
     } catch (err) {
@@ -1007,7 +1009,7 @@ export default function ZettlPage() {
         return;
       }
 
-      // Real-time channel listeners for friend_requests and debts
+      // Real-time channel listeners for friend_requests, friends, and debts
       const reqsChannel = supabase
         .channel('realtime-friend-requests-channel')
         .on(
@@ -1016,6 +1018,21 @@ export default function ZettlPage() {
           () => {
             fetchLedgersAndFriendsData();
             fetchFriends();
+            useStore.getState().refreshFriendsForDropdown(true);
+          }
+        )
+        .subscribe();
+
+      const friendsChannel = supabase
+        .channel('realtime-friends-table-channel')
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'friends' },
+          () => {
+            console.log('⚡ Friends table change received in Zettl.jsx');
+            fetchLedgersAndFriendsData();
+            fetchFriends();
+            useStore.getState().refreshFriendsForDropdown(true);
           }
         )
         .subscribe();
@@ -1031,9 +1048,18 @@ export default function ZettlPage() {
         )
         .subscribe();
 
+      const handleAcceptedEvent = () => {
+        fetchLedgersAndFriendsData();
+        fetchFriends();
+        useStore.getState().refreshFriendsForDropdown(true);
+      };
+      window.addEventListener('friend-request-accepted', handleAcceptedEvent);
+
       return () => {
         supabase.removeChannel(reqsChannel);
+        supabase.removeChannel(friendsChannel);
         supabase.removeChannel(debtsChannel);
+        window.removeEventListener('friend-request-accepted', handleAcceptedEvent);
       };
     }
   }, [userId, fetchProfileDetails, fetchLedgersAndFriendsData, fetchFriends]);

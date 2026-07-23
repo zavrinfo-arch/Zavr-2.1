@@ -46,6 +46,8 @@ import PreviewBanner from './components/PreviewBanner';
 import ErrorBoundary from './components/ErrorBoundary';
 import { initSilentSafeLogger } from './utils/debug';
 import { useTheme } from './context/ThemeContext';
+import { ConnectionStatus } from './components/ConnectionStatus';
+import { supabaseRealtimeService } from './services/supabaseRealtime';
 
 export function generateUUID() {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -152,6 +154,8 @@ export default function App() {
 
   useEffect(() => {
     initializeAuth();
+    // Connect Supabase Realtime Service
+    supabaseRealtimeService.connect();
     // Run preview safety optimizations
     initSilentSafeLogger();
     startKeepAliveHeartbeat();
@@ -237,6 +241,7 @@ export default function App() {
             <ZettlProvider>
               <NetworkHealthMonitor />
               <ConfigWarning />
+              <ConnectionStatus className="max-w-md mx-auto my-2 px-4" />
           <Toaster 
             position="top-center"
             toastOptions={{
@@ -385,16 +390,18 @@ function PlusModal({ action, setAction, onClose, selectedGoal, initialAmount }: 
   const handleCreateEmergency = (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentUser) return toast.error('Please log in first');
-    if (!formData.name || !formData.routineAmount) return toast.error('Fill all fields');
+    if (!formData.name.trim()) return toast.error('Please enter a goal name');
+    const routineAmt = typeof formData.routineAmount === 'number' ? formData.routineAmount : parseInt(formData.routineAmount);
+    if (!routineAmt || isNaN(routineAmt) || routineAmt <= 0) return toast.error('Please enter a valid routine amount');
     
     addEmergencyGoal({
       id: generateUUID(),
       userId: currentUser.id,
-      name: formData.name,
-      targetAmount: formData.target,
+      name: formData.name.trim(),
+      targetAmount: 0,
       currentAmount: 0,
       frequency: formData.frequency,
-      routineAmount: formData.routineAmount,
+      routineAmount: routineAmt,
       createdAt: new Date().toISOString(),
       completed: false
     });
@@ -706,21 +713,21 @@ function PlusModal({ action, setAction, onClose, selectedGoal, initialAmount }: 
               </div>
             </div>
 
-            <div className="grid gap-4 grid-cols-2">
-              <div className={cn("space-y-2", action === 'emergency' ? "col-span-2" : "col-span-1")}>
-                <label className="text-[10px] font-bold uppercase tracking-widest opacity-40 ml-4">Target Amount</label>
-                <div className="flex items-center clay-inset rounded-2xl px-4 py-4">
-                  <CreditCard size={20} className="opacity-20 mr-3" />
-                  <input 
-                    type="number"
-                    placeholder="1000" 
-                    className="bg-transparent outline-none flex-1 text-sm text-foreground"
-                    value={formData.target}
-                    onChange={e => setFormData({ ...formData, target: parseInt(e.target.value) })}
-                  />
+            {action !== 'emergency' && (
+              <div className="grid gap-4 grid-cols-2">
+                <div className="space-y-2 col-span-1">
+                  <label className="text-[10px] font-bold uppercase tracking-widest opacity-40 ml-4">Target Amount</label>
+                  <div className="flex items-center clay-inset rounded-2xl px-4 py-4">
+                    <CreditCard size={20} className="opacity-20 mr-3" />
+                    <input 
+                      type="number"
+                      placeholder="1000" 
+                      className="bg-transparent outline-none flex-1 text-sm text-foreground"
+                      value={formData.target}
+                      onChange={e => setFormData({ ...formData, target: parseInt(e.target.value) || 0 })}
+                    />
+                  </div>
                 </div>
-              </div>
-              {action !== 'emergency' && (
                 <div className="space-y-2">
                   <label className="text-[10px] font-bold uppercase tracking-widest opacity-40 ml-4">Deadline</label>
                   <div className="flex items-center clay-inset rounded-2xl px-4 py-4">
@@ -738,8 +745,8 @@ function PlusModal({ action, setAction, onClose, selectedGoal, initialAmount }: 
                     </p>
                   )}
                 </div>
-              )}
-            </div>
+              </div>
+            )}
 
             <div className="grid grid-cols-2 gap-4">
               <div className={cn("space-y-2", action === 'emergency' ? "col-span-1" : "col-span-2")}>
