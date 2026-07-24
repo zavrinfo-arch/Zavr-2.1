@@ -48,6 +48,7 @@ import { initSilentSafeLogger } from './utils/debug';
 import { useTheme } from './context/ThemeContext';
 import { ConnectionStatus } from './components/ConnectionStatus';
 import { supabaseRealtimeService } from './services/supabaseRealtime';
+import { MobileViewportWrapper } from './components/MobileViewportWrapper';
 
 export function generateUUID() {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -237,12 +238,13 @@ export default function App() {
       <MotionConfig reducedMotion={shouldDisableHeavyFeatures() ? "always" : "user"}>
         <AuthProvider>
           <BrowserRouter>
-            <PreviewBanner />
-            <ZettlProvider>
-              <NetworkHealthMonitor />
-              <ConfigWarning />
-              <ConnectionStatus className="max-w-md mx-auto my-2 px-4" />
-          <Toaster 
+            <MobileViewportWrapper>
+              <PreviewBanner />
+              <ZettlProvider>
+                <NetworkHealthMonitor />
+                <ConfigWarning />
+                <ConnectionStatus className="max-w-md mx-auto my-2 px-4" />
+            <Toaster 
             position="top-center"
             toastOptions={{
               style: {
@@ -360,6 +362,7 @@ export default function App() {
             onClose={() => setCelebration(prev => ({ ...prev, isOpen: false }))}
           />
             </ZettlProvider>
+            </MobileViewportWrapper>
           </BrowserRouter>
         </AuthProvider>
       </MotionConfig>

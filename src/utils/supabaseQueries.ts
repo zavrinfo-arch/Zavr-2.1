@@ -75,5 +75,5 @@ export async function getDebts(userId: string) {
   return await supabase
     .from('debts')
     .select('*')
-    .or(`creditor_id.eq.${userId},debtor_id.eq.${userId}`);
+    .or(`creditor_id.eq.${userId},user_id.eq.${userId}`);
 }

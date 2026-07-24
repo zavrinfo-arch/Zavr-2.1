@@ -102,7 +102,7 @@ export const zettlService = {
         const { data: dData, error: dErr } = await supabase
           .from('debts')
           .select('*')
-          .or(`creditor_id.eq.${userId},debtor_id.eq.${userId}`)
+          .or(`creditor_id.eq.${userId},user_id.eq.${userId}`)
           .order('created_at', { ascending: false });
 
         if (dErr) {
@@ -364,23 +364,25 @@ export const zettlService = {
     const purpose = data.purpose;
     const due = data.due_date;
 
+    const payload = {
+      user_id: friendId,
+      creditor_id: userId,
+      amount,
+      purpose,
+      due_date: due || null,
+      settled: false,
+      status: 'active'
+    };
+
     const { data: record, error } = await supabase
       .from('debts')
-      .insert({
-        user_id: friendId, // debtor (person who owes)
-        creditor_id: userId, // creditor (person requesting)
-        amount,
-        purpose,
-        due_date: due || null,
-        settled: false,
-        status: 'active'
-      })
+      .insert(payload)
       .select('*')
       .single();
 
     if (error) {
       console.error('[ZETTL-SERVICE] Failed inserting debt request:', error);
-      throw error;
+      throw new Error(error.message || 'Failed inserting debt request');
     }
 
     // Insert transaction activity
@@ -417,7 +419,7 @@ export const zettlService = {
       due_date: due || undefined,
       status: 'pending',
       message: purpose,
-      created_at: record.created_at,
+      created_at: record.created_at || new Date().toISOString(),
       read: true,
       friend_id: friendId,
       friend_name: 'Zettl Friend',
@@ -488,21 +490,26 @@ export const zettlService = {
       };
     } else {
       // 2. Log a spontaneous new payment
+      const payload = {
+        user_id: userId,
+        creditor_id: friendId,
+        amount,
+        purpose,
+        settled: true,
+        settled_at: new Date().toISOString(),
+        status: 'settled'
+      };
+
       const { data: record, error } = await supabase
         .from('debts')
-        .insert({
-          user_id: userId, // payer
-          creditor_id: friendId, // payee
-          amount,
-          purpose,
-          settled: true,
-          settled_at: new Date().toISOString(),
-          status: 'settled'
-        })
+        .insert(payload)
         .select('*')
         .single();
 
-      if (error) throw error;
+      if (error) {
+        console.error('[ZETTL-SERVICE] Failed recording payment:', error);
+        throw new Error(error.message || 'Failed recording payment in debts');
+      }
 
       try {
         await supabase.from('activities').insert([
@@ -536,7 +543,7 @@ export const zettlService = {
         purpose,
         status: 'paid',
         message: purpose,
-        created_at: record.created_at,
+        created_at: record.created_at || new Date().toISOString(),
         read: true,
         friend_id: friendId,
         friend_name: 'Friend',
@@ -549,30 +556,38 @@ export const zettlService = {
    * sendTextMessage(friendId, message) - stores text message in 'debts' with amount 0 and in 'debt_messages'
    */
   async sendTextMessage(friendId: string, messageText: string, userId: string): Promise<ChatMessage> {
+    if (!userId || !friendId || !messageText?.trim()) {
+      throw new Error('Invalid send request: missing authenticated user, friend ID, or message body');
+    }
+
+    const trimmedMsg = messageText.trim();
+
+    const payload = {
+      user_id: friendId,
+      creditor_id: userId,
+      amount: 0,
+      purpose: trimmedMsg,
+      settled: true,
+      status: 'active'
+    };
+
     const { data: record, error } = await supabase
       .from('debts')
-      .insert({
-        user_id: friendId,
-        creditor_id: userId,
-        amount: 0,
-        purpose: messageText,
-        settled: true,
-        status: 'active'
-      })
+      .insert(payload)
       .select('*')
       .single();
 
     if (error) {
-      console.error('[ZETTL-SERVICE] text message save error:', error);
-      throw error;
+      console.error('[ZETTL-SERVICE] sendTextMessage insert error:', error);
+      throw new Error(error.message || 'Failed inserting text message into debts table');
     }
 
-    // Also store in debt_messages for message history tracking
+    // Also store in debt_messages for message history tracking if table exists
     try {
       await supabase.from('debt_messages').insert({
         debt_id: record.id,
         user_id: userId,
-        message: messageText
+        message: trimmedMsg
       });
     } catch (msgErr) {
       console.warn('[ZETTL-SERVICE] debt_messages insert warning:', msgErr);
@@ -584,8 +599,8 @@ export const zettlService = {
       direction: 'outgoing',
       amount: 0,
       status: 'paid',
-      message: messageText,
-      created_at: record.created_at,
+      message: trimmedMsg,
+      created_at: record.created_at || new Date().toISOString(),
       read: true,
       friend_id: friendId,
       friend_name: 'Friend',

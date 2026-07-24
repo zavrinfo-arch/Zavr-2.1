@@ -19,7 +19,7 @@ import { ChatMessage } from '../types/zettl.types';
 
 import { 
   ArrowLeft, Coins, HandCoins, Paperclip, 
-  Send, Smile, Sparkles, Phone, CheckCircle2,
+  Send, Smile, Sparkles, CheckCircle2,
   Search, Pin, Mic, MicOff, StopCircle, X, History,
   CornerUpLeft
 } from 'lucide-react';
@@ -327,86 +327,79 @@ export default function ZettlChatRoom() {
   return (
     <motion.div
       id="zettl-chat-room"
-      initial={{ opacity: 0, x: 20 }}
-      animate={{ opacity: 1, x: 0 }}
-      exit={{ opacity: 0, x: -20 }}
-      transition={{ duration: 0.3 }}
-      className="flex flex-col select-none relative h-[calc(100vh-140px)]"
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: 10 }}
+      transition={{ duration: 0.25, ease: 'easeOut' }}
+      className="flex flex-col flex-1 w-full select-none relative h-screen bg-zinc-50 dark:bg-[#0a0a0f] overflow-hidden"
     >
-      {/* Background radial gradient */}
-      <div className="absolute inset-x-0 -top-16 h-36 bg-gradient-to-b from-[#FF6B6B]/5 to-transparent pointer-events-none" />
+      {/* Background radial subtle accent */}
+      <div className="absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-[#FF6B6B]/8 to-transparent pointer-events-none z-0" />
 
-      {/* Header */}
-      <header className="sticky top-0 bg-white/95 dark:bg-[#111118]/95 border border-black/[0.06] dark:border-white/[0.08] backdrop-blur-md p-3 rounded-2xl z-30 shrink-0 shadow-sm flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2 max-w-[55%]">
+      {/* 9. Modern Chat Header (72px height, rounded bottom, 48px avatar) */}
+      <header className="w-full h-[72px] sticky top-0 bg-white dark:bg-[#111118] border-b border-black/[0.06] dark:border-white/[0.08] backdrop-blur-xl px-4 rounded-b-2xl z-30 shrink-0 shadow-sm flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0">
           <button
             onClick={() => navigate('/zettl')}
-            className="p-1 px-1.5 hover:bg-black/[0.04] dark:hover:bg-white/[0.04] text-zinc-400 dark:text-white/40 hover:text-[#FF6B6B] dark:hover:text-[#FF7C7C] rounded-xl transition-colors cursor-pointer"
+            className="p-2 -ml-1 hover:bg-black/5 dark:hover:bg-white/5 text-zinc-600 dark:text-zinc-300 hover:text-[#FF6B6B] dark:hover:text-[#FF7C7C] rounded-full transition-colors cursor-pointer shrink-0"
+            aria-label="Go back"
           >
-            <ArrowLeft size={18} />
+            <ArrowLeft size={20} />
           </button>
           
           {friendProfile && (
-            <div className="flex items-center gap-2.5 truncate">
+            <div className="flex items-center gap-3 min-w-0">
               <div className="relative shrink-0">
                 <img
                   src={friendProfile.avatar}
-                  alt=""
-                  className="w-10 h-10 rounded-full object-cover border border-black/[0.08] dark:border-white/[0.08]"
+                  alt={friendProfile.name}
+                  className="w-12 h-12 rounded-full object-cover border border-black/[0.08] dark:border-white/[0.08] shadow-sm"
                   referrerPolicy="no-referrer"
                 />
-                <span className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-white dark:border-[#111118] ${
+                <span className={`absolute bottom-0 right-0 w-3.5 h-3.5 rounded-full border-2 border-white dark:border-[#111118] ${
                   isOnline ? 'bg-emerald-500' : 'bg-zinc-400'
                 }`} />
               </div>
-              <div className="truncate text-left">
-                <h3 className="text-xs sm:text-sm font-black text-zinc-900 dark:text-white truncate leading-tight">
+              <div className="min-w-0 text-left">
+                <h3 className="text-base font-bold text-zinc-900 dark:text-white truncate leading-tight">
                   {friendProfile.name}
                 </h3>
-                <span className={`text-[9px] font-extrabold uppercase font-mono block leading-none mt-0.5 ${
-                  isTyping ? 'text-[#FF6B6B] animate-pulse' : isOnline ? 'text-emerald-500' : 'text-zinc-400'
+                <span className={`text-xs block leading-tight mt-0.5 font-medium ${
+                  isTyping ? 'text-[#FF6B6B] font-semibold animate-pulse' : isOnline ? 'text-emerald-500' : 'text-zinc-500 dark:text-zinc-400'
                 }`}>
-                  {isTyping ? 'Typing...' : isOnline ? '🟢 Online' : `⚫ Offline (${lastSeen})`}
+                  {isTyping ? 'typing...' : isOnline ? 'Online' : `Offline (${lastSeen})`}
                 </span>
               </div>
             </div>
           )}
         </div>
 
-        {/* Header Quick Actions */}
-        <div className="flex items-center gap-1.5 shrink-0">
+        {/* Header Actions (Search & Settle - No Call Buttons) */}
+        <div className="flex items-center gap-2 shrink-0">
           <button
             type="button"
             onClick={() => setShowSearch(!showSearch)}
-            className="p-2 bg-black/[0.02] dark:bg-white/[0.03] border border-black/[0.06] dark:border-white/[0.06] text-zinc-600 dark:text-zinc-300 hover:text-[#FF6B6B] rounded-xl transition-all cursor-pointer"
-            title="Search Chat"
+            className="p-2.5 bg-black/[0.03] dark:bg-white/[0.04] text-zinc-600 dark:text-zinc-300 hover:text-[#FF6B6B] dark:hover:text-[#FF7C7C] rounded-full transition-colors cursor-pointer"
+            title="Search Messages"
           >
-            <Search size={15} />
-          </button>
-
-          <button
-            type="button"
-            onClick={handleSimulateCall}
-            className="p-2 bg-black/[0.02] dark:bg-white/[0.03] border border-black/[0.06] dark:border-white/[0.06] text-zinc-600 dark:text-zinc-300 hover:text-[#FF6B6B] rounded-xl transition-all cursor-pointer"
-            title="Audio Call"
-          >
-            <Phone size={15} />
+            <Search size={18} />
           </button>
 
           <button
             type="button"
             onClick={() => setIsSettleOpen(true)}
-            className="px-2.5 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-extrabold text-[10px] tracking-wide shadow-sm hover:opacity-95 transition-opacity cursor-pointer flex items-center gap-1"
+            className="px-3 py-1.5 rounded-full bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-bold text-xs shadow-sm hover:opacity-95 transition-opacity cursor-pointer flex items-center gap-1.5"
           >
-            <HandCoins size={13} /> Settle
+            <HandCoins size={14} />
+            <span>Settle</span>
           </button>
         </div>
       </header>
 
       {/* In-Chat Search Bar Drawer */}
       {showSearch && (
-        <div className="my-2 p-2 bg-white dark:bg-[#111118] border border-black/[0.08] dark:border-white/[0.08] rounded-2xl flex items-center gap-2 shadow-sm animate-in fade-in duration-150">
-          <Search size={14} className="text-zinc-400 ml-2" />
+        <div className="mx-4 my-2 p-2.5 bg-white dark:bg-[#111118] border border-black/[0.08] dark:border-white/[0.08] rounded-2xl flex items-center gap-2 shadow-sm animate-in fade-in duration-150 z-20">
+          <Search size={16} className="text-zinc-400 ml-1" />
           <input
             type="text"
             value={searchQuery}
@@ -427,23 +420,23 @@ export default function ZettlChatRoom() {
             }}
             className="p-1 hover:bg-black/5 dark:hover:bg-white/5 rounded-lg text-zinc-400"
           >
-            <X size={14} />
+            <X size={15} />
           </button>
         </div>
       )}
 
       {/* Pinned Messages Banner */}
       {pinnedMessages.length > 0 && (
-        <div className="my-1.5 p-2 px-3 bg-amber-500/10 border border-amber-500/20 rounded-2xl flex items-center justify-between text-xs text-amber-700 dark:text-amber-300 overflow-x-auto no-scrollbar gap-2">
+        <div className="mx-4 my-1.5 p-2 px-3 bg-amber-500/10 border border-amber-500/20 rounded-xl flex items-center justify-between text-xs text-amber-700 dark:text-amber-300 overflow-x-auto no-scrollbar gap-2 z-20">
           <div className="flex items-center gap-2 truncate">
-            <Pin size={12} className="shrink-0 fill-current rotate-45" />
-            <span className="font-bold text-[10px] uppercase tracking-wider shrink-0">Pinned ({pinnedMessages.length}):</span>
+            <Pin size={13} className="shrink-0 fill-current rotate-45" />
+            <span className="font-bold text-[11px] uppercase tracking-wider shrink-0">Pinned ({pinnedMessages.length}):</span>
             <div className="flex items-center gap-2 truncate">
               {pinnedMessages.map((pm) => (
                 <button
                   key={pm.id}
                   onClick={() => handleJumpToReply(pm.id)}
-                  className="hover:underline font-mono text-[11px] truncate max-w-[120px] bg-amber-500/10 px-2 py-0.5 rounded-lg cursor-pointer"
+                  className="hover:underline font-mono text-xs truncate max-w-[120px] bg-amber-500/10 px-2 py-0.5 rounded-lg cursor-pointer"
                 >
                   {pm.message || pm.purpose || 'Expense'}
                 </button>
@@ -455,12 +448,12 @@ export default function ZettlChatRoom() {
 
       {/* Net Debt Summary Banner */}
       {friendProfile && (
-        <div className="mx-1 my-1.5 p-2.5 px-4 rounded-2xl bg-black/[0.02] dark:bg-white/[0.03] border border-black/[0.06] dark:border-white/[0.06] flex items-center justify-between text-xs shrink-0">
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] font-black uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
-              Split Balance:
+        <div className="mx-4 my-1.5 p-2.5 px-3.5 rounded-2xl bg-white/80 dark:bg-[#111118]/80 border border-black/[0.06] dark:border-white/[0.06] backdrop-blur-md flex items-center justify-between text-xs shrink-0 z-20 shadow-xs">
+          <div className="flex items-center gap-2 truncate">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
+              Split:
             </span>
-            <span className={`font-black font-mono ${
+            <span className={`font-bold ${
               netBalance > 0
                 ? 'text-emerald-500'
                 : netBalance < 0
@@ -475,50 +468,50 @@ export default function ZettlChatRoom() {
             </span>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2.5 shrink-0">
             <button
               type="button"
               onClick={() => setIsHistoryOpen(true)}
-              className="text-[10px] font-bold text-zinc-500 hover:text-zinc-900 dark:hover:text-white uppercase tracking-wider flex items-center gap-1 cursor-pointer"
+              className="text-[11px] font-semibold text-zinc-500 hover:text-zinc-900 dark:hover:text-white flex items-center gap-1 cursor-pointer"
             >
-              <History size={11} /> History
+              <History size={12} /> History
             </button>
             <button
               type="button"
               onClick={() => setIsAmountOpen(true)}
-              className="text-[10px] font-black text-[#FF6B6B] dark:text-[#FF7C7C] hover:underline uppercase tracking-wider cursor-pointer"
+              className="text-[11px] font-bold text-[#FF6B6B] dark:text-[#FF7C7C] hover:underline cursor-pointer"
             >
-              + Add Expense
+              + Expense
             </button>
           </div>
         </div>
       )}
 
-      {/* Messages Timeline Viewport */}
-      <main className="flex-1 w-full overflow-y-auto py-2 space-y-4 flex flex-col no-scrollbar pb-28">
-        {loading ? (
-          <div className="flex-1 flex flex-col justify-center items-center py-12 gap-3 opacity-40">
-            <div className="w-6 h-6 rounded-full border-2 border-[#FF6B6B] border-t-transparent animate-spin" />
-            <p className="text-[9.5px] text-zinc-500 dark:text-white font-bold uppercase tracking-wider">Loading Messages...</p>
-          </div>
-        ) : groupedMessages.length === 0 ? (
-          <div className="flex-1 flex flex-col justify-center items-center text-center py-12 space-y-4">
-            <div className="w-14 h-14 rounded-full bg-black/[0.01] dark:bg-white/[0.02] border border-black/[0.08] dark:border-white/[0.08] flex items-center justify-center text-zinc-300 dark:text-white/20">
-              <Smile size={24} />
+      {/* 7. Messages Timeline Viewport (paddingBottom: 110px inside content) */}
+      <main className="flex-1 w-full overflow-y-auto px-4 py-3 space-y-4 flex flex-col no-scrollbar relative z-10">
+        <div className="flex-1 space-y-4 pb-[110px]">
+          {loading ? (
+            <div className="flex-1 flex flex-col justify-center items-center py-16 gap-3 opacity-50">
+              <div className="w-7 h-7 rounded-full border-2 border-[#FF6B6B] border-t-transparent animate-spin" />
+              <p className="text-xs text-zinc-500 dark:text-zinc-400 font-medium">Loading conversation...</p>
             </div>
-            <div className="space-y-1 max-w-xs">
-              <p className="text-xs font-black uppercase text-zinc-800 dark:text-white/80 tracking-widest">Connected on ZETTL</p>
-              <p className="text-[10px] text-zinc-400 dark:text-[#94A3B8]/40 font-bold uppercase tracking-wider leading-relaxed">
-                Send text messages or tap ₹ button to split expense amounts instantly.
-              </p>
+          ) : groupedMessages.length === 0 ? (
+            <div className="flex-1 flex flex-col justify-center items-center text-center py-20 space-y-4">
+              <div className="w-16 h-16 rounded-full bg-black/[0.02] dark:bg-white/[0.03] border border-black/[0.08] dark:border-white/[0.08] flex items-center justify-center text-zinc-400 dark:text-zinc-500">
+                <Smile size={28} />
+              </div>
+              <div className="space-y-1.5 max-w-xs px-4">
+                <p className="text-sm font-bold text-zinc-900 dark:text-white">Connected on ZETTL!</p>
+                <p className="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed">
+                  Start chatting or tap <span className="font-bold text-[#FF6B6B]">₹</span> to split an expense instantly.
+                </p>
+              </div>
             </div>
-          </div>
-        ) : (
-          <div className="flex-1 space-y-4">
-            {groupedMessages.map((group) => (
+          ) : (
+            groupedMessages.map((group) => (
               <div key={group.label} className="space-y-3">
-                <div className="flex justify-center my-4">
-                  <span className="px-3 py-1 bg-black/[0.02] dark:bg-white/[0.02] border border-black/[0.06] dark:border-white/[0.06] text-zinc-400 dark:text-white/40 text-[9px] font-black uppercase tracking-wider rounded-full">
+                <div className="flex justify-center my-3">
+                  <span className="px-3 py-1 bg-black/[0.03] dark:bg-white/[0.04] text-zinc-500 dark:text-zinc-400 text-[10px] font-semibold uppercase tracking-wider rounded-full shadow-2xs">
                     {group.label}
                   </span>
                 </div>
@@ -538,33 +531,33 @@ export default function ZettlChatRoom() {
                   />
                 ))}
               </div>
-            ))}
+            ))
+          )}
 
-            {isTyping && (
-              <div className="flex justify-start px-2 py-1">
-                <div className="bg-black/[0.02] dark:bg-white/[0.02] border border-black/[0.06] dark:border-white/[0.06] text-[#FF6B6B] dark:text-[#FF7C7C] text-[9.5px] font-bold px-3 py-1.5 rounded-full flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 bg-[#FF6B6B] dark:bg-[#FF7C7C] rounded-full animate-bounce" />
-                  <span className="w-1.5 h-1.5 bg-[#FF6B6B] dark:bg-[#FF7C7C] rounded-full animate-bounce [animation-delay:0.2s]" />
-                  <span className="w-1.5 h-1.5 bg-[#FF6B6B] dark:bg-[#FF7C7C] rounded-full animate-bounce [animation-delay:0.4s]" />
-                  <span className="uppercase tracking-wider">@{friendProfile?.username || 'user'} typing...</span>
-                </div>
+          {isTyping && (
+            <div className="flex justify-start px-2 py-1">
+              <div className="bg-white dark:bg-[#111118] border border-black/[0.06] dark:border-white/[0.08] text-[#FF6B6B] dark:text-[#FF7C7C] text-xs font-semibold px-3.5 py-2 rounded-2xl shadow-xs flex items-center gap-2">
+                <span className="w-1.5 h-1.5 bg-[#FF6B6B] dark:bg-[#FF7C7C] rounded-full animate-bounce" />
+                <span className="w-1.5 h-1.5 bg-[#FF6B6B] dark:bg-[#FF7C7C] rounded-full animate-bounce [animation-delay:0.2s]" />
+                <span className="w-1.5 h-1.5 bg-[#FF6B6B] dark:bg-[#FF7C7C] rounded-full animate-bounce [animation-delay:0.4s]" />
+                <span>@{friendProfile?.username || 'user'} is typing...</span>
               </div>
-            )}
-            
-            <div ref={bottomScrollRef} />
-          </div>
-        )}
+            </div>
+          )}
+          
+          <div ref={bottomScrollRef} />
+        </div>
       </main>
 
-      {/* Keyboard Input Footer */}
-      <footer className="fixed bottom-[84px] left-0 right-0 max-w-md mx-auto px-4 z-40">
+      {/* 4. & 6. Message Composer (56px height, 28px rounded, pinned at bottom with safe area) */}
+      <footer className="fixed bottom-0 left-0 right-0 w-full px-4 pb-[max(14px,env(safe-area-inset-bottom))] pt-2 z-40 bg-gradient-to-t from-zinc-50 dark:from-[#0a0a0f] via-zinc-50/90 dark:via-[#0a0a0f]/90 to-transparent pointer-events-auto">
         {/* Quoted Reply Preview Bar */}
         {replyingTo && (
-          <div className="mb-2 p-2.5 bg-white/95 dark:bg-[#111118]/95 border border-black/[0.08] dark:border-white/[0.08] rounded-2xl shadow-lg flex items-center justify-between gap-2 backdrop-blur-md">
+          <div className="mb-2 p-2.5 bg-white dark:bg-[#111118] border border-black/[0.08] dark:border-white/[0.08] rounded-2xl shadow-lg flex items-center justify-between gap-2 backdrop-blur-md animate-in slide-in-from-bottom-2 duration-200">
             <div className="flex items-center gap-2 border-l-2 border-[#FF6B6B] pl-2 overflow-hidden text-xs">
               <CornerUpLeft size={14} className="text-[#FF6B6B] shrink-0" />
               <div className="truncate">
-                <span className="font-bold text-[10px] text-zinc-500 block">Replying to @{replyingTo.friend_name}:</span>
+                <span className="font-bold text-[10px] text-zinc-400 block">Replying to @{replyingTo.friend_name}:</span>
                 <span className="truncate block font-medium text-zinc-800 dark:text-zinc-200">
                   {replyingTo.message || replyingTo.purpose || 'Expense item'}
                 </span>
@@ -581,7 +574,7 @@ export default function ZettlChatRoom() {
 
         {/* Emoji Quick Picker */}
         {showEmojiPicker && (
-          <div className="mb-2 p-2 bg-white/95 dark:bg-[#111118]/95 border border-black/[0.08] dark:border-white/[0.08] rounded-2xl shadow-xl flex items-center justify-around backdrop-blur-md animate-in fade-in duration-150">
+          <div className="mb-2 p-2 bg-white dark:bg-[#111118] border border-black/[0.08] dark:border-white/[0.08] rounded-2xl shadow-xl flex items-center justify-around backdrop-blur-md animate-in slide-in-from-bottom-2 duration-150">
             {QUICK_EMOJIS.map((e) => (
               <button
                 key={e}
@@ -597,8 +590,8 @@ export default function ZettlChatRoom() {
 
         {/* Live Voice Recording Control Banner */}
         {isRecording ? (
-          <div className="bg-red-500/10 border border-red-500/30 p-2.5 rounded-2xl flex items-center justify-between gap-3 backdrop-blur-md animate-pulse">
-            <div className="flex items-center gap-2 text-red-500 font-extrabold text-xs font-mono">
+          <div className="bg-red-500/10 border border-red-500/30 p-2.5 rounded-[28px] flex items-center justify-between gap-3 backdrop-blur-md animate-pulse">
+            <div className="flex items-center gap-2 text-red-500 font-bold text-xs font-mono ml-2">
               <Mic size={16} className="animate-bounce" />
               <span>Recording Voice Note ({recordingTime}s)</span>
             </div>
@@ -606,7 +599,7 @@ export default function ZettlChatRoom() {
               <button
                 type="button"
                 onClick={cancelRecording}
-                className="p-2 bg-black/10 dark:bg-white/10 hover:bg-red-500/20 text-zinc-600 dark:text-zinc-300 rounded-xl cursor-pointer"
+                className="p-2 bg-black/10 dark:bg-white/10 hover:bg-red-500/20 text-zinc-600 dark:text-zinc-300 rounded-full cursor-pointer"
                 title="Cancel"
               >
                 <X size={14} />
@@ -614,79 +607,64 @@ export default function ZettlChatRoom() {
               <button
                 type="button"
                 onClick={handleSendVoiceNote}
-                className="px-3 py-1.5 bg-red-500 hover:bg-red-600 text-white font-extrabold text-xs rounded-xl shadow cursor-pointer flex items-center gap-1"
+                className="px-3.5 py-2 bg-red-500 hover:bg-red-600 text-white font-bold text-xs rounded-full shadow cursor-pointer flex items-center gap-1.5"
               >
-                <Send size={12} /> Send Note
+                <Send size={13} />
+                <span>Send</span>
               </button>
             </div>
           </div>
         ) : (
-          <div className="bg-white/90 dark:bg-[#111118]/95 border border-black/[0.06] dark:border-white/[0.08] p-2 rounded-2xl flex items-center gap-2 shadow-lg backdrop-blur-md">
-            {/* Action Drawer Shortcuts */}
-            {friendProfile && (
-              <div className="flex items-center gap-1 bg-black/[0.01] dark:bg-white/[0.02] border border-black/[0.06] dark:border-white/[0.06] px-1.5 h-11 rounded-full shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setIsAmountOpen(true)}
-                  className="w-8 h-8 rounded-full bg-gradient-to-r from-[#FF7C7C] to-[#FF6B6B] text-white flex items-center justify-center font-black text-sm shadow-sm hover:scale-105 transition-transform cursor-pointer"
-                  title="Add Expense"
-                >
-                  ₹
-                </button>
+          /* 5. & 6. Premium 56px height 28px rounded Composer */
+          <div className="w-full h-[56px] rounded-[28px] bg-white dark:bg-[#111118] border border-[#EEEEEE] dark:border-white/10 shadow-[0_4px_20px_rgba(0,0,0,0.06)] px-3.5 flex items-center gap-2">
+            {/* Attachment shortcut icon */}
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="p-2 text-zinc-400 hover:text-[#FF6B6B] dark:hover:text-[#FF7C7C] transition-colors rounded-full cursor-pointer shrink-0"
+              title="Attach File"
+            >
+              <Paperclip size={20} />
+            </button>
 
-                <button
-                  type="button"
-                  onClick={() => setIsRequestOpen(true)}
-                  className="p-1.5 bg-[#FF6B6B]/10 hover:bg-[#FF6B6B]/25 text-[#FF6B6B] rounded-full transition-all cursor-pointer"
-                  title="Request Money"
-                >
-                  <Coins size={14} />
-                </button>
+            {/* Quick Add Expense Shortcut */}
+            <button
+              type="button"
+              onClick={() => setIsAmountOpen(true)}
+              className="w-7 h-7 rounded-full bg-[#FF6B6B]/10 hover:bg-[#FF6B6B]/20 text-[#FF6B6B] dark:text-[#FF7C7C] font-black text-xs flex items-center justify-center transition-colors cursor-pointer shrink-0"
+              title="Add Expense"
+            >
+              ₹
+            </button>
 
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="p-1.5 hover:bg-black/[0.04] dark:hover:bg-white/[0.04] text-zinc-400 dark:text-white/40 hover:text-[#FF6B6B] dark:hover:text-[#FF7C7C] rounded-full transition-all cursor-pointer"
-                  title="Attach Receipt or Media"
-                >
-                  <Paperclip size={14} />
-                </button>
-              </div>
-            )}
+            {/* Form & Text Input */}
+            <form onSubmit={handleSendTextMessage} className="flex-1 flex items-center gap-2 min-w-0">
+              <input
+                type="text"
+                value={inputText}
+                onChange={handleInputChange}
+                placeholder="Type a message..."
+                className="w-full text-[15px] text-zinc-900 dark:text-white outline-none placeholder:text-zinc-400 dark:placeholder:text-zinc-500 font-sans bg-transparent py-2"
+              />
 
-            {/* Message Text Form */}
-            <form onSubmit={handleSendTextMessage} className="flex-1 flex items-center gap-1.5">
-              <div className="flex-1 h-11 bg-black/[0.01] dark:bg-white/[0.02] border border-black/[0.08] dark:border-white/[0.08] rounded-full px-3 flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-                  className="text-zinc-400 hover:text-amber-500 transition-colors p-1 cursor-pointer"
-                >
-                  <Smile size={16} />
-                </button>
-                <input
-                  type="text"
-                  value={inputText}
-                  onChange={handleInputChange}
-                  placeholder="Type message..."
-                  className="w-full text-xs text-zinc-800 dark:text-white outline-none placeholder:text-zinc-400 dark:placeholder:text-white/30 font-sans bg-transparent"
-                />
-                <button
-                  type="button"
-                  onClick={startRecording}
-                  className="text-zinc-400 hover:text-[#FF6B6B] transition-colors p-1 cursor-pointer"
-                  title="Record Voice Note"
-                >
-                  <Mic size={16} />
-                </button>
-              </div>
               <button
+                type="button"
+                onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                className="text-zinc-400 hover:text-amber-500 transition-colors p-1 cursor-pointer shrink-0"
+                title="Emojis"
+              >
+                <Smile size={20} />
+              </button>
+
+              {/* 6. Send Button: Circular, Coral Gradient, Micro scale on tap */}
+              <motion.button
                 type="submit"
                 disabled={!inputText.trim()}
-                className="w-11 h-11 rounded-full bg-gradient-to-r from-[#FF7C7C] to-[#FF6B6B] text-white flex items-center justify-center shrink-0 cursor-pointer disabled:opacity-30 transition-opacity"
+                whileTap={{ scale: 0.92 }}
+                className="w-10 h-10 rounded-full bg-gradient-to-r from-[#FF7C7C] to-[#FF6B6B] text-white flex items-center justify-center shrink-0 cursor-pointer disabled:opacity-30 transition-opacity shadow-[0_4px_12px_rgba(255,107,107,0.35)]"
               >
-                <Send size={14} className="text-white" />
-              </button>
+                <Send size={16} className="text-white ml-0.5" />
+              </motion.button>
             </form>
           </div>
         )}

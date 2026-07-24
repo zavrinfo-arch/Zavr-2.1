@@ -41,7 +41,7 @@ export default function ProfileHeader() {
   if (isAuthLoading) {
     return (
       <div className="fixed top-0 left-0 right-0 z-[95] px-4 pt-4 pointer-events-none">
-        <div className="w-full max-w-md mx-auto flex pointer-events-auto bg-white/90 dark:bg-[#111118]/80 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.08] rounded-2xl p-4 justify-between items-center shadow-lg relative">
+        <div className="w-full mx-auto flex pointer-events-auto bg-white/90 dark:bg-[#111118]/80 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.08] rounded-2xl p-4 justify-between items-center shadow-lg relative">
           {/* Skeleton Profile Info */}
           <div className="flex items-center gap-3 flex-1 min-w-0">
             <div className="relative flex-shrink-0 animate-pulse">
@@ -114,7 +114,7 @@ export default function ProfileHeader() {
 
   return (
     <div className="fixed top-0 left-0 right-0 z-[95] px-4 pt-4 pointer-events-none">
-      <div className="w-full max-w-md mx-auto flex pointer-events-auto bg-white/90 dark:bg-[#111118]/80 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.08] rounded-2xl p-3.5 justify-between items-center shadow-md dark:shadow-lg relative">
+      <div className="w-full mx-auto flex pointer-events-auto bg-white/90 dark:bg-[#111118]/80 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.08] rounded-2xl p-3.5 justify-between items-center shadow-md dark:shadow-lg relative">
         {/* Left Section: Profile Info (Avatar, Text/Greeting, Username) */}
         <div className="flex items-center gap-3 flex-1 min-w-0 cursor-pointer" onClick={() => navigate('/profile')}>
           <div className="relative flex-shrink-0">

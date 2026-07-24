@@ -583,7 +583,7 @@ function BottomNavigation({ onPlusClick }) {
   ];
 
   return (
-    <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md z-40 px-6 py-5 bg-white/90 dark:bg-[#111118]/85 border-t border-black/[0.06] dark:border-white/[0.06] backdrop-blur-2xl flex items-center justify-around shadow-lg dark:shadow-[0_-10px_35px_rgba(0,0,0,0.5)]" id="bottom-navigation-bar">
+    <nav className="fixed bottom-0 left-0 right-0 w-full z-40 px-6 py-5 bg-white/90 dark:bg-[#111118]/85 border-t border-black/[0.06] dark:border-white/[0.06] backdrop-blur-2xl flex items-center justify-around shadow-lg dark:shadow-[0_-10px_35px_rgba(0,0,0,0.5)]" id="bottom-navigation-bar">
       {navItems.map((item, i) => {
         if (i === 2) {
           return (
@@ -788,27 +788,27 @@ export default function ZettlPage() {
       const { data: rawDebts, error: dErr } = await supabase
         .from('debts')
         .select('*')
-        .or(`creditor_id.eq.${userId},debtor_id.eq.${userId}`);
+        .or(`creditor_id.eq.${userId},user_id.eq.${userId}`);
 
       if (dErr) throw dErr;
 
       if (rawDebts && rawDebts.length > 0) {
         const involvedIds = Array.from(
-          new Set(rawDebts.flatMap((d) => [d.creditor_id, d.debtor_id]))
+          new Set(rawDebts.flatMap((d) => [d.creditor_id, d.user_id]))
         );
 
         // Map participant profiles
         const { data: pProfiles, error: ppErr } = await supabase
           .from('profiles')
           .select('id, username, full_name')
-          .in('id', involvedIds);
+          .in('id', involvedIds.filter(Boolean));
 
         if (!ppErr && pProfiles) {
           const profileMap = new Map(pProfiles.map((p) => [p.id, p]));
           const enrichedDebts = rawDebts.map((d) => ({
             ...d,
             creditor_profile: profileMap.get(d.creditor_id) || { username: 'user', full_name: 'Zavr Creditor' },
-            debtor_profile: profileMap.get(d.debtor_id) || { username: 'user', full_name: 'Zavr Debtor' },
+            debtor_profile: profileMap.get(d.user_id) || { username: 'user', full_name: 'Zavr Debtor' },
           }));
           setDebts(enrichedDebts);
 
@@ -818,7 +818,7 @@ export default function ZettlPage() {
             .reduce((s, d) => s + Number(d.amount), 0);
 
           const borrowTotal = enrichedDebts
-            .filter((d) => d.debtor_id === userId && (d.status === 'pending' || d.settled === false))
+            .filter((d) => d.user_id === userId && (d.status === 'pending' || d.settled === false))
             .reduce((s, d) => s + Number(d.amount), 0);
 
           setTotalFinOwed(lendTotal);
@@ -996,7 +996,7 @@ export default function ZettlPage() {
     try {
       const { error } = await supabase.from('debts').insert({
         creditor_id: friendId,
-        debtor_id: userId,
+        user_id: userId,
         amount: amount,
         purpose: note,
         status: 'pending',
@@ -1016,7 +1016,7 @@ export default function ZettlPage() {
     try {
       const { error } = await supabase.from('debts').insert({
         creditor_id: userId,
-        debtor_id: friendId,
+        user_id: friendId,
         amount: amount,
         purpose: note,
         status: 'pending',
@@ -1105,7 +1105,7 @@ export default function ZettlPage() {
   // Loading barrier state (Restyled to match Claymorphic dark mode)
   if (authLoading) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center font-sans max-w-md mx-auto text-foreground">
+      <div className="min-h-screen bg-background flex items-center justify-center font-sans w-full text-foreground">
         <div className="flex flex-col items-center gap-4 animate-fade-in">
           <Loader2 className="w-8 h-8 text-[#FF6B6B] animate-spin" />
           <p className="text-[9px] font-black uppercase tracking-[0.2em] opacity-35">
@@ -1122,7 +1122,7 @@ export default function ZettlPage() {
       return d.creditor_id === userId && (d.status === 'pending' || d.settled === false);
     }
     if (filter === 'borrowed') {
-      return d.debtor_id === userId && (d.status === 'pending' || d.settled === false);
+      return d.user_id === userId && (d.status === 'pending' || d.settled === false);
     }
     return true; // Return all matching records
   });
@@ -1157,12 +1157,12 @@ export default function ZettlPage() {
     `https://api.dicebear.com/7.x/lorelei/svg?seed=${activeUser.username}`;
 
   return (
-    <div className="min-h-screen bg-background text-foreground pb-36 font-sans max-w-md mx-auto relative overflow-x-hidden px-6 pt-28" id="zettl-page-container">
+    <div className="min-h-screen bg-background text-foreground pb-36 font-sans w-full relative overflow-x-hidden px-6 pt-28" id="zettl-page-container">
       
       {/* FIXED POSITION HEADER SECTION FLOATING COMPONENT - Matches Layout.tsx ProfileHeader */}
       <div className="fixed top-0 left-0 right-0 z-[95] px-4 pt-4 pointer-events-none" id="zettl-header">
         <div 
-          className="w-full max-w-md mx-auto flex pointer-events-auto bg-white/90 dark:bg-[#111118]/80 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.08] rounded-2xl p-3.5 justify-between items-center shadow-md dark:shadow-lg relative"
+          className="w-full mx-auto flex pointer-events-auto bg-white/90 dark:bg-[#111118]/80 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.08] rounded-2xl p-3.5 justify-between items-center shadow-md dark:shadow-lg relative"
         >
           {/* Profile Left */}
           <div className="flex items-center gap-3 min-w-0 cursor-pointer" onClick={() => navigate('/profile')}>

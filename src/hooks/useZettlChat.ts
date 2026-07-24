@@ -194,7 +194,8 @@ export function useSendText() {
       hapticFeedback();
       refreshChatList();
     } catch (e: any) {
-      toast.error('Failed to send text');
+      console.error('[useSendText] Error sending message:', e);
+      toast.error(e?.message || 'Failed to send text');
     } finally {
       setSending(false);
     }

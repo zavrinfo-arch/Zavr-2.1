@@ -169,7 +169,7 @@ export default function CreateZettlModal({
         const friendId = selectedFriend.friendId || selectedFriend.id;
         const { error } = await supabase.from('debts').insert({
           creditor_id: transactionType === 'lent' ? userId : friendId,
-          debtor_id: transactionType === 'lent' ? friendId : userId,
+          user_id: transactionType === 'lent' ? friendId : userId,
           amount: totalAmount,
           purpose: note.trim(),
           status: 'pending',
@@ -182,7 +182,7 @@ export default function CreateZettlModal({
         const splitAmount = Math.round((totalAmount / selectedGroupFriends.length) * 100) / 100;
         const rowsToInsert = selectedGroupFriends.map(friendId => ({
           creditor_id: transactionType === 'lent' ? userId : friendId,
-          debtor_id: transactionType === 'lent' ? friendId : userId,
+          user_id: transactionType === 'lent' ? friendId : userId,
           amount: splitAmount,
           purpose: note.trim(),
           status: 'pending',
