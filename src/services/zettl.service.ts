@@ -1,9 +1,10 @@
 import { supabase } from '../lib/supabaseClient';
 import { supabaseRealtimeService } from './supabaseRealtime';
+import { friendService } from './friendService';
 import { ChatListItem, ChatMessage, CreateRequestData, CreatePaymentData } from '../types/zettl.types';
 import { shouldDisableHeavyFeatures } from '../utils/previewFix';
 
-// Keep track of read messages locally or in sessionStorage as a crash-proof fallback
+// Keep track of read messages locally or in sessionStorage
 const getSessionReadStatus = (): Record<string, boolean> => {
   try {
     const data = sessionStorage.getItem('zettl_read_messages');
@@ -40,38 +41,86 @@ export const zettlService = {
     if (!userId) return [];
 
     try {
-      // 1. Fetch accepted connections from public.friends table
-      const { data: rawFriends, error: fErr } = await supabase
-        .from('friends')
-        .select('*')
-        .or(`user_id.eq.${userId},friend_id.eq.${userId}`);
+      // 1. Fetch established friends directly from friends table ONLY
+      let friendList: any[] = [];
+      try {
+        friendList = await friendService.getFriendList(userId);
+      } catch (fErr) {
+        console.warn('[ZETTL-SERVICE] friendService.getFriendList notice:', fErr);
+      }
 
-      if (fErr) throw fErr;
-      if (!rawFriends || rawFriends.length === 0) return [];
-
-      // Extract unique friend profile IDs
-      const friendIds = rawFriends.map((f: any) => 
-        f.user_id === userId ? f.friend_id : f.user_id
-      );
-
-      // 2. Fetch profiles of these friends
-      const { data: profiles, error: pErr } = await supabase
-        .from('profiles')
-        .select('id, username, full_name, avatar_url')
-        .in('id', friendIds);
-
-      if (pErr) throw pErr;
+      let friendIds: string[] = [];
       const profileMap = new Map<string, any>();
-      (profiles || []).forEach(p => profileMap.set(p.id, p));
 
-      // 3. Fetch all zettl_transactions for these chats
-      const { data: transactions, error: tErr } = await supabase
-        .from('zettl_transactions')
-        .select('*')
-        .or(`sender_id.eq.${userId},receiver_id.eq.${userId}`)
-        .order('created_at', { ascending: false });
+      if (friendList && friendList.length > 0) {
+        friendList.forEach((f: any) => {
+          if (f.status === 'accepted' || !f.status) {
+            const fid = f.friendId || f.friend_id || f.id;
+            if (fid && fid !== userId) {
+              friendIds.push(fid);
+              profileMap.set(fid, {
+                id: fid,
+                username: f.friendUsername || f.username,
+                full_name: f.friendFullName || f.full_name || f.fullName,
+                avatar_url: f.friendAvatar || f.avatar_url
+              });
+            }
+          }
+        });
+      }
 
-      if (tErr) throw tErr;
+      // Direct fallback query on 'friends' table if friendList is empty
+      if (friendIds.length === 0) {
+        const { data: rawFriends } = await supabase
+          .from('friends')
+          .select('id, user_id, friend_id')
+          .or(`user_id.eq.${userId},friend_id.eq.${userId}`);
+
+        const combinedIds = new Set<string>();
+        (rawFriends || []).forEach((f: any) => {
+          const fid = f.user_id === userId ? f.friend_id : f.user_id;
+          if (fid && fid !== userId) combinedIds.add(fid);
+        });
+
+        friendIds = Array.from(combinedIds);
+
+        if (friendIds.length > 0) {
+          const { data: profiles } = await supabase
+            .from('profiles')
+            .select('id, username, full_name, avatar_url')
+            .in('id', friendIds);
+
+          (profiles || []).forEach(p => profileMap.set(p.id, p));
+        }
+      }
+
+      if (friendIds.length === 0) return [];
+
+      // 3. Fetch debts from existing 'debts' table
+      let debts: any[] = [];
+      try {
+        const { data: dData, error: dErr } = await supabase
+          .from('debts')
+          .select('*')
+          .or(`creditor_id.eq.${userId},debtor_id.eq.${userId}`)
+          .order('created_at', { ascending: false });
+
+        if (dErr) {
+          console.warn('[ZETTL-SERVICE] debts query notice, trying server API fallback:', dErr.message);
+          try {
+            const apiRes = await fetch('/api/zettl/personal/list');
+            if (apiRes.ok) {
+              debts = await apiRes.json();
+            }
+          } catch (apiErr) {
+            console.warn('[ZETTL-SERVICE] Server API fallback notice:', apiErr);
+          }
+        } else if (dData) {
+          debts = dData;
+        }
+      } catch (dEx) {
+        console.warn('[ZETTL-SERVICE] Debts fetch notice:', dEx);
+      }
 
       const readMessages = getSessionReadStatus();
 
@@ -81,25 +130,24 @@ export const zettlService = {
         const name = p?.full_name || p?.username || 'Zettl Link';
         const avatar = p?.avatar_url || `https://api.dicebear.com/7.x/lorelei/svg?seed=${p?.username || fId}`;
 
-        // Get transactions with this friend
-        const friendTxTimes = (transactions || []).filter((t: any) => 
-          (t.sender_id === userId && t.receiver_id === fId) ||
-          (t.sender_id === fId && t.receiver_id === userId)
+        // Get debts with this friend
+        const friendDebts = (debts || []).filter((t: any) => 
+          (t.user_id === userId && t.creditor_id === fId) ||
+          (t.user_id === fId && t.creditor_id === userId) ||
+          (t.from_user_id === userId && t.to_user_id === fId) ||
+          (t.from_user_id === fId && t.to_user_id === userId)
         );
 
-        // Sort by created_at descending just in case
-        const sortedTx = [...friendTxTimes].sort(
+        // Sort by created_at descending
+        const sortedDebts = [...friendDebts].sort(
           (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
         );
 
-        // Compute net outstanding balance
-        // friend owes me (+) if I am creditor and not settled
-        // I owe friend (-) if I am debtor and not settled
         let net_balance = 0;
-        sortedTx.forEach((t: any) => {
-          if (!t.is_settled && t.amount > 0) {
-            const debtorId = t.type === 'owe_you' ? t.sender_id : t.receiver_id;
-            const creditorId = t.type === 'owe_you' ? t.receiver_id : t.sender_id;
+        sortedDebts.forEach((t: any) => {
+          if (!t.settled && !t.is_settled && t.amount > 0) {
+            const debtorId = t.user_id || t.from_user_id;
+            const creditorId = t.creditor_id || t.to_user_id;
             const amt = Number(t.amount || 0);
 
             if (creditorId === userId) {
@@ -111,35 +159,35 @@ export const zettlService = {
         });
 
         // Determine last message snippet
-        let last_message = 'Tap to start writing';
+        let last_message = 'Connected on Zettl! Tap to start chatting.';
         let last_message_time = new Date().toISOString();
         let unread_count = 0;
 
-        if (sortedTx.length > 0) {
-          const newest = sortedTx[0];
-          last_message_time = newest.created_at;
+        if (sortedDebts.length > 0) {
+          const newest = sortedDebts[0];
+          last_message_time = newest.created_at || last_message_time;
 
-          const newestDebtorId = newest.type === 'owe_you' ? newest.sender_id : newest.receiver_id;
-          const newestCreditorId = newest.type === 'owe_you' ? newest.receiver_id : newest.sender_id;
+          const newestDebtorId = newest.user_id || newest.from_user_id;
+          const newestCreditorId = newest.creditor_id || newest.to_user_id;
 
           if (newest.amount > 0) {
-            const isRequest = !newest.is_settled;
+            const isRequest = !newest.settled && !newest.is_settled;
             if (isRequest) {
               last_message = newestCreditorId === userId 
-                ? `Requested ₹${newest.amount}: ${newest.message_text || 'Debt'}`
-                : `Asked for ₹${newest.amount}: ${newest.message_text || 'Debt'}`;
+                ? `Requested ₹${newest.amount}: ${newest.purpose || newest.note || 'Debt'}`
+                : `Asked for ₹${newest.amount}: ${newest.purpose || newest.note || 'Debt'}`;
             } else {
               last_message = newestDebtorId === userId
-                ? `Paid ₹${newest.amount} for ${newest.message_text || 'Debt'}`
+                ? `Paid ₹${newest.amount} for ${newest.purpose || newest.note || 'Debt'}`
                 : `Received ₹${newest.amount}`;
             }
           } else {
-            last_message = newest.message_text || 'New message';
+            last_message = newest.purpose || newest.note || 'Connected on Zettl! Tap to start chatting.';
           }
 
-          // Compute unread count for incoming messages that we haven't read
-          sortedTx.forEach((t: any) => {
-            const isIncoming = t.sender_id !== userId;
+          sortedDebts.forEach((t: any) => {
+            const sender = t.creditor_id || t.user_id || t.from_user_id;
+            const isIncoming = sender !== userId;
             if (isIncoming && !readMessages[t.id]) {
               unread_count++;
             }
@@ -169,15 +217,14 @@ export const zettlService = {
     if (!userId || !friendId) return [];
 
     try {
-      // Fetch zettl transactions involving these two users
+      // Fetch debts involving these two users from existing 'debts' table
       const { data: rows, error } = await supabase
-        .from('zettl_transactions')
+        .from('debts')
         .select('*')
-        .or(`sender_id.eq.${userId},receiver_id.eq.${userId}`)
+        .or(`and(user_id.eq.${userId},creditor_id.eq.${friendId}),and(user_id.eq.${friendId},creditor_id.eq.${userId})`)
         .order('created_at', { ascending: true });
 
       if (error) throw error;
-      if (!rows) return [];
 
       // Fetch profiles to map labels nicely
       const { data: profiles } = await supabase
@@ -193,46 +240,45 @@ export const zettlService = {
       // Map rows to ChatMessage objects
       const messages: ChatMessage[] = [];
 
-      rows.forEach((row: any) => {
-        // Double check this is actually between the two target people
-        const involvesBoth = 
-          (row.sender_id === userId && row.receiver_id === friendId) ||
-          (row.sender_id === friendId && row.receiver_id === userId);
+      (rows || []).forEach((row: any) => {
+        let msgType: 'request' | 'payment' | 'text' | 'system' = 'text';
+        let direct: 'incoming' | 'outgoing' | 'system' = 'outgoing';
 
-        if (!involvesBoth) return;
+        const isSettled = row.settled || row.is_settled;
+        const rawPurpose = row.purpose || row.description || '';
 
-        let msgType: 'request' | 'payment' | 'text' = 'text';
-        let direct: 'incoming' | 'outgoing' = 'outgoing';
+        if (rawPurpose.startsWith('SYSTEM:') || rawPurpose.startsWith('SYSTEM_SETTLED:') || rawPurpose.startsWith('SYSTEM_CONNECTED:')) {
+          msgType = 'system';
+          direct = 'system';
+        } else if (row.amount > 0) {
+          const debtorId = row.user_id;
+          const creditorId = row.creditor_id;
 
-        if (row.amount > 0) {
-          const debtorId = row.type === 'owe_you' ? row.sender_id : row.receiver_id;
-          const creditorId = row.type === 'owe_you' ? row.receiver_id : row.sender_id;
-
-          if (!row.is_settled) {
+          if (!isSettled) {
             msgType = 'request';
-            // If I owe, it means friend requested it or I recorded that I owe. That is incoming request
             direct = debtorId === userId ? 'incoming' : 'outgoing';
           } else {
             msgType = 'payment';
-            // If I paid, it is outgoing payment
             direct = debtorId === userId ? 'outgoing' : 'incoming';
           }
         } else {
           msgType = 'text';
-          direct = row.sender_id === userId ? 'outgoing' : 'incoming';
+          direct = row.creditor_id === userId ? 'outgoing' : 'incoming';
         }
 
-        const isRead = !!readMap[row.id] || direct === 'outgoing';
+        const isRead = !!readMap[row.id] || direct === 'outgoing' || direct === 'system';
+
+        const cleanedMessage = rawPurpose.replace(/^SYSTEM(_SETTLED|_CONNECTED)?:?\s*/, '');
 
         messages.push({
           id: row.id,
           type: msgType,
           direction: direct,
           amount: row.amount,
-          purpose: row.message_text || 'General splitting',
-          due_date: row.deadline || undefined,
-          status: row.is_settled ? 'paid' : 'pending',
-          message: row.message_text,
+          purpose: cleanedMessage,
+          due_date: row.due_date || undefined,
+          status: isSettled ? 'paid' : 'pending',
+          message: cleanedMessage,
           created_at: row.created_at,
           read: isRead,
           friend_id: friendId,
@@ -241,39 +287,99 @@ export const zettlService = {
         });
       });
 
+      if (messages.length === 0) {
+        messages.push({
+          id: `welcome-${userId}-${friendId}`,
+          type: 'system',
+          direction: 'system',
+          amount: 0,
+          purpose: 'Connected on ZETTL! Instant chat & expense ledger active.',
+          status: 'paid',
+          message: 'Connected on ZETTL! Instant chat & expense ledger active.',
+          created_at: new Date().toISOString(),
+          read: true,
+          friend_id: friendId,
+          friend_name: profileNameMap.get(friendId) || 'Zettl Friend',
+          debt_id: `welcome-${userId}-${friendId}`
+        });
+      }
+
       return messages;
     } catch (e) {
-      console.error('[ZETTL-SERVICE] Error obtaining messages:', e);
-      return [];
+      console.warn('[ZETTL-SERVICE] Error fetching chat messages, attempting API fallback:', e);
+      try {
+        const res = await fetch('/api/zettl/personal/list');
+        if (res.ok) {
+          const personalTx = await res.json();
+          const friendTx = (personalTx || []).filter((t: any) => 
+            (t.from_user_id === userId && t.to_user_id === friendId) ||
+            (t.from_user_id === friendId && t.to_user_id === userId)
+          );
+
+          if (friendTx.length > 0) {
+            return friendTx.map((t: any) => ({
+              id: t.id,
+              type: t.amount > 0 ? (t.is_settled ? 'payment' : 'request') : 'text',
+              direction: t.from_user_id === userId ? 'outgoing' : 'incoming',
+              amount: t.amount,
+              purpose: t.note || 'General splitting',
+              due_date: t.due_date || undefined,
+              status: t.is_settled ? 'paid' : 'pending',
+              message: t.note,
+              created_at: t.created_at,
+              read: true,
+              friend_id: friendId,
+              friend_name: t.from_user_id === userId ? (t.to_profile?.full_name || 'Zettl Friend') : (t.from_profile?.full_name || 'Zettl Friend'),
+              debt_id: t.id
+            }));
+          }
+        }
+      } catch (apiErr) {
+        console.warn('[ZETTL-SERVICE] Personal list fallback notice:', apiErr);
+      }
+
+      return [{
+        id: `welcome-${userId}-${friendId}`,
+        type: 'text',
+        direction: 'incoming',
+        amount: 0,
+        purpose: 'Welcome',
+        status: 'paid',
+        message: 'Connected on Zettl! Tap to start chatting.',
+        created_at: new Date().toISOString(),
+        read: true,
+        friend_id: friendId,
+        friend_name: 'Zettl Friend',
+        debt_id: `welcome-${userId}-${friendId}`
+      }];
     }
   },
 
   /**
-   * sendRequest(data) - creates debt record in zettl_transactions
+   * sendRequest(data) - creates debt record in existing 'debts' table
    */
   async sendRequest(data: CreateRequestData, userId: string): Promise<ChatMessage> {
     const friendId = data.friend_id;
     const amount = Math.round(data.amount);
     const purpose = data.purpose;
-    const due = data.due_date; // This is the deadline date string or null
+    const due = data.due_date;
 
-    // A request from ME means I am the creditor (they owe me), so type is 'you_owe_me'
     const { data: record, error } = await supabase
-      .from('zettl_transactions')
+      .from('debts')
       .insert({
-        sender_id: userId,
-        receiver_id: friendId,
+        user_id: friendId, // debtor (person who owes)
+        creditor_id: userId, // creditor (person requesting)
         amount,
-        type: 'you_owe_me',
-        message_text: purpose,
-        deadline: due || null,
-        is_settled: false
+        purpose,
+        due_date: due || null,
+        settled: false,
+        status: 'active'
       })
       .select('*')
       .single();
 
     if (error) {
-      console.error('[ZETTL-SERVICE] Failed inserting transaction request:', error);
+      console.error('[ZETTL-SERVICE] Failed inserting debt request:', error);
       throw error;
     }
 
@@ -320,7 +426,7 @@ export const zettlService = {
   },
 
   /**
-   * sendPayment(data) - marks debt as paid or logs a new payment
+   * sendPayment(data) - marks debt as paid or logs a new payment in 'debts'
    */
   async sendPayment(data: CreatePaymentData, userId: string): Promise<ChatMessage> {
     const friendId = data.friend_id;
@@ -331,10 +437,11 @@ export const zettlService = {
     if (debtId) {
       // 1. Settle an existing pending debt record
       const { error: updError } = await supabase
-        .from('zettl_transactions')
+        .from('debts')
         .update({
-          is_settled: true,
-          settled_at: new Date().toISOString()
+          settled: true,
+          settled_at: new Date().toISOString(),
+          status: 'settled'
         })
         .eq('id', debtId);
 
@@ -380,17 +487,17 @@ export const zettlService = {
         debt_id: debtId
       };
     } else {
-      // 2. Log a spontaneous new payment (I paid friend: sender_id = user, receiver_id = friend, type = 'owe_you' (I owe you and I paid), is_settled = true)
+      // 2. Log a spontaneous new payment
       const { data: record, error } = await supabase
-        .from('zettl_transactions')
+        .from('debts')
         .insert({
-          sender_id: userId,
-          receiver_id: friendId,
+          user_id: userId, // payer
+          creditor_id: friendId, // payee
           amount,
-          type: 'owe_you',
-          message_text: purpose,
-          is_settled: true,
-          settled_at: new Date().toISOString()
+          purpose,
+          settled: true,
+          settled_at: new Date().toISOString(),
+          status: 'settled'
         })
         .select('*')
         .single();
@@ -439,18 +546,18 @@ export const zettlService = {
   },
 
   /**
-   * sendTextMessage(friendId, message) - stores text message as zero amount transaction
+   * sendTextMessage(friendId, message) - stores text message in 'debts' with amount 0 and in 'debt_messages'
    */
   async sendTextMessage(friendId: string, messageText: string, userId: string): Promise<ChatMessage> {
     const { data: record, error } = await supabase
-      .from('zettl_transactions')
+      .from('debts')
       .insert({
-        sender_id: userId,
-        receiver_id: friendId,
+        user_id: friendId,
+        creditor_id: userId,
         amount: 0,
-        type: 'text_only',
-        message_text: messageText,
-        is_settled: true
+        purpose: messageText,
+        settled: true,
+        status: 'active'
       })
       .select('*')
       .single();
@@ -458,6 +565,17 @@ export const zettlService = {
     if (error) {
       console.error('[ZETTL-SERVICE] text message save error:', error);
       throw error;
+    }
+
+    // Also store in debt_messages for message history tracking
+    try {
+      await supabase.from('debt_messages').insert({
+        debt_id: record.id,
+        user_id: userId,
+        message: messageText
+      });
+    } catch (msgErr) {
+      console.warn('[ZETTL-SERVICE] debt_messages insert warning:', msgErr);
     }
 
     return {
@@ -473,6 +591,176 @@ export const zettlService = {
       friend_name: 'Friend',
       debt_id: record.id
     };
+  },
+
+  /**
+   * createAmountEntry(data, userId) - records expense split and system message
+   */
+  async createAmountEntry(data: import('../types/zettl.types').CreateAmountData, userId: string): Promise<ChatMessage> {
+    const friendId = data.friend_id;
+    const totalAmount = Math.round(data.amount);
+    
+    // Calculate owe amount based on split type
+    let oweAmount = totalAmount;
+    if (data.split_type === 'Half') {
+      oweAmount = Math.round(totalAmount / 2);
+    } else if (data.split_type === 'Custom' && data.custom_amount) {
+      oweAmount = Math.round(data.custom_amount);
+    }
+
+    // Determine debtor and creditor
+    const debtorId = data.who_paid === 'me' ? friendId : userId;
+    const creditorId = data.who_paid === 'me' ? userId : friendId;
+
+    const formattedNote = `[${data.category || 'Expense'}] ${data.description} (${data.split_type} Split)`;
+
+    // Insert debt entry
+    const { data: record, error } = await supabase
+      .from('debts')
+      .insert({
+        user_id: debtorId,
+        creditor_id: creditorId,
+        amount: oweAmount,
+        purpose: formattedNote,
+        settled: false,
+        status: 'active'
+      })
+      .select('*')
+      .single();
+
+    if (error) {
+      console.error('[ZETTL-SERVICE] createAmountEntry error:', error);
+      throw error;
+    }
+
+    // Insert system chat message entry
+    const sysText = data.who_paid === 'me' 
+      ? `SYSTEM: You added ₹${totalAmount} for ${data.category} (${data.description}). Friend owes you ₹${oweAmount}`
+      : `SYSTEM: Friend added ₹${totalAmount} for ${data.category} (${data.description}). You owe ₹${oweAmount}`;
+
+    try {
+      await supabase.from('debts').insert({
+        user_id: friendId,
+        creditor_id: userId,
+        amount: 0,
+        purpose: sysText,
+        settled: true,
+        status: 'active'
+      });
+
+      await supabase.from('activities').insert({
+        user_id: userId,
+        debt_id: record.id,
+        action: 'created_debt',
+        amount: oweAmount,
+        message: `Expense added: ${formattedNote} (₹${oweAmount})`
+      });
+
+      await supabase.from('notifications').insert({
+        id: generateUUID(),
+        user_id: friendId,
+        type: 'request',
+        title: '💸 Zettl Expense Added',
+        message: sysText.replace('SYSTEM: ', ''),
+        read: false
+      });
+    } catch (actErr) {
+      console.warn('[ZETTL-SERVICE] Non-blocking notice inserting system message:', actErr);
+    }
+
+    return {
+      id: record.id,
+      type: 'request',
+      direction: data.who_paid === 'me' ? 'outgoing' : 'incoming',
+      amount: oweAmount,
+      purpose: formattedNote,
+      category: data.category,
+      split_type: data.split_type,
+      status: 'pending',
+      message: formattedNote,
+      created_at: record.created_at,
+      read: true,
+      friend_id: friendId,
+      friend_name: 'Friend',
+      debt_id: record.id
+    };
+  },
+
+  /**
+   * settleBalances(friendId, paymentMethod, amount, memo, userId)
+   */
+  async settleBalances(friendId: string, paymentMethod: import('../types/zettl.types').PaymentMethod, amount: number, memo: string, userId: string): Promise<void> {
+    if (!friendId || !userId) return;
+
+    // 1. Fetch pending debts between these two users
+    const { data: pendingDebts, error: fetchErr } = await supabase
+      .from('debts')
+      .select('id')
+      .or(`and(user_id.eq.${userId},creditor_id.eq.${friendId}),and(user_id.eq.${friendId},creditor_id.eq.${userId})`)
+      .eq('settled', false);
+
+    if (fetchErr) {
+      console.warn('[ZETTL-SERVICE] fetch pending debts notice:', fetchErr);
+    }
+
+    const pendingIds = (pendingDebts || []).map(d => d.id);
+
+    if (pendingIds.length > 0) {
+      // Mark all pending active debts as settled
+      await supabase
+        .from('debts')
+        .update({
+          settled: true,
+          settled_at: new Date().toISOString(),
+          status: 'settled'
+        })
+        .in('id', pendingIds);
+    }
+
+    // 2. Create system message record for settlement
+    const sysMsgText = `SYSTEM_SETTLED: Settled ₹${amount} via ${paymentMethod}${memo ? ` ("${memo}")` : ''} 🎉`;
+
+    await supabase.from('debts').insert({
+      user_id: friendId,
+      creditor_id: userId,
+      amount: 0,
+      purpose: sysMsgText,
+      settled: true,
+      status: 'settled'
+    });
+
+    try {
+      await supabase.from('activities').insert({
+        user_id: userId,
+        action: 'settled',
+        amount,
+        message: `Settled ₹${amount} with friend via ${paymentMethod}`
+      });
+
+      await supabase.from('notifications').insert({
+        id: generateUUID(),
+        user_id: friendId,
+        type: 'payment',
+        title: '🎉 Debt Settled Up',
+        message: `Settled ₹${amount} via ${paymentMethod}`,
+        read: false
+      });
+    } catch (nErr) {
+      console.warn('[ZETTL-SERVICE] Notice logging settlement activity:', nErr);
+    }
+  },
+
+  /**
+   * deleteMessage(messageId, userId)
+   */
+  async deleteMessage(messageId: string, userId: string): Promise<void> {
+    if (!messageId) return;
+    try {
+      await supabase.from('debts').delete().eq('id', messageId);
+      await supabase.from('debt_messages').delete().eq('debt_id', messageId);
+    } catch (e) {
+      console.warn('[ZETTL-SERVICE] Delete message notice:', e);
+    }
   },
 
   /**
@@ -589,7 +877,7 @@ export const zettlService = {
 
     const unsubscribe = supabaseRealtimeService.subscribe({
       channelName,
-      table: 'zettl_transactions',
+      table: 'debts',
       event: '*',
       callback: () => {
         console.log(`💬 Realtime chat message received for channel ${channelName}`);

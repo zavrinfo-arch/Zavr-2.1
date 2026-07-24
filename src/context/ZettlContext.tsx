@@ -233,9 +233,18 @@ export const ZettlProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
     if (!activeUserId) throw new Error('Not authenticated');
 
-    await friendService.sendFriendRequest(friendId, activeUserId);
-    toast.success('Connection request dispatched!');
-    fetchData();
+    try {
+      await friendService.sendFriendRequest(friendId, activeUserId);
+      toast.success('Connection request dispatched!');
+      clearFriendsCache();
+      await useStore.getState().refreshFriendsForDropdown(true);
+      await useStore.getState().refreshAllData();
+      fetchData();
+    } catch (err: any) {
+      console.error('[ZETTL-CONTEXT] sendFriendRequest error:', err);
+      toast.error(err.message || 'Failed to dispatch connection request');
+      throw err;
+    }
   };
 
   const handleAcceptFriend = async (requestId: string) => {
@@ -245,24 +254,53 @@ export const ZettlProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       activeUserId = session?.user?.id;
     }
 
-    await friendService.acceptFriendRequest(requestId, activeUserId);
-    toast.success('Connection request accepted!');
-    clearFriendsCache();
-    await useStore.getState().refreshFriendsForDropdown(true);
-    await useStore.getState().refreshAllData();
-    fetchData();
+    try {
+      await friendService.acceptFriendRequest(requestId, activeUserId);
+      toast.success('Connection request accepted!');
+      clearFriendsCache();
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('friend-request-accepted', { detail: { requestId, activeUserId } }));
+        window.dispatchEvent(new CustomEvent('refresh-chat-list'));
+      }
+      await useStore.getState().refreshFriendsForDropdown(true);
+      await useStore.getState().refreshAllData();
+      fetchData();
+    } catch (err: any) {
+      console.error('[ZETTL-CONTEXT] acceptFriend error:', err);
+      toast.error(err.message || 'Failed to accept connection request');
+      throw err;
+    }
   };
 
   const handleRejectFriend = async (requestId: string) => {
-    await friendService.rejectFriendRequest(requestId);
-    toast.success('Connection declined');
-    fetchData();
+    try {
+      await friendService.rejectFriendRequest(requestId);
+      toast.success('Connection declined');
+      clearFriendsCache();
+      await useStore.getState().refreshFriendsForDropdown(true);
+      await useStore.getState().refreshAllData();
+      fetchData();
+    } catch (err: any) {
+      console.error('[ZETTL-CONTEXT] rejectFriend error:', err);
+      toast.error(err.message || 'Failed to decline connection request');
+      throw err;
+    }
   };
 
   const handleRemoveFriend = async (friendId: string) => {
-    await friendService.removeFriend(friendId);
-    toast.success('Connection removed successfully');
-    fetchData();
+    let activeUserId = currentUser?.id || useStore.getState().session?.user?.id;
+    try {
+      await friendService.removeFriend(friendId, activeUserId);
+      toast.success('Connection removed successfully');
+      clearFriendsCache();
+      await useStore.getState().refreshFriendsForDropdown(true);
+      await useStore.getState().refreshAllData();
+      fetchData();
+    } catch (err: any) {
+      console.error('[ZETTL-CONTEXT] removeFriend error:', err);
+      toast.error(err.message || 'Failed to remove connection');
+      throw err;
+    }
   };
 
   const handleRequestMoney = async (friendId: string, amount: number, note: string, dueDate?: string) => {

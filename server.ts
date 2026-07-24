@@ -80,7 +80,7 @@ const FALLBACK_DB_PATH = path.resolve('./zettl_fallback_db.json');
 
 function readLocalZettlDB(): {
   personal_zettls: any[];
-  zettl_transactions: any[];
+  debts: any[];
   zettl_groups: any[];
   zettl_group_members: any[];
   zettl_group_expenses: any[];
@@ -91,7 +91,7 @@ function readLocalZettlDB(): {
     if (!fs.existsSync(FALLBACK_DB_PATH)) {
       const initial = {
         personal_zettls: [],
-        zettl_transactions: [],
+        debts: [],
         zettl_groups: [],
         zettl_group_members: [],
         zettl_group_expenses: [],
@@ -103,15 +103,15 @@ function readLocalZettlDB(): {
     }
     const content = fs.readFileSync(FALLBACK_DB_PATH, 'utf-8');
     const parsed = JSON.parse(content);
-    if (!parsed.zettl_transactions) {
-      parsed.zettl_transactions = [];
+    if (!parsed.debts) {
+      parsed.debts = [];
     }
     return parsed;
   } catch (err) {
     console.error('[LOCAL DB] Failed to read or initialize fallback DB:', err);
     return {
       personal_zettls: [],
-      zettl_transactions: [],
+      debts: [],
       zettl_groups: [],
       zettl_group_members: [],
       zettl_group_expenses: [],
@@ -146,17 +146,17 @@ function writeLocalZettlDB(data: any) {
       console.log('[SUPABASE] Schema check successful: profiles table is accessible.');
     }
 
-    // Check if zettl_transactions is accessible, if not activate local JSON fallback
-    const { error: zettlCheckError } = await supabaseAdmin.from('zettl_transactions').select('id').limit(1);
+    // Check if debts is accessible
+    const { error: zettlCheckError } = await supabaseAdmin.from('debts').select('id').limit(1);
     if (zettlCheckError && (
       zettlCheckError.message.includes('relation') || 
       zettlCheckError.message.includes('cache') || 
       zettlCheckError.message.includes('not find the table')
     )) {
       useZettlFallback = true;
-      console.warn('[SUPABASE] WARNING: zettl_transactions table is not accessible in Supabase. Enabling local filesystem JSON-based fallback for Zettl features!');
+      console.warn('[SUPABASE] WARNING: debts table is not accessible in Supabase. Enabling local filesystem JSON-based fallback for Zettl features!');
     } else {
-      console.log('[SUPABASE] Zettl transactions table presence check passed.');
+      console.log('[SUPABASE] Debts table presence check passed.');
     }
 
     // Dynamic Friends Status Column Check
@@ -1249,40 +1249,48 @@ app.post('/api/friends/request-by-username', async (req, res) => {
     if (targetUser.id === user.id) return res.status(400).json({ error: 'You cannot add yourself' });
 
     // 2. Check if a friend request or active friendship already exists
-    const { data: existingReq, error: checkReqError } = await supabaseAdmin
+    const { data: existingReqs, error: checkReqError } = await supabaseAdmin
       .from('friend_requests')
       .select('*')
       .in('sender_id', [user.id, targetUser.id])
       .in('receiver_id', [user.id, targetUser.id])
-      .maybeSingle();
+      .limit(10);
 
     if (checkReqError) throw checkReqError;
 
-    const { data: existingFriend, error: checkFriendError } = await supabaseAdmin
+    const { data: existingFriends, error: checkFriendError } = await supabaseAdmin
       .from('friends')
       .select('*')
       .in('user_id', [user.id, targetUser.id])
       .in('friend_id', [user.id, targetUser.id])
-      .maybeSingle();
+      .limit(10);
 
     if (checkFriendError) throw checkFriendError;
 
-    if (existingFriend) {
+    if (existingFriends && existingFriends.length > 0) {
       return res.status(400).json({ error: 'You are already friends' });
     }
 
-    if (existingReq) {
-      if (existingReq.status === 'pending') {
-        const direction = existingReq.sender_id === user.id ? 'sent' : 'received';
-        return res.status(400).json({ error: `You already have a ${direction} request with this user` });
-      } else if (existingReq.status === 'accepted') {
+    if (existingReqs && existingReqs.length > 0) {
+      const pendingReq = existingReqs.find(r => r.status === 'pending');
+      const acceptedReq = existingReqs.find(r => r.status === 'accepted');
+
+      if (acceptedReq) {
         return res.status(400).json({ error: 'You are already friends' });
-      } else {
-        // Delete rejected or declined request first to prevent duplicate key violations on re-send
+      }
+
+      if (pendingReq) {
+        const direction = pendingReq.sender_id === user.id ? 'sent' : 'received';
+        return res.status(400).json({ error: `You already have a ${direction} request with this user` });
+      }
+
+      // Delete rejected or declined requests to prevent duplicate key violations on re-send
+      const nonActiveIds = existingReqs.filter(r => r.status !== 'pending' && r.status !== 'accepted').map(r => r.id);
+      if (nonActiveIds.length > 0) {
         const { error: deleteError } = await supabaseAdmin
           .from('friend_requests')
           .delete()
-          .eq('id', existingReq.id);
+          .in('id', nonActiveIds);
         if (deleteError) throw deleteError;
       }
     }
@@ -1325,39 +1333,47 @@ app.post('/api/friends/request', async (req, res) => {
 
   try {
     // Check if relationship already exists
-    const { data: existingReq, error: checkReqError } = await supabaseAdmin
+    const { data: existingReqs, error: checkReqError } = await supabaseAdmin
       .from('friend_requests')
       .select('*')
       .in('sender_id', [user.id, friendId])
       .in('receiver_id', [user.id, friendId])
-      .maybeSingle();
+      .limit(10);
 
     if (checkReqError) throw checkReqError;
 
-    const { data: existingFriend, error: checkFriendError } = await supabaseAdmin
+    const { data: existingFriends, error: checkFriendError } = await supabaseAdmin
       .from('friends')
       .select('*')
       .in('user_id', [user.id, friendId])
       .in('friend_id', [user.id, friendId])
-      .maybeSingle();
+      .limit(10);
 
     if (checkFriendError) throw checkFriendError;
 
-    if (existingFriend) {
+    if (existingFriends && existingFriends.length > 0) {
       return res.status(400).json({ error: 'You are already friends' });
     }
 
-    if (existingReq) {
-      if (existingReq.status === 'pending') {
-        return res.status(400).json({ error: 'Relationship request already exists' });
-      } else if (existingReq.status === 'accepted') {
+    if (existingReqs && existingReqs.length > 0) {
+      const pendingReq = existingReqs.find(r => r.status === 'pending');
+      const acceptedReq = existingReqs.find(r => r.status === 'accepted');
+
+      if (acceptedReq) {
         return res.status(400).json({ error: 'You are already friends' });
-      } else {
-        // Delete rejected or declined request first to prevent duplicate key violations on re-send
+      }
+
+      if (pendingReq) {
+        return res.status(400).json({ error: 'Relationship request already exists' });
+      }
+
+      // Delete rejected or declined requests to prevent duplicate key violations on re-send
+      const nonActiveIds = existingReqs.filter(r => r.status !== 'pending' && r.status !== 'accepted').map(r => r.id);
+      if (nonActiveIds.length > 0) {
         const { error: deleteError } = await supabaseAdmin
           .from('friend_requests')
           .delete()
-          .eq('id', existingReq.id);
+          .in('id', nonActiveIds);
         if (deleteError) throw deleteError;
       }
     }
@@ -1427,7 +1443,7 @@ app.post('/api/friends/accept/:requestId', async (req, res) => {
       }
     }
 
-    // Update status in friend_requests if a pending row exists
+    // 1. Update status in friend_requests if a pending row exists
     if (foundReqId) {
       await supabaseAdmin
         .from('friend_requests')
@@ -1453,25 +1469,25 @@ app.post('/api/friends/accept/:requestId', async (req, res) => {
           .select('id')
           .eq('user_id', u1)
           .eq('friend_id', u2)
-          .maybeSingle();
+          .limit(1);
 
-        if (!existing) {
+        if (!existing || existing.length === 0) {
           const { error: insErr } = await supabaseAdmin
             .from('friends')
             .insert({ user_id: u1, friend_id: u2 });
           
-          if (insErr) {
-            console.error(`[FRIENDS] Save link error (${u1} -> ${u2}):`, insErr);
+          if (insErr && insErr.code !== '23505' && !insErr.message?.includes('duplicate')) {
+            console.warn(`[FRIENDS] Save link notice (${u1} -> ${u2}):`, insErr.message || insErr);
           } else {
-            console.log(`[FRIENDS] Successfully created friend link between ${u1} and ${u2}`);
+            console.log(`[FRIENDS] Successfully ensured friend link between ${u1} and ${u2}`);
           }
         }
-      } catch (fErr) {
-        console.warn('[FRIENDS] Sync friends table notice:', fErr);
+      } catch (fErr: any) {
+        console.warn('[FRIENDS] Sync friends table notice:', fErr?.message || fErr);
       }
     };
 
-    // Ensure bidirectional link
+    // 2. Ensure bidirectional friendship link
     await saveFriendLink(user.id, partnerId);
     await saveFriendLink(partnerId, user.id);
 
@@ -1604,7 +1620,7 @@ app.get('/api/friends/list', async (req, res) => {
 
     if (requestsError) throw requestsError;
 
-    // 3. Deduplicate established friends by target friend_id
+    // 3. Map established friends purely from friends table
     const establishedFriendMap = new Map<string, any>();
     (rawFriends || []).forEach(f => {
       const targetId = f.user_id === user.id ? f.friend_id : f.user_id;
@@ -1702,41 +1718,40 @@ app.post('/api/zettl/personal', async (req, res) => {
   
   if (!friendId || !amount) return res.status(400).json({ error: 'Missing required fields' });
 
-  const txType = direction === 'lent' ? 'you_owe_me' : 'owe_you';
+  const creditorId = direction === 'lent' ? user.id : friendId;
+  const debtorId = direction === 'lent' ? friendId : user.id;
 
   if (useZettlFallback) {
     try {
       const db = readLocalZettlDB();
       const newTransaction = {
         id: 'fallback-' + Math.random().toString(36).substring(2, 15) + '-' + Date.now(),
-        sender_id: user.id,
-        receiver_id: friendId,
+        user_id: debtorId,
+        creditor_id: creditorId,
         amount: parseInt(amount, 10),
-        type: txType,
-        message_text: note || '',
-        deadline: dueDate || null,
-        is_settled: false,
+        purpose: note || 'Debt',
+        due_date: dueDate || null,
+        settled: false,
         settled_at: null,
+        status: 'active',
         created_at: new Date().toISOString()
       };
-      if (!db.zettl_transactions) db.zettl_transactions = [];
-      db.zettl_transactions.push(newTransaction);
+      if (!db.debts) db.debts = [];
+      db.debts.push(newTransaction);
       writeLocalZettlDB(db);
 
-      // Map back to format the store expects
-      const responseObj = {
+      return res.json({
         id: newTransaction.id,
-        from_user_id: direction === 'lent' ? friendId : user.id,
-        to_user_id: direction === 'lent' ? user.id : friendId,
+        from_user_id: debtorId,
+        to_user_id: creditorId,
         amount: newTransaction.amount,
-        note: newTransaction.message_text,
-        due_date: newTransaction.deadline,
+        note: newTransaction.purpose,
+        due_date: newTransaction.due_date,
         currency: 'INR',
         is_settled: false,
         settled_at: null,
         created_at: newTransaction.created_at
-      };
-      return res.json(responseObj);
+      });
     } catch (err: any) {
       console.error('[LOCAL DB] Personal creation failed:', err);
       return res.status(500).json({ error: 'Creation failed' });
@@ -1745,35 +1760,33 @@ app.post('/api/zettl/personal', async (req, res) => {
 
   try {
     const { data: record, error } = await supabaseAdmin
-      .from('zettl_transactions')
+      .from('debts')
       .insert({
-        sender_id: user.id,
-        receiver_id: friendId,
-        amount,
-        type: txType,
-        message_text: note,
-        deadline: dueDate || null,
-        is_settled: false
+        user_id: debtorId,
+        creditor_id: creditorId,
+        amount: parseInt(amount, 10),
+        purpose: note || 'Debt',
+        due_date: dueDate || null,
+        settled: false,
+        status: 'active'
       })
       .select()
       .maybeSingle();
     
     if (error) throw error;
 
-    // Map back to format the store expects
-    const responseObj = {
+    res.json({
       id: record.id,
-      from_user_id: direction === 'lent' ? friendId : user.id,
-      to_user_id: direction === 'lent' ? user.id : friendId,
+      from_user_id: record.user_id,
+      to_user_id: record.creditor_id,
       amount: record.amount,
-      note: record.message_text,
-      due_date: record.deadline,
+      note: record.purpose,
+      due_date: record.due_date,
       currency: 'INR',
-      is_settled: record.is_settled,
+      is_settled: record.settled,
       settled_at: record.settled_at,
       created_at: record.created_at
-    };
-    res.json(responseObj);
+    });
   } catch (err: any) {
     console.error('[SERVER] Personal transaction creation failed:', err);
     res.status(500).json({ error: 'Creation failed' });
@@ -1787,19 +1800,19 @@ app.get('/api/zettl/personal/list', async (req, res) => {
   if (useZettlFallback) {
     try {
       const db = readLocalZettlDB();
-      const rawTx = (db.zettl_transactions || []).filter(
-        (z: any) => (z.sender_id === user.id || z.receiver_id === user.id) && z.amount > 0
+      const rawTx = (db.debts || []).filter(
+        (z: any) => (z.user_id === user.id || z.creditor_id === user.id) && z.amount > 0
       );
 
-      rawTx.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      rawTx.sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
       if (rawTx.length === 0) {
         return res.json([]);
       }
 
       const userIds = Array.from(new Set([
-        ...rawTx.map((z: any) => z.sender_id),
-        ...rawTx.map((z: any) => z.receiver_id)
+        ...rawTx.map((z: any) => z.user_id),
+        ...rawTx.map((z: any) => z.creditor_id)
       ])).filter(Boolean);
 
       const { data: profiles, error: profilesError } = await supabaseAdmin
@@ -1812,21 +1825,19 @@ app.get('/api/zettl/personal/list', async (req, res) => {
       const profileMap = new Map(profiles?.map((p: any) => [p.id, p]) || []);
 
       const mappedZettls = rawTx.map((z: any) => {
-        const fromUserId = z.type === 'owe_you' ? z.sender_id : z.receiver_id;
-        const toUserId = z.type === 'owe_you' ? z.receiver_id : z.sender_id;
         return {
           id: z.id,
-          from_user_id: fromUserId,
-          to_user_id: toUserId,
+          from_user_id: z.user_id,
+          to_user_id: z.creditor_id,
           amount: z.amount,
-          note: z.message_text,
-          due_date: z.deadline,
+          note: z.purpose,
+          due_date: z.due_date,
           currency: 'INR',
-          is_settled: z.is_settled,
+          is_settled: z.settled,
           settled_at: z.settled_at,
           created_at: z.created_at,
-          from_profile: profileMap.get(fromUserId) || { username: 'Unknown', full_name: 'Unknown User', avatar_url: '' },
-          to_profile: profileMap.get(toUserId) || { username: 'Unknown', full_name: 'Unknown User', avatar_url: '' }
+          from_profile: profileMap.get(z.user_id) || { username: 'Unknown', full_name: 'Unknown User', avatar_url: '' },
+          to_profile: profileMap.get(z.creditor_id) || { username: 'Unknown', full_name: 'Unknown User', avatar_url: '' }
         };
       });
 
@@ -1839,9 +1850,9 @@ app.get('/api/zettl/personal/list', async (req, res) => {
 
   try {
     const { data: rawTx, error: rawError } = await supabaseAdmin
-      .from('zettl_transactions')
+      .from('debts')
       .select('*')
-      .or(`sender_id.eq.${user.id},receiver_id.eq.${user.id}`)
+      .or(`user_id.eq.${user.id},creditor_id.eq.${user.id}`)
       .gt('amount', 0)
       .order('created_at', { ascending: false });
       
@@ -1851,8 +1862,8 @@ app.get('/api/zettl/personal/list', async (req, res) => {
     }
     
     const userIds = Array.from(new Set([
-      ...rawTx.map((z: any) => z.sender_id),
-      ...rawTx.map((z: any) => z.receiver_id)
+      ...rawTx.map((z: any) => z.user_id),
+      ...rawTx.map((z: any) => z.creditor_id)
     ])).filter(Boolean);
     
     const { data: profiles, error: profilesError } = await supabaseAdmin
@@ -1865,21 +1876,19 @@ app.get('/api/zettl/personal/list', async (req, res) => {
     const profileMap = new Map(profiles?.map((p: any) => [p.id, p]) || []);
     
     const mappedZettls = rawTx.map((z: any) => {
-      const fromUserId = z.type === 'owe_you' ? z.sender_id : z.receiver_id;
-      const toUserId = z.type === 'owe_you' ? z.receiver_id : z.sender_id;
       return {
         id: z.id,
-        from_user_id: fromUserId,
-        to_user_id: toUserId,
+        from_user_id: z.user_id,
+        to_user_id: z.creditor_id,
         amount: z.amount,
-        note: z.message_text,
-        due_date: z.deadline,
+        note: z.purpose,
+        due_date: z.due_date,
         currency: 'INR',
-        is_settled: z.is_settled,
+        is_settled: z.settled,
         settled_at: z.settled_at,
         created_at: z.created_at,
-        from_profile: profileMap.get(fromUserId) || { username: 'Unknown', full_name: 'Unknown User', avatar_url: '' },
-        to_profile: profileMap.get(toUserId) || { username: 'Unknown', full_name: 'Unknown User', avatar_url: '' }
+        from_profile: profileMap.get(z.user_id) || { username: 'Unknown', full_name: 'Unknown User', avatar_url: '' },
+        to_profile: profileMap.get(z.creditor_id) || { username: 'Unknown', full_name: 'Unknown User', avatar_url: '' }
       };
     });
     
@@ -1899,23 +1908,18 @@ app.get('/api/zettl/personal/balance/:friendId', async (req, res) => {
   if (useZettlFallback) {
     try {
       const db = readLocalZettlDB();
-      const rawTx = (db.zettl_transactions || []).filter(
-        (z: any) => ((z.sender_id === user.id && z.receiver_id === friendId) || 
-                     (z.sender_id === friendId && z.receiver_id === user.id)) && 
-                     z.amount > 0 && !z.is_settled
+      const rawTx = (db.debts || []).filter(
+        (z: any) => ((z.user_id === user.id && z.creditor_id === friendId) || 
+                     (z.user_id === friendId && z.creditor_id === user.id)) && 
+                     z.amount > 0 && !z.settled
       );
 
       let totalOwedToMe = 0;
       let totalIOwe = 0;
 
       rawTx.forEach((z: any) => {
-        if (z.sender_id === user.id) {
-          if (z.type === 'you_owe_me') totalOwedToMe += z.amount;
-          if (z.type === 'owe_you') totalIOwe += z.amount;
-        } else if (z.sender_id === friendId) {
-          if (z.type === 'you_owe_me') totalIOwe += z.amount;
-          if (z.type === 'owe_you') totalOwedToMe += z.amount;
-        }
+        if (z.creditor_id === user.id) totalOwedToMe += Number(z.amount);
+        if (z.user_id === user.id) totalIOwe += Number(z.amount);
       });
 
       const net = totalOwedToMe - totalIOwe;
@@ -1934,10 +1938,10 @@ app.get('/api/zettl/personal/balance/:friendId', async (req, res) => {
 
   try {
     const { data: rawTx, error } = await supabaseAdmin
-      .from('zettl_transactions')
-      .select('amount, sender_id, receiver_id, type')
-      .or(`sender_id.eq.${user.id},receiver_id.eq.${user.id}`)
-      .eq('is_settled', false)
+      .from('debts')
+      .select('amount, user_id, creditor_id, settled')
+      .or(`user_id.eq.${user.id},creditor_id.eq.${user.id}`)
+      .eq('settled', false)
       .gt('amount', 0);
     
     if (error) throw error;
@@ -1946,15 +1950,9 @@ app.get('/api/zettl/personal/balance/:friendId', async (req, res) => {
     let totalIOwe = 0;
 
     (rawTx || []).forEach((z: any) => {
-      // Ensure we only look at transactions involving the friend
-      if (z.sender_id === friendId || z.receiver_id === friendId) {
-        if (z.sender_id === user.id) {
-          if (z.type === 'you_owe_me') totalOwedToMe += Number(z.amount);
-          if (z.type === 'owe_you') totalIOwe += Number(z.amount);
-        } else if (z.sender_id === friendId) {
-          if (z.type === 'you_owe_me') totalIOwe += Number(z.amount);
-          if (z.type === 'owe_you') totalOwedToMe += Number(z.amount);
-        }
+      if (z.user_id === friendId || z.creditor_id === friendId) {
+        if (z.creditor_id === user.id) totalOwedToMe += Number(z.amount);
+        if (z.user_id === user.id) totalIOwe += Number(z.amount);
       }
     });
 
@@ -1979,23 +1977,12 @@ app.post('/api/zettl/personal/:zettlId/remind', async (req, res) => {
   if (useZettlFallback) {
     try {
       const db = readLocalZettlDB();
-      const zettlIndex = (db.zettl_transactions || []).findIndex((z: any) => z.id === req.params.zettlId);
+      const zettlIndex = (db.debts || []).findIndex((z: any) => z.id === req.params.zettlId);
       if (zettlIndex === -1) return res.status(404).json({ error: 'Zettl not found' });
-      const zettl = db.zettl_transactions[zettlIndex];
-      const creditorId = zettl.type === 'owe_you' ? zettl.receiver_id : zettl.sender_id;
-      if (creditorId !== user.id) return res.status(403).json({ error: 'Only the payee can remind' });
+      const zettl = db.debts[zettlIndex];
+      if (zettl.creditor_id !== user.id) return res.status(403).json({ error: 'Only the payee can remind' });
 
-      const oneDayAgo = new Date();
-      oneDayAgo.setDate(oneDayAgo.getDate() - 1);
-
-      if (zettl.reminder_last_sent_at && new Date(zettl.reminder_last_sent_at) > oneDayAgo) {
-        return res.status(429).json({ error: 'Reminder sent recently. Please wait 24 hours.' });
-      }
-      if (zettl.reminder_count >= 10) {
-        return res.status(400).json({ error: 'Maximum reminders reached for this Zettl' });
-      }
-
-      db.zettl_transactions[zettlIndex] = {
+      db.debts[zettlIndex] = {
         ...zettl,
         reminder_last_sent_at: new Date().toISOString(),
         reminder_count: (zettl.reminder_count || 0) + 1
@@ -2011,23 +1998,21 @@ app.post('/api/zettl/personal/:zettlId/remind', async (req, res) => {
 
   try {
     const { data: zettl } = await supabaseAdmin
-      .from('zettl_transactions')
+      .from('debts')
       .select('*')
       .eq('id', req.params.zettlId)
       .maybeSingle();
 
     if (!zettl) return res.status(404).json({ error: 'Zettl not found' });
-    const creditorId = zettl.type === 'owe_you' ? zettl.receiver_id : zettl.sender_id;
-    const debtorId = zettl.type === 'owe_you' ? zettl.sender_id : zettl.receiver_id;
-    if (creditorId !== user.id) return res.status(403).json({ error: 'Only the payee can remind' });
+    if (zettl.creditor_id !== user.id) return res.status(403).json({ error: 'Only the payee can remind' });
 
     try {
       await sendSafeNotification(supabaseAdmin, {
-        user_id: debtorId,
+        user_id: zettl.user_id,
         type: 'reminder',
         title: '🔔 Zettl Reminder',
-        message: `Friendly reminder about ₹${zettl.amount} for "${zettl.message_text}".`,
-        data: JSON.stringify({ debtId: zettl.id, amount: zettl.amount, note: zettl.message_text })
+        message: `Friendly reminder about ₹${zettl.amount} for "${zettl.purpose}".`,
+        data: JSON.stringify({ debtId: zettl.id, amount: zettl.amount, note: zettl.purpose })
       });
     } catch (notifErr) {
       console.warn('[SERVER] Non-blocking reminder notification failed:', notifErr);
@@ -2046,15 +2031,16 @@ app.put('/api/zettl/personal/:zettlId/settle', async (req, res) => {
   if (useZettlFallback) {
     try {
       const db = readLocalZettlDB();
-      const zettlIndex = (db.zettl_transactions || []).findIndex(
-        (z: any) => z.id === req.params.zettlId && (z.sender_id === user.id || z.receiver_id === user.id)
+      const zettlIndex = (db.debts || []).findIndex(
+        (z: any) => z.id === req.params.zettlId && (z.user_id === user.id || z.creditor_id === user.id)
       );
       if (zettlIndex === -1) return res.status(404).json({ error: 'Zettl not found or unauthorized' });
 
-      db.zettl_transactions[zettlIndex] = {
-        ...db.zettl_transactions[zettlIndex],
-        is_settled: true,
-        settled_at: new Date().toISOString()
+      db.debts[zettlIndex] = {
+        ...db.debts[zettlIndex],
+        settled: true,
+        settled_at: new Date().toISOString(),
+        status: 'settled'
       };
 
       writeLocalZettlDB(db);
@@ -2067,10 +2053,10 @@ app.put('/api/zettl/personal/:zettlId/settle', async (req, res) => {
 
   try {
     const { error } = await supabaseAdmin
-      .from('zettl_transactions')
-      .update({ is_settled: true, settled_at: new Date().toISOString() })
+      .from('debts')
+      .update({ settled: true, settled_at: new Date().toISOString(), status: 'settled' })
       .eq('id', req.params.zettlId)
-      .or(`sender_id.eq.${user.id},receiver_id.eq.${user.id}`);
+      .or(`user_id.eq.${user.id},creditor_id.eq.${user.id}`);
     
     if (error) throw error;
     res.json({ success: true });
@@ -2086,14 +2072,14 @@ app.delete('/api/zettl/personal/:zettlId', async (req, res) => {
   if (useZettlFallback) {
     try {
       const db = readLocalZettlDB();
-      const zettlIndex = (db.zettl_transactions || []).findIndex(
-        (z: any) => z.id === req.params.zettlId && (z.sender_id === user.id || z.receiver_id === user.id)
+      const zettlIndex = (db.debts || []).findIndex(
+        (z: any) => z.id === req.params.zettlId && (z.user_id === user.id || z.creditor_id === user.id)
       );
       if (zettlIndex === -1) return res.status(404).json({ error: 'Not found' });
-      const zettl = db.zettl_transactions[zettlIndex];
-      if (zettl.is_settled) return res.status(400).json({ error: 'Cannot delete settled Zettl' });
+      const zettl = db.debts[zettlIndex];
+      if (zettl.settled) return res.status(400).json({ error: 'Cannot delete settled Zettl' });
 
-      db.zettl_transactions.splice(zettlIndex, 1);
+      db.debts.splice(zettlIndex, 1);
       writeLocalZettlDB(db);
       return res.json({ success: true });
     } catch (err) {
@@ -2104,19 +2090,19 @@ app.delete('/api/zettl/personal/:zettlId', async (req, res) => {
 
   try {
     const { data: zettl } = await supabaseAdmin
-      .from('zettl_transactions')
-      .select('is_settled, sender_id, receiver_id')
+      .from('debts')
+      .select('settled, user_id, creditor_id')
       .eq('id', req.params.zettlId)
       .maybeSingle();
 
     if (!zettl) return res.status(404).json({ error: 'Not found' });
-    if (zettl.is_settled) return res.status(400).json({ error: 'Cannot delete settled Zettl' });
+    if (zettl.settled) return res.status(400).json({ error: 'Cannot delete settled Zettl' });
     
     const { error } = await supabaseAdmin
-      .from('zettl_transactions')
+      .from('debts')
       .delete()
       .eq('id', req.params.zettlId)
-      .or(`sender_id.eq.${user.id},receiver_id.eq.${user.id}`);
+      .or(`user_id.eq.${user.id},creditor_id.eq.${user.id}`);
     
     if (error) throw error;
     res.json({ success: true });
@@ -2612,21 +2598,16 @@ app.get('/api/zettl/dashboard', async (req, res) => {
       const db = readLocalZettlDB();
 
       // 1. Personal Debts
-      const rawTx = (db.zettl_transactions || []).filter(
-        (z: any) => (z.sender_id === user.id || z.receiver_id === user.id) && z.amount > 0 && !z.is_settled
+      const rawTx = (db.debts || []).filter(
+        (z: any) => (z.user_id === user.id || z.creditor_id === user.id) && z.amount > 0 && !z.settled
       );
 
       let personalOwedToMe = 0;
       let personalIOwe = 0;
 
       rawTx.forEach((z: any) => {
-        if (z.sender_id === user.id) {
-          if (z.type === 'you_owe_me') personalOwedToMe += z.amount;
-          if (z.type === 'owe_you') personalIOwe += z.amount;
-        } else if (z.receiver_id === user.id) {
-          if (z.type === 'you_owe_me') personalIOwe += z.amount;
-          if (z.type === 'owe_you') personalOwedToMe += z.amount;
-        }
+        if (z.creditor_id === user.id) personalOwedToMe += z.amount;
+        if (z.user_id === user.id) personalIOwe += z.amount;
       });
 
       // 2. Group Debts (Splits)
@@ -2649,8 +2630,8 @@ app.get('/api/zettl/dashboard', async (req, res) => {
       const totalIOwe = personalIOwe + groupIOwe;
 
       // Recent Activity
-      const rawRecentTx = (db.zettl_transactions || []).filter(
-        (z: any) => (z.sender_id === user.id || z.receiver_id === user.id) && z.amount > 0
+      const rawRecentTx = (db.debts || []).filter(
+        (z: any) => (z.user_id === user.id || z.creditor_id === user.id) && z.amount > 0
       );
       rawRecentTx.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
       const recentZettls = rawRecentTx.slice(0, 5);
@@ -2658,8 +2639,8 @@ app.get('/api/zettl/dashboard', async (req, res) => {
       let recentActivity: any[] = [];
       if (recentZettls.length > 0) {
         const userIds = Array.from(new Set([
-          ...recentZettls.map((z: any) => z.sender_id),
-          ...recentZettls.map((z: any) => z.receiver_id)
+          ...recentZettls.map((z: any) => z.user_id),
+          ...recentZettls.map((z: any) => z.creditor_id)
         ])).filter(Boolean);
 
         const { data: profiles } = await supabaseAdmin
@@ -2669,21 +2650,19 @@ app.get('/api/zettl/dashboard', async (req, res) => {
 
         const profileMap = new Map(profiles?.map((p: any) => [p.id, p]) || []);
         recentActivity = recentZettls.map((z: any) => {
-          const fromUserId = z.type === 'owe_you' ? z.sender_id : z.receiver_id;
-          const toUserId = z.type === 'owe_you' ? z.receiver_id : z.sender_id;
           return {
             id: z.id,
-            from_user_id: fromUserId,
-            to_user_id: toUserId,
+            from_user_id: z.user_id,
+            to_user_id: z.creditor_id,
             amount: z.amount,
-            note: z.message_text,
-            due_date: z.deadline,
+            note: z.purpose,
+            due_date: z.due_date,
             currency: 'INR',
-            is_settled: z.is_settled,
+            is_settled: z.settled,
             settled_at: z.settled_at,
             created_at: z.created_at,
-            from_profile: profileMap.get(fromUserId) || { username: 'Unknown', full_name: 'Unknown User', avatar_url: '' },
-            to_profile: profileMap.get(toUserId) || { username: 'Unknown', full_name: 'Unknown User', avatar_url: '' }
+            from_profile: profileMap.get(z.user_id) || { username: 'Unknown', full_name: 'Unknown User', avatar_url: '' },
+            to_profile: profileMap.get(z.creditor_id) || { username: 'Unknown', full_name: 'Unknown User', avatar_url: '' }
           };
         });
       }
@@ -2703,10 +2682,10 @@ app.get('/api/zettl/dashboard', async (req, res) => {
   try {
     // 1. Personal Debts
     const { data: rawTx, error: txError } = await supabaseAdmin
-      .from('zettl_transactions')
-      .select('amount, sender_id, receiver_id, type')
-      .or(`sender_id.eq.${user.id},receiver_id.eq.${user.id}`)
-      .eq('is_settled', false)
+      .from('debts')
+      .select('amount, user_id, creditor_id, settled')
+      .or(`user_id.eq.${user.id},creditor_id.eq.${user.id}`)
+      .eq('settled', false)
       .gt('amount', 0);
     
     if (txError) throw txError;
@@ -2715,13 +2694,8 @@ app.get('/api/zettl/dashboard', async (req, res) => {
     let personalIOwe = 0;
 
     (rawTx || []).forEach((z: any) => {
-      if (z.sender_id === user.id) {
-        if (z.type === 'you_owe_me') personalOwedToMe += Number(z.amount);
-        if (z.type === 'owe_you') personalIOwe += Number(z.amount);
-      } else if (z.receiver_id === user.id) {
-        if (z.type === 'you_owe_me') personalIOwe += Number(z.amount);
-        if (z.type === 'owe_you') personalOwedToMe += Number(z.amount);
-      }
+      if (z.creditor_id === user.id) personalOwedToMe += Number(z.amount);
+      if (z.user_id === user.id) personalIOwe += Number(z.amount);
     });
 
     // 2. Group Debts (Splits)
@@ -2755,9 +2729,9 @@ app.get('/api/zettl/dashboard', async (req, res) => {
 
     // Recent Activity
     const { data: rawRecent, error: recentError } = await supabaseAdmin
-      .from('zettl_transactions')
+      .from('debts')
       .select('*')
-      .or(`sender_id.eq.${user.id},receiver_id.eq.${user.id}`)
+      .or(`user_id.eq.${user.id},creditor_id.eq.${user.id}`)
       .gt('amount', 0)
       .order('created_at', { ascending: false })
       .limit(5);
@@ -2767,8 +2741,8 @@ app.get('/api/zettl/dashboard', async (req, res) => {
     let recentPersonal = [];
     if (rawRecent && rawRecent.length > 0) {
       const userIds = Array.from(new Set([
-        ...rawRecent.map((z: any) => z.sender_id),
-        ...rawRecent.map((z: any) => z.receiver_id)
+        ...rawRecent.map((z: any) => z.user_id),
+        ...rawRecent.map((z: any) => z.creditor_id)
       ])).filter(Boolean);
 
       const { data: profiles } = await supabaseAdmin
@@ -2779,21 +2753,19 @@ app.get('/api/zettl/dashboard', async (req, res) => {
       const profileMap = new Map(profiles?.map((p: any) => [p.id, p]) || []);
 
       recentPersonal = rawRecent.map((z: any) => {
-        const fromUserId = z.type === 'owe_you' ? z.sender_id : z.receiver_id;
-        const toUserId = z.type === 'owe_you' ? z.receiver_id : z.sender_id;
         return {
           id: z.id,
-          from_user_id: fromUserId,
-          to_user_id: toUserId,
+          from_user_id: z.user_id,
+          to_user_id: z.creditor_id,
           amount: z.amount,
-          note: z.message_text,
-          due_date: z.deadline,
+          note: z.purpose,
+          due_date: z.due_date,
           currency: 'INR',
-          is_settled: z.is_settled,
+          is_settled: z.settled,
           settled_at: z.settled_at,
           created_at: z.created_at,
-          from_profile: profileMap.get(fromUserId) || { username: 'Unknown', full_name: 'Unknown User', avatar_url: '' },
-          to_profile: profileMap.get(toUserId) || { username: 'Unknown', full_name: 'Unknown User', avatar_url: '' }
+          from_profile: profileMap.get(z.user_id) || { username: 'Unknown', full_name: 'Unknown User', avatar_url: '' },
+          to_profile: profileMap.get(z.creditor_id) || { username: 'Unknown', full_name: 'Unknown User', avatar_url: '' }
         };
       });
     }

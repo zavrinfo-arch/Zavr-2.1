@@ -152,6 +152,8 @@ export const friendService = {
   async sendFriendRequest(friendId: string, currentUserId: string): Promise<void> {
     if (!friendId) return;
     
+    console.log(`[FRIEND-SERVICE] Sending friend request to friendId: ${friendId} from currentUserId: ${currentUserId}`);
+    let isUserError = false;
     try {
       const response = await fetch('/api/friends/request', {
         method: 'POST',
@@ -159,30 +161,51 @@ export const friendService = {
         body: JSON.stringify({ friendId })
       });
       
+      const resData = await response.json().catch(() => ({}));
+      console.log(`[FRIEND-SERVICE] POST /api/friends/request status: ${response.status}`, resData);
+
       if (!response.ok) {
-        const errData = await response.json().catch(() => ({}));
-        throw new Error(errData.error || 'Failed to send friend request');
+        if (response.status >= 400 && response.status < 500) {
+          isUserError = true;
+        }
+        throw new Error(resData.error || 'Failed to send friend request');
       }
+
+      clearFriendsCache();
     } catch (err: any) {
-      console.error('[FRIEND-SERVICE] Send friend request failed:', err);
-      // Fallback: direct Supabase insert into friend_requests
+      console.error('[FRIEND-SERVICE] Send friend request error:', err.message || err);
+      if (isUserError) {
+        throw err;
+      }
+      // Fallback for network or 500 errors: direct Supabase insert into friend_requests
       try {
+        console.log('[FRIEND-SERVICE] Attempting direct Supabase fallback insert...');
         // Delete any existing declined request first
-        await supabase
+        const { error: delErr } = await supabase
           .from('friend_requests')
           .delete()
           .in('sender_id', [currentUserId, friendId])
           .in('receiver_id', [currentUserId, friendId])
           .neq('status', 'accepted');
+        
+        if (delErr) {
+          console.error('[FRIEND-SERVICE] Supabase cleanup error in fallback:', delErr);
+        }
 
         const { error: dbErr } = await supabase.from('friend_requests').insert({
           sender_id: currentUserId,
           receiver_id: friendId,
           status: 'pending'
         });
-        if (dbErr) throw dbErr;
+
+        if (dbErr) {
+          console.error('[FRIEND-SERVICE] Supabase insert error in fallback:', dbErr);
+          throw dbErr;
+        }
         console.log('✅ Sent friend request via direct Supabase fallback');
-      } catch (fallbackErr) {
+        clearFriendsCache();
+      } catch (fallbackErr: any) {
+        console.error('[FRIEND-SERVICE] Supabase fallback failed:', fallbackErr);
         throw err;
       }
     }
@@ -194,6 +217,7 @@ export const friendService = {
   async sendFriendRequestByUsername(username: string): Promise<void> {
     if (!username) return;
     
+    console.log(`[FRIEND-SERVICE] Sending friend request by username: "${username}"`);
     try {
       const response = await fetch('/api/friends/request-by-username', {
         method: 'POST',
@@ -201,12 +225,16 @@ export const friendService = {
         body: JSON.stringify({ username })
       });
       
+      const resData = await response.json().catch(() => ({}));
+      console.log(`[FRIEND-SERVICE] POST /api/friends/request-by-username status: ${response.status}`, resData);
+
       if (!response.ok) {
-        const errData = await response.json().catch(() => ({}));
-        throw new Error(errData.error || 'Failed to send friend request');
+        throw new Error(resData.error || 'Failed to send friend request');
       }
+
+      clearFriendsCache();
     } catch (err: any) {
-      console.error('[FRIEND-SERVICE] Send friend request by username failed:', err);
+      console.error('[FRIEND-SERVICE] Send friend request by username failed:', err.message || err);
       throw err;
     }
   },
@@ -221,52 +249,74 @@ export const friendService = {
   ): Promise<void> {
     if (!requestId) return;
 
+    console.log(`[FRIEND-SERVICE] Accepting friend request ID: ${requestId}`);
+    let isUserError = false;
     try {
       const response = await fetch(`/api/friends/accept/${requestId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
       });
 
+      const resData = await response.json().catch(() => ({}));
+      console.log(`[FRIEND-SERVICE] POST /api/friends/accept/${requestId} status: ${response.status}`, resData);
+
       if (!response.ok) {
-        const errData = await response.json().catch(() => ({}));
-        throw new Error(errData.error || 'Failed to accept connection');
+        if (response.status >= 400 && response.status < 500) {
+          isUserError = true;
+        }
+        throw new Error(resData.error || 'Failed to accept connection');
       }
     } catch (err: any) {
-      console.error('[FRIEND-SERVICE] Accept friend request failed, using direct Supabase fallback:', err);
+      console.error('[FRIEND-SERVICE] Accept friend request API error:', err.message || err);
+      if (isUserError) throw err;
+
       // Direct Supabase fallback
       try {
-        const { data: reqData } = await supabase
+        console.log('[FRIEND-SERVICE] Attempting direct Supabase fallback accept...');
+        const { data: reqData, error: selErr } = await supabase
           .from('friend_requests')
           .select('sender_id, receiver_id')
           .eq('id', requestId)
           .maybeSingle();
 
-        await supabase
+        if (selErr) console.error('[FRIEND-SERVICE] Supabase select error in accept fallback:', selErr);
+
+        const { error: updErr } = await supabase
           .from('friend_requests')
           .update({ status: 'accepted' })
           .eq('id', requestId);
+
+        if (updErr) console.error('[FRIEND-SERVICE] Supabase update error in accept fallback:', updErr);
 
         if (reqData) {
           const u1 = reqData.sender_id;
           const u2 = reqData.receiver_id;
 
-          const { data: existing1 } = await supabase.from('friends').select('id').eq('user_id', u1).eq('friend_id', u2).maybeSingle();
-          if (!existing1) await supabase.from('friends').insert({ user_id: u1, friend_id: u2 });
+          const { data: existing1 } = await supabase.from('friends').select('id').eq('user_id', u1).eq('friend_id', u2).limit(1);
+          if (!existing1 || existing1.length === 0) {
+            const { error: ins1Err } = await supabase.from('friends').insert({ user_id: u1, friend_id: u2 });
+            if (ins1Err && ins1Err.code !== '23505') console.warn('[FRIEND-SERVICE] Supabase ins1 notice:', ins1Err.message);
+          }
 
-          const { data: existing2 } = await supabase.from('friends').select('id').eq('user_id', u2).eq('friend_id', u1).maybeSingle();
-          if (!existing2) await supabase.from('friends').insert({ user_id: u2, friend_id: u1 });
+          const { data: existing2 } = await supabase.from('friends').select('id').eq('user_id', u2).eq('friend_id', u1).limit(1);
+          if (!existing2 || existing2.length === 0) {
+            const { error: ins2Err } = await supabase.from('friends').insert({ user_id: u2, friend_id: u1 });
+            if (ins2Err && ins2Err.code !== '23505') console.warn('[FRIEND-SERVICE] Supabase ins2 notice:', ins2Err.message);
+          }
         }
         console.log('✅ Accepted friend request via direct Supabase fallback');
-      } catch (fallbackErr) {
+      } catch (fallbackErr: any) {
+        console.error('[FRIEND-SERVICE] Supabase accept fallback failed:', fallbackErr);
         throw err;
       }
     } finally {
-      // Invalidate cache and broadcast event
+      // Invalidate cache and broadcast events
       clearFriendsCache();
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('friend-request-accepted', {
           detail: { requestId, currentUserId }
         }));
+        window.dispatchEvent(new CustomEvent('refresh-chat-list'));
       }
       if (onAcceptedCallback) {
         try {
@@ -284,23 +334,38 @@ export const friendService = {
   async rejectFriendRequest(requestId: string): Promise<void> {
     if (!requestId) return;
 
+    console.log(`[FRIEND-SERVICE] Declining friend request ID: ${requestId}`);
+    let isUserError = false;
     try {
       const response = await fetch(`/api/friends/decline/${requestId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
       });
 
+      const resData = await response.json().catch(() => ({}));
+      console.log(`[FRIEND-SERVICE] POST /api/friends/decline/${requestId} status: ${response.status}`, resData);
+
       if (!response.ok) {
-        const errData = await response.json().catch(() => ({}));
-        throw new Error(errData.error || 'Failed to decline connection');
+        if (response.status >= 400 && response.status < 500) {
+          isUserError = true;
+        }
+        throw new Error(resData.error || 'Failed to decline connection');
       }
     } catch (err: any) {
-      console.error('[FRIEND-SERVICE] Reject friend request failed:', err);
+      console.error('[FRIEND-SERVICE] Reject friend request API error:', err.message || err);
+      if (isUserError) throw err;
+
       try {
-        await supabase.from('friend_requests').delete().eq('id', requestId);
+        const { error: delErr } = await supabase.from('friend_requests').delete().eq('id', requestId);
+        if (delErr) {
+          console.error('[FRIEND-SERVICE] Supabase delete error in decline fallback:', delErr);
+          throw delErr;
+        }
       } catch (e) {
         throw err;
       }
+    } finally {
+      clearFriendsCache();
     }
   },
 
@@ -312,6 +377,7 @@ export const friendService = {
 
     try {
       const response = await fetch('/api/friends/list');
+      console.log(`[FRIEND-SERVICE] GET /api/friends/list status: ${response.status}`);
       if (response.ok) {
         const rawFriends = await response.json();
         return (rawFriends || []).map((f: any) => ({
@@ -326,27 +392,39 @@ export const friendService = {
           createdAt: f.created_at
         }));
       }
-    } catch (err) {
-      console.warn('[FRIEND-SERVICE] API getFriendList failed, trying direct Supabase fallback:', err);
+    } catch (err: any) {
+      console.warn('[FRIEND-SERVICE] API getFriendList failed, trying direct Supabase fallback:', err.message || err);
     }
 
     // Direct Supabase fallback
     try {
-      // 1. Fetch established friends
-      const { data: rawFriends } = await supabase
+      // 1. Fetch established friends from friends table ONLY
+      const { data: rawFriends, error: frErr } = await supabase
         .from('friends')
         .select('*')
         .or(`user_id.eq.${userId},friend_id.eq.${userId}`);
 
-      // 2. Fetch pending requests
-      const { data: rawRequests } = await supabase
+      if (frErr) console.error('[FRIEND-SERVICE] Supabase getFriendList friends error:', frErr);
+
+      // 2. Fetch pending friend requests ONLY
+      const { data: rawRequests, error: reqErr } = await supabase
         .from('friend_requests')
         .select('*')
         .or(`sender_id.eq.${userId},receiver_id.eq.${userId}`)
         .eq('status', 'pending');
 
-      const established = rawFriends || [];
+      if (reqErr) console.error('[FRIEND-SERVICE] Supabase getFriendList requests error:', reqErr);
+
+      const establishedFromTable = rawFriends || [];
       const pending = rawRequests || [];
+
+      // Map established friends directly from 'friends' table
+      const establishedMap = new Map<string, any>();
+      establishedFromTable.forEach((f: any) => {
+        const targetId = f.user_id === userId ? f.friend_id : f.user_id;
+        if (targetId && targetId !== userId) establishedMap.set(targetId, f);
+      });
+      const established = Array.from(establishedMap.values());
 
       // Collect target profile IDs
       const targetUserIds = new Set<string>();
@@ -361,10 +439,12 @@ export const friendService = {
 
       const profileMap = new Map<string, any>();
       if (targetUserIds.size > 0) {
-        const { data: profiles } = await supabase
+        const { data: profiles, error: profErr } = await supabase
           .from('profiles')
           .select('id, username, full_name, avatar_url')
           .in('id', Array.from(targetUserIds));
+
+        if (profErr) console.error('[FRIEND-SERVICE] Supabase profiles fetch error:', profErr);
 
         (profiles || []).forEach(p => profileMap.set(p.id, p));
       }
@@ -403,8 +483,8 @@ export const friendService = {
       });
 
       return [...mappedEstablished, ...mappedPending];
-    } catch (e) {
-      console.error('[FRIEND-SERVICE] getFriendList fallback error:', e);
+    } catch (e: any) {
+      console.error('[FRIEND-SERVICE] getFriendList fallback error:', e.message || e);
       return [];
     }
   },
@@ -415,24 +495,31 @@ export const friendService = {
   async removeFriend(friendId: string, currentUserId?: string): Promise<void> {
     if (!friendId) return;
 
+    console.log(`[FRIEND-SERVICE] Removing friend connection with friendId: ${friendId}`);
     try {
       const response = await fetch(`/api/friends/remove/${friendId}`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' }
       });
 
+      const resData = await response.json().catch(() => ({}));
+      console.log(`[FRIEND-SERVICE] DELETE /api/friends/remove/${friendId} status: ${response.status}`, resData);
+
       if (!response.ok) {
-        const errData = await response.json().catch(() => ({}));
-        throw new Error(errData.error || 'Failed to remove connection');
+        throw new Error(resData.error || 'Failed to remove connection');
       }
     } catch (err: any) {
-      console.error('[FRIEND-SERVICE] Remove friend failed, trying direct Supabase fallback:', err);
+      console.error('[FRIEND-SERVICE] Remove friend failed, trying direct Supabase fallback:', err.message || err);
       try {
         if (currentUserId) {
-          await supabase.from('friends').delete().or(`and(user_id.eq.${currentUserId},friend_id.eq.${friendId}),and(user_id.eq.${friendId},friend_id.eq.${currentUserId})`);
-          await supabase.from('friend_requests').delete().or(`and(sender_id.eq.${currentUserId},receiver_id.eq.${friendId}),and(sender_id.eq.${friendId},receiver_id.eq.${currentUserId})`);
+          const { error: d1Err } = await supabase.from('friends').delete().or(`and(user_id.eq.${currentUserId},friend_id.eq.${friendId}),and(user_id.eq.${friendId},friend_id.eq.${currentUserId})`);
+          if (d1Err) console.error('[FRIEND-SERVICE] Supabase delete friends error:', d1Err);
+
+          const { error: d2Err } = await supabase.from('friend_requests').delete().or(`and(sender_id.eq.${currentUserId},receiver_id.eq.${friendId}),and(sender_id.eq.${friendId},receiver_id.eq.${currentUserId})`);
+          if (d2Err) console.error('[FRIEND-SERVICE] Supabase delete requests error:', d2Err);
         } else {
-          await supabase.from('friends').delete().eq('id', friendId);
+          const { error: d3Err } = await supabase.from('friends').delete().eq('id', friendId);
+          if (d3Err) console.error('[FRIEND-SERVICE] Supabase delete friend id error:', d3Err);
         }
       } catch (e) {
         throw err;

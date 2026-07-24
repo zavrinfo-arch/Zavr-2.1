@@ -79,49 +79,60 @@ export function useSupabaseFriends() {
 
       const profileMap = new Map<string, any>();
       if (targetUserIds.size > 0) {
-        const { data: profiles } = await supabase
+        const { data: profiles, error: profErr } = await supabase
           .from('profiles')
           .select('id, username, full_name, avatar_url')
           .in('id', Array.from(targetUserIds));
 
+        if (profErr) {
+          console.error('[useSupabaseFriends] Supabase profiles load error:', profErr);
+        }
+
         (profiles || []).forEach((p: any) => profileMap.set(p.id, p));
       }
 
-      // Build established friends
-      const mappedFriends: Friend[] = establishedRows.map((f: any) => {
+      // Build established friends with deduplication by target friendId
+      const establishedMap = new Map<string, Friend>();
+      establishedRows.forEach((f: any) => {
         const targetId = f.user_id === activeUserId ? f.friend_id : f.user_id;
-        const profile = profileMap.get(targetId);
-        const username = profile?.username || `user_${targetId.slice(0, 6)}`;
-        return {
-          id: f.id,
-          userId: activeUserId,
-          friendId: targetId,
-          friendUsername: username,
-          friendFullName: profile?.full_name || username || 'Zettl Friend',
-          friendAvatar: profile?.avatar_url || `https://api.dicebear.com/7.x/lorelei/svg?seed=${username}`,
-          status: 'accepted',
-          type: 'outgoing',
-          createdAt: f.created_at
-        };
+        if (targetId && targetId !== activeUserId && !establishedMap.has(targetId)) {
+          const profile = profileMap.get(targetId);
+          const username = profile?.username || `user_${targetId.slice(0, 6)}`;
+          establishedMap.set(targetId, {
+            id: f.id,
+            userId: activeUserId,
+            friendId: targetId,
+            friendUsername: username,
+            friendFullName: profile?.full_name || username || 'Zettl Friend',
+            friendAvatar: profile?.avatar_url || `https://api.dicebear.com/7.x/lorelei/svg?seed=${username}`,
+            status: 'accepted',
+            type: 'outgoing',
+            createdAt: f.created_at
+          });
+        }
       });
+      const mappedFriends: Friend[] = Array.from(establishedMap.values());
 
-      // Build pending requests
-      const mappedPending: Friend[] = pendingRows.map((r: any) => {
+      // Build pending requests (skip if already in established friends)
+      const mappedPending: Friend[] = [];
+      pendingRows.forEach((r: any) => {
         const isSender = r.sender_id === activeUserId;
         const targetId = isSender ? r.receiver_id : r.sender_id;
-        const profile = profileMap.get(targetId);
-        const username = profile?.username || `user_${targetId.slice(0, 6)}`;
-        return {
-          id: r.id,
-          userId: r.sender_id,
-          friendId: targetId,
-          friendUsername: username,
-          friendFullName: profile?.full_name || username || 'Zettl Friend',
-          friendAvatar: profile?.avatar_url || `https://api.dicebear.com/7.x/lorelei/svg?seed=${username}`,
-          status: 'pending',
-          type: isSender ? 'outgoing' : 'incoming',
-          createdAt: r.created_at
-        };
+        if (!establishedMap.has(targetId)) {
+          const profile = profileMap.get(targetId);
+          const username = profile?.username || `user_${targetId.slice(0, 6)}`;
+          mappedPending.push({
+            id: r.id,
+            userId: r.sender_id,
+            friendId: targetId,
+            friendUsername: username,
+            friendFullName: profile?.full_name || username || 'Zettl Friend',
+            friendAvatar: profile?.avatar_url || `https://api.dicebear.com/7.x/lorelei/svg?seed=${username}`,
+            status: 'pending',
+            type: isSender ? 'outgoing' : 'incoming',
+            createdAt: r.created_at
+          });
+        }
       });
 
       setFriendsList(mappedFriends);
@@ -206,11 +217,44 @@ export function useSupabaseFriends() {
     }
   }, [loadFriendData]);
 
-  // Automatically fetch on mount or profile change
+  // Automatically fetch on mount or profile change + setup real-time subscriptions
   useEffect(() => {
-    if (currentUser?.id) {
+    const activeUserId = currentUser?.id || useStore.getState().session?.user?.id;
+    if (!activeUserId) return;
+
+    loadFriendData();
+
+    // Listen for custom window event
+    const handleAcceptedEvent = () => {
       loadFriendData();
-    }
+    };
+    window.addEventListener('friend-request-accepted', handleAcceptedEvent);
+
+    // Setup real-time postgres listeners for friend_requests and friends tables
+    const channel = supabase
+      .channel(`supabase-friends-channel-${activeUserId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'friend_requests' },
+        () => {
+          console.log('⚡ [useSupabaseFriends] Real-time friend_requests change received');
+          loadFriendData();
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'friends' },
+        () => {
+          console.log('⚡ [useSupabaseFriends] Real-time friends change received');
+          loadFriendData();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      window.removeEventListener('friend-request-accepted', handleAcceptedEvent);
+      supabase.removeChannel(channel);
+    };
   }, [currentUser?.id, loadFriendData]);
 
   return {

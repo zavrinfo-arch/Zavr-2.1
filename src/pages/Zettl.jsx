@@ -4,6 +4,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
 import { friendService } from '../services/friendService';
+import { zettlService } from '../services/zettl.service';
+import { ChatListItem } from '../components/Zettl/ChatListItem';
 import CreateZettlModal from '../components/zettl/CreateZettl';
 import AddFriendModal from '../components/Zettl/AddFriendModal';
 import toast from 'react-hot-toast';
@@ -643,6 +645,7 @@ export default function ZettlPage() {
   const [friendRequests, setFriendRequests] = useState([]);
   const [debts, setDebts] = useState([]);
   const [friendsList, setFriendsList] = useState([]);
+  const [chats, setChats] = useState([]);
   const [totalFinOwed, setTotalFinOwed] = useState(0);
   const [totalYouOwe, setTotalYouOwe] = useState(0);
   
@@ -680,42 +683,64 @@ export default function ZettlPage() {
   const fetchFriends = useCallback(async () => {
     if (!userId) return;
     try {
-      // Try querying with status first, fallback if the column does not exist
-      let { data: list, error } = await supabase
-        .from('friends')
-        .select('friend_id')
-        .eq('user_id', userId)
-        .eq('status', 'accepted');
-        
-      if (error && (error.code === '42703' || error.message?.includes('column') || error.message?.includes('status'))) {
-        const fallbackRes = await supabase
+      let flist = [];
+      try {
+        flist = await friendService.getFriendList(userId);
+      } catch (err) {
+        console.warn('[ZETTL] friendService.getFriendList notice:', err);
+      }
+
+      const preparedList = [];
+      if (flist && flist.length > 0) {
+        flist.forEach(f => {
+          if (f.status === 'accepted' || !f.status) {
+            const fid = f.friendId || f.friend_id || f.id;
+            if (fid && fid !== userId) {
+              preparedList.push({
+                id: fid,
+                friendId: fid,
+                username: f.friendUsername || f.username || 'user',
+                full_name: f.friendFullName || f.full_name || f.fullName || 'Zettl Link',
+                avatar_url: f.friendAvatar || f.avatar_url
+              });
+            }
+          }
+        });
+      }
+
+      if (preparedList.length === 0) {
+        let { data: list } = await supabase
           .from('friends')
-          .select('friend_id')
-          .eq('user_id', userId);
-        if (fallbackRes.error) throw fallbackRes.error;
-        list = fallbackRes.data;
-      } else if (error) {
-        throw error;
-      }
-      if (list && list.length > 0) {
-        const friendIds = list.map(f => f.friend_id);
-        const { data: profilesList, error: pError } = await supabase
-          .from('profiles')
-          .select('id, username, full_name, avatar_url')
-          .in('id', friendIds);
-        if (!pError && profilesList) {
-          const prepared = profilesList.map(p => ({
-            id: p.id,
-            friendId: p.id,
-            username: p.username,
-            full_name: p.full_name || p.username,
-            avatar_url: p.avatar_url
-          }));
-          setFriendsList(prepared);
+          .select('friend_id, user_id')
+          .or(`user_id.eq.${userId},friend_id.eq.${userId}`);
+
+        const friendIds = new Set();
+        (list || []).forEach(f => {
+          const fid = f.user_id === userId ? f.friend_id : f.user_id;
+          if (fid && fid !== userId) friendIds.add(fid);
+        });
+
+        if (friendIds.size > 0) {
+          const { data: profilesList } = await supabase
+            .from('profiles')
+            .select('id, username, full_name, avatar_url')
+            .in('id', Array.from(friendIds));
+
+          if (profilesList) {
+            profilesList.forEach(p => {
+              preparedList.push({
+                id: p.id,
+                friendId: p.id,
+                username: p.username,
+                full_name: p.full_name || p.username,
+                avatar_url: p.avatar_url
+              });
+            });
+          }
         }
-      } else {
-        setFriendsList([]);
       }
+
+      setFriendsList(preparedList);
     } catch (err) {
       console.warn('[ZETTL] Could not load friends list:', err);
     }
@@ -806,6 +831,14 @@ export default function ZettlPage() {
         setTotalFinOwed(0);
         setTotalYouOwe(0);
       }
+
+      // 3. Fetch chats for connected friends
+      try {
+        const chatData = await zettlService.getChatList(userId);
+        setChats(chatData || []);
+      } catch (cErr) {
+        console.warn('[ZETTL] Load chats notice:', cErr);
+      }
     } catch (err) {
       console.error('[ZETTL] Load lists failed:', err.message);
     } finally {
@@ -840,35 +873,40 @@ export default function ZettlPage() {
       }
 
       // STEP 3: Check friends table (bidirectional check)
-      const { data: existingFriend, error: friendError } = await supabase
+      const { data: existingFriends, error: friendError } = await supabase
         .from('friends')
-        .select('*')
+        .select('id')
         .in('user_id', [userId, targetUserId])
         .in('friend_id', [userId, targetUserId])
-        .maybeSingle();
+        .limit(10);
 
       if (friendError) throw friendError;
-      if (existingFriend) {
+      if (existingFriends && existingFriends.length > 0) {
         toast.error('Already friends.');
         return;
       }
 
       // STEP 4: Check friend_requests table (bidirectional check)
-      const { data: existingReq, error: reqError } = await supabase
+      const { data: existingReqs, error: reqError } = await supabase
         .from('friend_requests')
-        .select('*')
+        .select('id, status')
         .in('sender_id', [userId, targetUserId])
         .in('receiver_id', [userId, targetUserId])
-        .maybeSingle();
+        .limit(10);
 
       if (reqError) throw reqError;
 
-      if (existingReq) {
-        if (existingReq.status === 'pending') {
-          toast.error('Friend request already pending.');
-          return;
-        } else if (existingReq.status === 'accepted') {
+      if (existingReqs && existingReqs.length > 0) {
+        const pending = existingReqs.find(r => r.status === 'pending');
+        const accepted = existingReqs.find(r => r.status === 'accepted');
+
+        if (accepted) {
           toast.error('Already friends.');
+          return;
+        }
+
+        if (pending) {
+          toast.error('Friend request already pending.');
           return;
         }
       }
@@ -1233,6 +1271,38 @@ export default function ZettlPage() {
           </div>
         )}
 
+        {/* LINKED FRIENDS & CHATS LIST */}
+        {(chats.length > 0 || friendsList.length > 0) && (
+          <div className="space-y-4 text-left" id="friends-chats-section">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xl font-bold tracking-tight text-zinc-900 dark:text-white">
+                Linked Friends & Chats
+              </h3>
+              <span className="px-2.5 py-1 rounded-lg bg-black/[0.01] dark:bg-white/[0.02] border border-black/[0.06] dark:border-white/[0.08] text-[8px] font-bold text-zinc-500 dark:text-[#94A3B8]/60 uppercase tracking-widest">
+                {chats.length || friendsList.length} Connected
+              </span>
+            </div>
+
+            <div className="bg-white dark:bg-[#111118]/80 border border-black/[0.06] dark:border-white/[0.08] overflow-hidden divide-y divide-black/[0.06] dark:divide-white/[0.06] rounded-3xl shadow-sm dark:shadow-lg">
+              {(chats.length > 0 ? chats : friendsList.map(f => ({
+                friend_id: f.id || f.friendId,
+                friend_name: f.full_name || f.username,
+                friend_avatar: f.avatar_url || `https://api.dicebear.com/7.x/lorelei/svg?seed=${f.username}`,
+                last_message: 'Connected on Zettl! Tap to start chatting.',
+                last_message_time: new Date().toISOString(),
+                unread_count: 0,
+                net_balance: 0
+              }))).map((chatItem) => (
+                <ChatListItem
+                  key={chatItem.friend_id}
+                  item={chatItem}
+                  onClick={() => navigate(`/zettl/chat/${chatItem.friend_id}`)}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* DYNAMIC SETTLEMENT LIST */}
         <div className="space-y-4 text-left" id="settlement-ledger-box">
           {loading ? (
@@ -1240,16 +1310,16 @@ export default function ZettlPage() {
               <SkeletonCard />
               <SkeletonCard />
             </div>
-          ) : filteredDebts.length === 0 ? (
-            <EmptyDebtState onLinkContactsClick={handleFocusSearch} />
-          ) : (
+          ) : filteredDebts.length > 0 ? (
             <DebtList
               debts={filteredDebts}
               userId={userId}
               onSettle={handleSettleUpDebt}
               loading={settledLoading}
             />
-          )}
+          ) : (chats.length === 0 && friendsList.length === 0) ? (
+            <EmptyDebtState onLinkContactsClick={handleFocusSearch} />
+          ) : null}
         </div>
 
       </motion.div>

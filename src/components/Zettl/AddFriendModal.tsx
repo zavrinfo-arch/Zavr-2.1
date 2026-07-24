@@ -230,37 +230,42 @@ export default function AddFriendModal({ isOpen, onClose, userId, onSuccess }: A
       }
 
       // STEP 3: Check friends table (bidirectional check)
-      const { data: existingFriend, error: friendError } = await supabase
+      const { data: existingFriends, error: friendError } = await supabase
         .from('friends')
-        .select('*')
+        .select('id')
         .in('user_id', [userId, targetUserId])
         .in('friend_id', [userId, targetUserId])
-        .maybeSingle();
+        .limit(10);
 
       if (friendError) throw friendError;
-      if (existingFriend) {
+      if (existingFriends && existingFriends.length > 0) {
         toast.error('Already friends.');
         setSentUserIds(prev => ({ ...prev, [targetUserId]: true }));
         return;
       }
 
       // STEP 4: Check friend_requests table (bidirectional check)
-      const { data: existingReq, error: reqError } = await supabase
+      const { data: existingReqs, error: reqError } = await supabase
         .from('friend_requests')
-        .select('*')
+        .select('id, status')
         .in('sender_id', [userId, targetUserId])
         .in('receiver_id', [userId, targetUserId])
-        .maybeSingle();
+        .limit(10);
 
       if (reqError) throw reqError;
 
-      if (existingReq) {
-        if (existingReq.status === 'pending') {
-          toast.error('Friend request already pending.');
+      if (existingReqs && existingReqs.length > 0) {
+        const pending = existingReqs.find(r => r.status === 'pending');
+        const accepted = existingReqs.find(r => r.status === 'accepted');
+
+        if (accepted) {
+          toast.error('Already friends.');
           setSentUserIds(prev => ({ ...prev, [targetUserId]: true }));
           return;
-        } else if (existingReq.status === 'accepted') {
-          toast.error('Already friends.');
+        }
+
+        if (pending) {
+          toast.error('Friend request already pending.');
           setSentUserIds(prev => ({ ...prev, [targetUserId]: true }));
           return;
         }
