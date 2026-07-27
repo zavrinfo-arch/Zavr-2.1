@@ -3,6 +3,7 @@ import { useStore } from '../store/useStore';
 import { supabase } from '../lib/supabaseClient';
 import { subMonths, format, startOfMonth, endOfMonth, parseISO, isWithinInterval, isAfter } from 'date-fns';
 import { formatCurrency } from '../lib/utils';
+import { getAvatarUrl } from '../constants/avatars';
 import toast from 'react-hot-toast';
 import { shouldDisableHeavyFeatures } from '../utils/previewFix';
 
@@ -175,7 +176,7 @@ export function useDashboardStats(): DebtSummaryStats {
           friendId: fId,
           username: fName,
           fullName: 'Zettl Friend',
-          avatar: `https://api.dicebear.com/7.x/lorelei/svg?seed=${fName}`,
+          avatar: getAvatarUrl(undefined, fName),
           amount: 0
         };
         existing.amount += z.amount;
@@ -194,7 +195,7 @@ export function useDashboardStats(): DebtSummaryStats {
           friendId: fId,
           username: fName,
           fullName: 'Zettl Friend',
-          avatar: `https://api.dicebear.com/7.x/lorelei/svg?seed=${fName}`,
+          avatar: getAvatarUrl(undefined, fName),
           amount: 0
         };
         existing.amount += z.amount;
@@ -244,7 +245,7 @@ export function useDashboardStats(): DebtSummaryStats {
           isSettled: z.isSettled,
           createdAt: z.createdAt,
           friendName,
-          friendAvatar: friendProfile?.friendAvatar || `https://api.dicebear.com/7.x/lorelei/svg?seed=${friendName}`
+          friendAvatar: friendProfile?.friendAvatar || getAvatarUrl(undefined, friendName)
         };
       });
 

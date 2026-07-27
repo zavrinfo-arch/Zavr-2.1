@@ -18,7 +18,7 @@ import toast from 'react-hot-toast';
 import { supabase } from '../lib/supabaseClient';
 
 // Constant data imports
-import { AVATARS_50 } from '../constants/avatars';
+import { AVATARS_50, getAvatarUrl } from '../constants/avatars';
 import { NeoLuxuryStyles } from '../components/Onboarding/styles';
 
 const SAVING_CATEGORIES_LIST = [
@@ -67,7 +67,7 @@ export default function Onboarding() {
 
   // Step 2: Avatar Selection State
   const [selectedAvatar, setSelectedAvatar] = useState(
-    AVATARS_50.find(a => a.url === currentUser?.avatar) || null
+    AVATARS_50.find(a => a.id === currentUser?.avatarId || a.image === currentUser?.avatar || a.url === currentUser?.avatar) || AVATARS_50[0]
   );
 
   // Step 3: Saving Categories State
@@ -533,9 +533,9 @@ export default function Onboarding() {
                           )}
                         >
                           <img 
-                            src={avatar.url} 
+                            src={avatar.image || avatar.url} 
                             alt={`Avatar ${avatar.id}`} 
-                            className="w-full h-full object-cover rounded-xl"
+                            className="w-full h-full object-contain rounded-full"
                             loading="lazy"
                           />
                           {isSelected && (
@@ -627,9 +627,9 @@ export default function Onboarding() {
                     <div className="absolute inset-0 bg-[#FF6B6B]/10 blur-2xl rounded-full scale-130 animate-pulse" />
                     <div className="relative w-24 h-24 rounded-full border-2 border-[#FF8A8A]/40 p-1 bg-black/[0.02] dark:bg-[#111118] shadow-[0_10px_35px_rgba(255,107,107,0.2)] overflow-hidden">
                       <img 
-                        src={selectedAvatar?.url || `https://api.dicebear.com/7.x/lorelei/svg?seed=${username}`}
+                        src={getAvatarUrl(selectedAvatar?.image || selectedAvatar?.url || selectedAvatar?.id, username || fullName || '1')}
                         alt="Selected Avatar" 
-                        className="w-full h-full object-cover rounded-full"
+                        className="w-full h-full object-contain rounded-full"
                       />
                     </div>
                     <div className="mt-4">

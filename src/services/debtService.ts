@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabaseClient';
+import { getAvatarUrl } from '../constants/avatars';
 import { 
   Debt, Debit, Debitor, 
   CreateDebtData, CreateDebitData, CreateDebitorData, 
@@ -111,7 +112,7 @@ export const debtService = {
         name: data.name.trim(),
         email: data.email || null,
         phone: data.phone || null,
-        avatar_url: data.avatar_url || `https://api.dicebear.com/7.x/lorelei/svg?seed=${encodeURIComponent(data.name)}`,
+        avatar_url: getAvatarUrl(data.avatar_url, data.name),
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       };
@@ -628,7 +629,7 @@ export const debtService = {
 
       debts.forEach((d) => {
         const name = d.debitor?.name || 'Friend';
-        const avatar = d.debitor?.avatar_url || `https://api.dicebear.com/7.x/lorelei/svg?seed=${name}`;
+        const avatar = getAvatarUrl(d.debitor?.avatar_url, name);
         const key = d.debitor_id || name;
         const base = balancesMap.get(key) || { name, avatar, owesMe: 0, iOweThem: 0 };
         base.owesMe += Number(d.amount);
@@ -637,7 +638,7 @@ export const debtService = {
 
       debits.forEach((d) => {
         const name = d.debitor?.name || 'Friend';
-        const avatar = d.debitor?.avatar_url || `https://api.dicebear.com/7.x/lorelei/svg?seed=${name}`;
+        const avatar = getAvatarUrl(d.debitor?.avatar_url, name);
         const key = d.debitor_id || name;
         const base = balancesMap.get(key) || { name, avatar, owesMe: 0, iOweThem: 0 };
         base.iOweThem += Number(d.amount);

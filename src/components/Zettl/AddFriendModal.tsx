@@ -4,6 +4,7 @@ import { UserPlus, X, Search, Loader2 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { cn } from '../../lib/utils';
 import { friendService } from '../../services/friendService';
+import { getAvatarUrl } from '../../constants/avatars';
 import toast from 'react-hot-toast';
 
 interface AddFriendModalProps {
@@ -425,7 +426,7 @@ export default function AddFriendModal({ isOpen, onClose, userId, onSuccess }: A
                     <div className="flex items-center gap-3 min-w-0">
                       <div className="w-12 h-12 rounded-xl overflow-hidden bg-black/[0.04] dark:bg-white/[0.04] flex-shrink-0 border border-black/[0.08] dark:border-white/[0.08]">
                         <img
-                          src={user.avatar_url || `https://api.dicebear.com/7.x/lorelei/svg?seed=${user.username}`}
+                          src={getAvatarUrl(user.avatar_url, user.username || user.id)}
                           alt=""
                           className="w-full h-full object-cover"
                           referrerPolicy="no-referrer"

@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabaseClient';
+import { getAvatarUrl } from '../constants/avatars';
 import { supabaseRealtimeService } from './supabaseRealtime';
 import { friendService } from './friendService';
 import { ChatListItem, ChatMessage, CreateRequestData, CreatePaymentData } from '../types/zettl.types';
@@ -128,7 +129,7 @@ export const zettlService = {
       return friendIds.map((fId: string) => {
         const p = profileMap.get(fId);
         const name = p?.full_name || p?.username || 'Zettl Link';
-        const avatar = p?.avatar_url || `https://api.dicebear.com/7.x/lorelei/svg?seed=${p?.username || fId}`;
+        const avatar = getAvatarUrl(p?.avatar_url, p?.username || fId);
 
         // Get debts with this friend
         const friendDebts = (debts || []).filter((t: any) => 
@@ -863,7 +864,7 @@ export const zettlService = {
         const p = profileMap.get(fId);
         const username = p?.username || `user_${fId.slice(0, 6)}`;
         const full_name = p?.full_name || p?.username || 'Zettl Friend';
-        const avatar_url = p?.avatar_url || `https://api.dicebear.com/7.x/lorelei/svg?seed=${username}`;
+        const avatar_url = getAvatarUrl(p?.avatar_url, username || fId);
 
         return {
           id: fId,

@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabaseClient';
 import { User, SoloGoal, GroupGoal, Transaction, Notification, StreakData } from '../types';
+import { getAvatarUrl } from '../constants/avatars';
 
 let cachedUseStore: any = null;
 let getProfileCache: { userId: string; timestamp: number; data: any; error: any } | null = null;
@@ -237,8 +238,8 @@ export const supabaseService = {
         phone: data.phone,
         dob: data.birth_date || data.dob,
         location: data.location,
-        avatar: data.avatar_url || `https://api.dicebear.com/7.x/lorelei/svg?seed=${data.username}`,
-        avatarId: data.avatar_id,
+        avatar: getAvatarUrl(data.avatar_url || data.avatar_id, data.username || data.id),
+        avatarId: data.avatar_id || 'avatar_1',
         streak: data.streak || 0,
         onboardingCompleted: data.onboarding_completed,
         interests: data.interests || [],

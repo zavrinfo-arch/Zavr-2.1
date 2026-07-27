@@ -7,6 +7,7 @@ import {
 import { cn } from '../../lib/utils';
 import { supabase } from '../../lib/supabase';
 import { useStore } from '../../store/useStore';
+import { getAvatarUrl } from '../../constants/avatars';
 import toast from 'react-hot-toast';
 
 interface CreateZettlModalProps {
@@ -389,7 +390,7 @@ export default function CreateZettlModal({
                   const fid = friend.friend_id || friend.friendId || friend.id;
                   const username = friend.username || friend.friendUsername || 'friend';
                   const fullName = friend.full_name || friend.friendFullName || username;
-                  const avatar = friend.avatar_url || friend.friendAvatar || `https://api.dicebear.com/7.x/lorelei/svg?seed=${username}`;
+                  const avatar = getAvatarUrl(friend.avatar_url || friend.friendAvatar, username || fid);
                   const isSelected = selectedFriend?.id === fid || selectedFriend?.friendId === fid || selectedFriend?.friend_id === fid;
 
                   return (
@@ -430,7 +431,7 @@ export default function CreateZettlModal({
                   const fid = friend.friend_id || friend.friendId || friend.id;
                   const username = friend.username || friend.friendUsername || 'friend';
                   const fullName = friend.full_name || friend.friendFullName || username;
-                  const avatar = friend.avatar_url || friend.friendAvatar || `https://api.dicebear.com/7.x/lorelei/svg?seed=${username}`;
+                  const avatar = getAvatarUrl(friend.avatar_url || friend.friendAvatar, username || fid);
                   const isAdded = selectedGroupFriends.includes(fid);
 
                   return (

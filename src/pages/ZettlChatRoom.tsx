@@ -16,6 +16,7 @@ import ZettlAmountModal from '../components/Zettl/ZettlAmountModal';
 import ZettlSettleModal from '../components/Zettl/ZettlSettleModal';
 import ZettlSettlementHistoryModal from '../components/Zettl/ZettlSettlementHistoryModal';
 import { ChatMessage } from '../types/zettl.types';
+import { getAvatarUrl } from '../constants/avatars';
 
 import { 
   ArrowLeft, Coins, HandCoins, Paperclip, 
@@ -116,7 +117,7 @@ export default function ZettlChatRoom() {
           setFriendProfile({
             id: data.id,
             name: data.full_name || data.username || 'Zettl Profile',
-            avatar: data.avatar_url || `https://api.dicebear.com/7.x/lorelei/svg?seed=${data.username}`,
+            avatar: getAvatarUrl(data.avatar_url, data.username || data.id),
             username: data.username
           });
         }

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { useStore } from '../store/useStore';
 import { friendService, clearFriendsCache } from '../services/friendService';
+import { getAvatarUrl } from '../constants/avatars';
 import { Friend, User } from '../types';
 import toast from 'react-hot-toast';
 
@@ -104,7 +105,7 @@ export function useSupabaseFriends() {
             friendId: targetId,
             friendUsername: username,
             friendFullName: profile?.full_name || username || 'Zettl Friend',
-            friendAvatar: profile?.avatar_url || `https://api.dicebear.com/7.x/lorelei/svg?seed=${username}`,
+            friendAvatar: getAvatarUrl(profile?.avatar_url, username),
             status: 'accepted',
             type: 'outgoing',
             createdAt: f.created_at
@@ -127,7 +128,7 @@ export function useSupabaseFriends() {
             friendId: targetId,
             friendUsername: username,
             friendFullName: profile?.full_name || username || 'Zettl Friend',
-            friendAvatar: profile?.avatar_url || `https://api.dicebear.com/7.x/lorelei/svg?seed=${username}`,
+            friendAvatar: getAvatarUrl(profile?.avatar_url, username),
             status: 'pending',
             type: isSender ? 'outgoing' : 'incoming',
             createdAt: r.created_at

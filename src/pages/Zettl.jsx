@@ -16,7 +16,7 @@ import {
   Flame, Moon, Sun
 } from 'lucide-react';
 import { useStore } from '../store/useStore';
-import { AVATARS_50 } from '../constants/avatars';
+import { AVATARS_50, getAvatarUrl } from '../constants/avatars';
 import { shouldDisableHeavyFeatures } from '../utils/previewFix';
 import { useTheme } from '../context/ThemeContext';
 
@@ -1152,9 +1152,7 @@ export default function ZettlPage() {
     streak: 0
   };
 
-  const avatarUrl = activeUser.avatar || 
-    AVATARS_50.find(a => a.id === activeUser.avatarId?.toString())?.url || 
-    `https://api.dicebear.com/7.x/lorelei/svg?seed=${activeUser.username}`;
+  const avatarUrl = getAvatarUrl(activeUser.avatar || activeUser.avatarId, activeUser.username || activeUser.id);
 
   return (
     <div className="min-h-screen bg-background text-foreground pb-36 font-sans w-full relative overflow-x-hidden px-6 pt-28" id="zettl-page-container">
@@ -1287,7 +1285,7 @@ export default function ZettlPage() {
               {(chats.length > 0 ? chats : friendsList.map(f => ({
                 friend_id: f.id || f.friendId,
                 friend_name: f.full_name || f.username,
-                friend_avatar: f.avatar_url || `https://api.dicebear.com/7.x/lorelei/svg?seed=${f.username}`,
+                friend_avatar: getAvatarUrl(f.avatar_url, f.username || f.id),
                 last_message: 'Connected on Zettl! Tap to start chatting.',
                 last_message_time: new Date().toISOString(),
                 unread_count: 0,

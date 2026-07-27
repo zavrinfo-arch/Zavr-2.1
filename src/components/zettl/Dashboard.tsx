@@ -5,6 +5,7 @@ import {
   HelpCircle, RefreshCw, Smartphone, ChevronRight, UserMinus, Plus
 } from 'lucide-react';
 import { formatCurrency, cn } from '../../lib/utils';
+import { getAvatarUrl } from '../../constants/avatars';
 
 interface ZettlDashboardProps {
   netBalance: number;
@@ -155,9 +156,10 @@ export default function ZettlDashboard({
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-xl clay-inset p-0.5 border border-foreground/5">
                     <img 
-                      src={`https://api.dicebear.com/7.x/lorelei/svg?seed=${req.toUsername}`} 
+                      src={getAvatarUrl(req.toAvatarUrl, req.toUsername)} 
                       alt="" 
                       className="w-full h-full object-cover rounded-lg"
+                      referrerPolicy="no-referrer"
                     />
                   </div>
                   <div>
@@ -206,9 +208,10 @@ export default function ZettlDashboard({
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-xl clay-inset p-0.5 border border-foreground/5">
                       <img 
-                        src={`https://api.dicebear.com/7.x/lorelei/svg?seed=${friendName}`} 
+                        src={getAvatarUrl(pay.toAvatarUrl, friendName)} 
                         alt="" 
                         className="w-full h-full object-cover rounded-lg"
+                        referrerPolicy="no-referrer"
                       />
                     </div>
                     <div>

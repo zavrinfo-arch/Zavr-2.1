@@ -5,41 +5,83 @@
 
 export interface AvatarData {
   id: string;
-  url: string;
-  style: 'gen-z' | 'classic' | 'bw' | 'minimal';
+  name: string;
+  image: string;
+  url: string; // compatibility alias for image
+  style?: string;
 }
 
-const DICEBEAR_URL = 'https://api.dicebear.com/7.x/lorelei/svg?seed=';
+export const AVATARS_50: AvatarData[] = Array.from({ length: 50 }, (_, i) => {
+  const num = i + 1;
+  const image = `https://raw.githubusercontent.com/zavrinfo-arch/Avatars/main/Avatar${num}.png`;
+  return {
+    id: `avatar_${num}`,
+    name: `Avatar ${num}`,
+    image,
+    url: image,
+    style: num <= 15 ? 'collection_1' : num <= 30 ? 'collection_2' : num <= 40 ? 'collection_3' : 'collection_4',
+  };
+});
 
-export const AVATARS_50: AvatarData[] = [
-  // GEN-Z MODERN (20)
-  ...Array.from({ length: 20 }, (_, i) => ({
-    id: `genz_${i + 1}`,
-    url: `${DICEBEAR_URL}genz_${i + 1}&backgroundColor=b6e3f4,c0aede,d1d4f9,ffd5dc,ffdfbf`,
-    style: 'gen-z' as const
-  })),
-  // CLASSIC PREMIUM (10)
-  ...Array.from({ length: 10 }, (_, i) => ({
-    id: `classic_${i + 1}`,
-    url: `${DICEBEAR_URL}classic_${i + 1}&backgroundColor=f0f0f0,e0e0e0&skinColor=f8d9ce,feeeea`,
-    style: 'classic' as const
-  })),
-  // BLACK & WHITE (10)
-  ...Array.from({ length: 10 }, (_, i) => ({
-    id: `bw_${i + 1}`,
-    url: `${DICEBEAR_URL}bw_${i + 1}&grayscale=true&backgroundColor=ffffff,000000`,
-    style: 'bw' as const
-  })),
-  // SINGLE-COLOR MINIMAL (10)
-  ...Array.from({ length: 10 }, (_, i) => ({
-    id: `minimal_${i + 1}`,
-    url: `${DICEBEAR_URL}minimal_${i + 1}&backgroundColor=${['3b82f6', 'ef4444', 'a855f7', '10b981', 'f59e0b'][i % 5]}`,
-    style: 'minimal' as const
-  })),
-];
-
-// Mapping for React Native "require" equivalent in Web
+// Mapping for quick lookup by ID
 export const avatarMap: Record<string, string> = AVATARS_50.reduce((acc, avatar) => {
-  acc[avatar.id] = avatar.url;
+  acc[avatar.id] = avatar.image;
   return acc;
 }, {} as Record<string, string>);
+
+/**
+ * Helper to extract numeric ID index (1-50) from avatar ID or URL
+ */
+export function getAvatarIndex(avatarIdOrUrl?: string | null): number {
+  if (!avatarIdOrUrl) return 1;
+  const match = avatarIdOrUrl.match(/Avatar(\d+)\.png/i) || avatarIdOrUrl.match(/(\d+)/);
+  if (match) {
+    const parsed = parseInt(match[1], 10);
+    if (!isNaN(parsed) && parsed >= 1) {
+      return ((parsed - 1) % 50) + 1;
+    }
+  }
+  return 1;
+}
+
+/**
+ * Resolves an avatar ID or URL to a valid GitHub Raw avatar URL.
+ * Never returns empty, broken, or Dicebear URLs.
+ */
+export function getAvatarUrl(avatarIdOrUrl?: string | null, seedFallback: number | string = 1): string {
+  if (!avatarIdOrUrl) {
+    const idx = typeof seedFallback === 'number' 
+      ? (((seedFallback - 1) % 50) + 1)
+      : (Math.abs(hashString(seedFallback)) % 50) + 1;
+    return `https://raw.githubusercontent.com/zavrinfo-arch/Avatars/main/Avatar${idx}.png`;
+  }
+
+  // If already a valid GitHub avatar URL from our repo
+  if (avatarIdOrUrl.includes('raw.githubusercontent.com/zavrinfo-arch/Avatars/main/Avatar')) {
+    return avatarIdOrUrl;
+  }
+
+  // Parse numeric component from old IDs or URLs (e.g., "avatar_15", "genz_5", "12", "classic_2")
+  const match = avatarIdOrUrl.match(/Avatar(\d+)/i) || avatarIdOrUrl.match(/\d+/);
+  if (match) {
+    const parsed = parseInt(match[0].replace(/\D/g, ''), 10);
+    if (!isNaN(parsed) && parsed >= 1) {
+      const idx = ((parsed - 1) % 50) + 1;
+      return `https://raw.githubusercontent.com/zavrinfo-arch/Avatars/main/Avatar${idx}.png`;
+    }
+  }
+
+  // Fallback hash based on string seed
+  const idx = (Math.abs(hashString(avatarIdOrUrl)) % 50) + 1;
+  return `https://raw.githubusercontent.com/zavrinfo-arch/Avatars/main/Avatar${idx}.png`;
+}
+
+function hashString(str: string): number {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = (hash << 5) - hash + str.charCodeAt(i);
+    hash |= 0;
+  }
+  return hash;
+}
+

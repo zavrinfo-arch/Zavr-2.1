@@ -1,5 +1,6 @@
 import { Friend, User } from '../types';
 import { supabase } from '../lib/supabaseClient';
+import { getAvatarUrl } from '../constants/avatars';
 
 const SEARCH_CACHE_PREFIX = 'user_search_cache_';
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
@@ -15,8 +16,8 @@ export function mapUser(p: any): User {
     dob: p.dob || p.birth_date || '',
     gender: p.gender || '',
     location: p.location || '',
-    avatar: p.avatar || p.avatar_url || `https://api.dicebear.com/7.x/lorelei/svg?seed=${username}`,
-    avatarId: p.avatarId || p.avatar_id || '',
+    avatar: getAvatarUrl(p.avatar || p.avatar_url, username),
+    avatarId: p.avatarId || p.avatar_id || 'avatar_1',
     streak: p.streak || 0,
     onboardingCompleted: p.onboardingCompleted || p.onboarding_completed || false,
     interests: p.interests || [],
@@ -386,7 +387,7 @@ export const friendService = {
           friendId: f.friend_id || f.friend?.id,
           friendUsername: f.friend?.username || 'user',
           friendFullName: f.friend?.full_name || f.friend?.fullName || 'Zavr Friend',
-          friendAvatar: f.friend?.avatar_url || f.friend?.avatar || `https://api.dicebear.com/7.x/lorelei/svg?seed=${f.friend?.username || f.friend_id}`,
+          friendAvatar: getAvatarUrl(f.friend?.avatar_url || f.friend?.avatar, f.friend?.username || f.friend_id),
           status: f.status as 'pending' | 'accepted' | 'blocked',
           type: f.type as 'outgoing' | 'incoming',
           createdAt: f.created_at
@@ -458,7 +459,7 @@ export const friendService = {
           friendId: targetId,
           friendUsername: p?.username || 'user',
           friendFullName: p?.full_name || p?.username || 'Zavr Friend',
-          friendAvatar: p?.avatar_url || `https://api.dicebear.com/7.x/lorelei/svg?seed=${p?.username || targetId}`,
+          friendAvatar: getAvatarUrl(p?.avatar_url, p?.username || targetId),
           status: 'accepted',
           type: 'outgoing',
           createdAt: f.created_at
@@ -475,7 +476,7 @@ export const friendService = {
           friendId: targetId,
           friendUsername: p?.username || 'user',
           friendFullName: p?.full_name || p?.username || 'Zavr Friend',
-          friendAvatar: p?.avatar_url || `https://api.dicebear.com/7.x/lorelei/svg?seed=${p?.username || targetId}`,
+          friendAvatar: getAvatarUrl(p?.avatar_url, p?.username || targetId),
           status: 'pending',
           type: isSender ? 'outgoing' : 'incoming',
           createdAt: r.created_at

@@ -41,9 +41,10 @@ export default function AvatarSelector({ selectedAvatar, onSelect }: AvatarSelec
               }`}
             >
               <img 
-                src={avatar.url} 
-                alt={avatar.id} 
-                className="w-full h-full object-contain filter drop-shadow-[0_8px_16px_rgba(0,0,0,0.5)]" 
+                src={avatar.image || avatar.url} 
+                alt={avatar.name || avatar.id} 
+                className="w-full h-full object-contain filter drop-shadow-[0_8px_16px_rgba(0,0,0,0.5)] rounded-full" 
+                loading="lazy"
                 referrerPolicy="no-referrer" 
               />
               {isSelected && (

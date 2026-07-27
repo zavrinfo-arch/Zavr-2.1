@@ -7,7 +7,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useStore } from '../store/useStore';
 import { supabase } from '../lib/supabaseClient';
-import { AVATARS_50 } from '../constants/avatars';
+import { AVATARS_50, getAvatarUrl } from '../constants/avatars';
 import { formatCurrency, cn } from '../lib/utils';
 import { 
   User, Settings, Bell, Globe, 
@@ -174,9 +174,9 @@ export default function Profile() {
             className="w-32 h-32 rounded-full bg-black/[0.02] dark:bg-white/[0.02] border border-black/[0.06] dark:border-white/[0.08] backdrop-blur-md flex items-center justify-center overflow-hidden active:scale-95 transition-transform shadow-xl"
           >
             <img 
-              src={AVATARS_50.find(a => a.id === currentUser?.avatarId?.toString())?.url || `https://api.dicebear.com/7.x/lorelei/svg?seed=${currentUser?.username}`} 
+              src={getAvatarUrl(currentUser?.avatar || currentUser?.avatarId, currentUser?.username || currentUser?.id)} 
               alt="Avatar"
-              className="w-full h-full object-cover p-1.5"
+              className="w-full h-full object-contain p-1.5 rounded-full"
               referrerPolicy="no-referrer"
             />
           </button>

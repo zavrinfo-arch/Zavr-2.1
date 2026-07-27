@@ -13,6 +13,7 @@ import {
 import toast from 'react-hot-toast';
 import { differenceInYears, parseISO, format } from 'date-fns';
 import { AVATARS } from '../constants';
+import { getAvatarUrl } from '../constants/avatars';
 import { useTheme } from '../context/ThemeContext';
 
 type SignupStep = 'email' | 'verify' | 'password' | 'profile';
@@ -608,7 +609,7 @@ export default function Auth() {
       const phone = formData.phone;
       const birthDate = formData.dob;
       const gender = (formData as any).gender || '';
-      const avatarUrl = `https://api.dicebear.com/7.x/lorelei/svg?seed=${username}`;
+      const avatarUrl = getAvatarUrl('avatar_1', username || finalUser.id);
 
       // Save using UPSERT (not insert) as per requirement 2
       const { error } = await supabase
@@ -620,6 +621,7 @@ export default function Auth() {
           phone: phone || null,
           birth_date: birthDate || null,
           gender: gender || null,
+          avatar_id: 'avatar_1',
           avatar_url: avatarUrl || null,
           updated_at: new Date().toISOString()
         });

@@ -21,6 +21,7 @@ import { zettlService } from '../services/zettl.service';
 import { supabase, isConfigured } from '../lib/supabaseClient';
 import { fetchWithRetry } from '../lib/utils';
 import { setOnboardingCookie } from '../../lib/onboarding';
+import { getAvatarUrl } from '../constants/avatars';
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number = 8000, errorMsg: string = 'Network request timed out'): Promise<T> {
   let timeoutId: any;
@@ -58,8 +59,8 @@ export function mapDbProfileToUser(prof: any, emailFallback?: string): User {
     dob: prof.birth_date || prof.date_of_birth || prof.dob || '',
     gender: prof.gender || '',
     location: prof.location || '',
-    avatar: prof.avatar_url || prof.avatar || '',
-    avatarId: prof.avatar_id || prof.avatarId || '',
+    avatar: getAvatarUrl(prof.avatar_url || prof.avatar || prof.avatar_id, prof.username || prof.id || 1),
+    avatarId: prof.avatar_id || prof.avatarId || 'avatar_1',
     onboardingCompleted: !!(prof.onboarding_completed || prof.onboardingCompleted),
     personalDetailsFilled: !!(prof.onboarding_completed || prof.onboardingCompleted),
     savingCategories: prof.saving_categories || prof.savingCategories || [],
@@ -540,7 +541,7 @@ export const useStore = create<AppState>()(
               friendId: f.friend_id,
               friendUsername: f.friend?.username || 'user',
               friendFullName: f.friend?.full_name || 'Zettl Friend',
-              friendAvatar: f.friend?.avatar_url || `https://api.dicebear.com/7.x/lorelei/svg?seed=${f.friend_id || 'default'}`,
+              friendAvatar: getAvatarUrl(f.friend?.avatar_url, f.friend?.username || f.friend_id || 'default'),
               status: f.status,
               createdAt: f.created_at,
               type: f.type
@@ -845,8 +846,8 @@ export const useStore = create<AppState>()(
                     dob: metadata.dob || '',
                     gender: metadata.gender || '',
                     location: metadata.location || '',
-                    avatar: metadata.avatar_url || `https://api.dicebear.com/7.x/lorelei/svg?seed=${sbSession.user.id}`,
-                    avatarId: metadata.avatar_id || '1',
+                    avatar: getAvatarUrl(metadata.avatar_url || metadata.avatar_id, metadata.username || sbSession.user.id),
+                    avatarId: metadata.avatar_id || 'avatar_1',
                     onboardingCompleted: false,
                     personalDetailsFilled: false,
                     savingCategories: [],

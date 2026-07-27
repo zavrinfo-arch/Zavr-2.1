@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useZettlContext } from '../context/ZettlContext';
 import { useStore } from '../store/useStore';
 import { GroupGoal } from '../types';
+import { getAvatarUrl } from '../constants/avatars';
 import { motion, AnimatePresence } from 'motion/react';
 import { Users, Send, CheckCircle2, DollarSign, Wallet, RefreshCw, Layers } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -228,9 +229,10 @@ export default function GroupDebtChat({ group }: GroupDebtChatProps) {
                       <div key={s.userId || idx} className="flex items-center justify-between text-[10px] py-1">
                         <div className="flex items-center gap-1.5">
                           <img
-                            src={s.avatar || `https://api.dicebear.com/7.x/lorelei/svg?seed=${s.name}`}
+                            src={getAvatarUrl(s.avatar, s.name || s.userId)}
                             alt=""
                             className="w-5 h-5 rounded-full object-cover clay-inset"
+                            referrerPolicy="no-referrer"
                           />
                           <span className={`${s.userId === activeUserId ? 'text-purple-400 font-bold' : 'opacify-80'}`}>
                             {s.userId === activeUserId ? 'You' : s.name}

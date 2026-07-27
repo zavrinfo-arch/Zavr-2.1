@@ -9,7 +9,7 @@ import NotificationBell from './NotificationBell';
 import RefreshButton from './RefreshButton';
 import { useTheme } from '../context/ThemeContext';
 
-import { AVATARS_50 } from '../constants/avatars';
+import { AVATARS_50, getAvatarUrl } from '../constants/avatars';
 
 export default function ProfileHeader() {
   const { 
@@ -107,10 +107,8 @@ export default function ProfileHeader() {
     updateQuestProgress('w2', 1);
   };
 
-  // 1 & 5. Find Avatar with high priority on avatar_url, then fallback to finding by ID, then DiceBear placeholder
-  const avatarUrl = activeUser.avatar || 
-    AVATARS_50.find(a => a.id === activeUser.avatarId?.toString())?.url || 
-    `https://api.dicebear.com/7.x/lorelei/svg?seed=${activeUser.username}`;
+  // Find Avatar using getAvatarUrl helper for GitHub Raw avatar assets
+  const avatarUrl = getAvatarUrl(activeUser.avatar || activeUser.avatarId, activeUser.username || activeUser.id);
 
   return (
     <div className="fixed top-0 left-0 right-0 z-[95] px-4 pt-4 pointer-events-none">

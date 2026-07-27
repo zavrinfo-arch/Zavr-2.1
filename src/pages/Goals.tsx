@@ -435,19 +435,19 @@ export default function Goals({ onAddMoney, onWithdraw }: {
                 </div>
                 <form onSubmit={saveEdit} className="space-y-4">
                   <div className="space-y-1.5 text-left">
-                    <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 dark:text-[#94A3B8]/40 ml-4">Goal Name</label>
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 dark:text-[#94A3B8]/60 ml-1">Goal Name</label>
                     <input 
-                      className="w-full bg-black/[0.01] dark:bg-white/[0.02] border border-black/[0.08] dark:border-white/[0.08] hover:border-[#FF8A8A]/40 dark:hover:border-[#FF8A8A]/30 focus:border-[#FF6B6B]/60 dark:focus:border-[#FF6B6B]/60 rounded-2xl p-4 text-sm text-zinc-800 dark:text-white outline-none transition-all"
+                      className="w-full bg-black/[0.02] dark:bg-white/[0.02] border border-black/[0.08] dark:border-white/[0.08] hover:border-purple-500/40 focus:border-purple-500/60 focus:ring-2 focus:ring-purple-500/20 rounded-2xl p-4 text-sm font-semibold text-zinc-900 dark:text-white outline-none transition-all"
                       value={editModal.goal.name}
                       onChange={e => setEditModal({ ...editModal, goal: { ...editModal.goal, name: e.target.value } })}
                     />
                   </div>
                   {editModal.type === 'emergency' ? (
                     <div className="space-y-1.5 text-left">
-                      <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 dark:text-[#94A3B8]/40 ml-4">Routine Amount</label>
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 dark:text-[#94A3B8]/60 ml-1">Routine Amount</label>
                       <input 
                         type="number"
-                        className="w-full bg-black/[0.01] dark:bg-white/[0.02] border border-black/[0.08] dark:border-white/[0.08] hover:border-[#FF8A8A]/40 dark:hover:border-[#FF8A8A]/30 focus:border-[#FF6B6B]/60 dark:focus:border-[#FF6B6B]/60 rounded-2xl p-4 text-sm text-zinc-800 dark:text-white outline-none transition-all"
+                        className="w-full bg-black/[0.02] dark:bg-white/[0.02] border border-black/[0.08] dark:border-white/[0.08] hover:border-purple-500/40 focus:border-purple-500/60 focus:ring-2 focus:ring-purple-500/20 rounded-2xl p-4 text-sm font-semibold text-zinc-900 dark:text-white outline-none transition-all"
                         value={editModal.goal.routineAmount || ''}
                         onChange={e => setEditModal({ ...editModal, goal: { ...editModal.goal, routineAmount: parseInt(e.target.value) || 0 } })}
                       />
@@ -455,24 +455,24 @@ export default function Goals({ onAddMoney, onWithdraw }: {
                   ) : (
                     <>
                       <div className="space-y-1.5 text-left">
-                        <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 dark:text-[#94A3B8]/40 ml-4">Target Amount</label>
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 dark:text-[#94A3B8]/60 ml-1">Target Amount</label>
                         <input 
                           type="number"
-                          className="w-full bg-black/[0.01] dark:bg-white/[0.02] border border-black/[0.08] dark:border-white/[0.08] hover:border-[#FF8A8A]/40 dark:hover:border-[#FF8A8A]/30 focus:border-[#FF6B6B]/60 dark:focus:border-[#FF6B6B]/60 rounded-2xl p-4 text-sm text-zinc-800 dark:text-white outline-none transition-all"
+                          className="w-full bg-black/[0.02] dark:bg-white/[0.02] border border-black/[0.08] dark:border-white/[0.08] hover:border-purple-500/40 focus:border-purple-500/60 focus:ring-2 focus:ring-purple-500/20 rounded-2xl p-4 text-sm font-semibold text-zinc-900 dark:text-white outline-none transition-all"
                           value={editModal.goal.targetAmount}
                           onChange={e => setEditModal({ ...editModal, goal: { ...editModal.goal, targetAmount: parseInt(e.target.value) || 0 } })}
                         />
                       </div>
                       <div className="space-y-1.5 text-left">
-                        <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 dark:text-[#94A3B8]/40 ml-4">Deadline</label>
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 dark:text-[#94A3B8]/60 ml-1">Deadline</label>
                         <input 
                           type="date"
-                          className="w-full bg-black/[0.01] dark:bg-white/[0.02] border border-black/[0.08] dark:border-white/[0.08] hover:border-[#FF8A8A]/40 dark:hover:border-[#FF8A8A]/30 focus:border-[#FF6B6B]/60 dark:focus:border-[#FF6B6B]/60 rounded-2xl p-4 text-sm text-zinc-800 dark:text-white outline-none transition-all dark:[color-scheme:dark]"
+                          className="w-full bg-black/[0.02] dark:bg-white/[0.02] border border-black/[0.08] dark:border-white/[0.08] hover:border-purple-500/40 focus:border-purple-500/60 focus:ring-2 focus:ring-purple-500/20 rounded-2xl p-4 text-sm font-semibold text-zinc-900 dark:text-white outline-none transition-all dark:[color-scheme:dark]"
                           value={editModal.goal.deadline}
                           onChange={e => setEditModal({ ...editModal, goal: { ...editModal.goal, deadline: e.target.value } })}
                         />
                         {editModal.goal.deadline && (
-                          <p className="text-[10px] text-[#FF6B6B] font-black uppercase tracking-widest ml-4">
+                          <p className="text-[10px] text-[#FF6B6B] font-bold uppercase tracking-widest ml-1">
                             Deadline Selected: {formatDateSafely(editModal.goal.deadline)}
                           </p>
                         )}

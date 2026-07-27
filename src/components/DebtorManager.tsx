@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { Debitor } from '../types/index';
+import { getAvatarUrl } from '../constants/avatars';
 import toast from 'react-hot-toast';
 
 export const DebtorManager: React.FC = () => {
@@ -66,7 +67,7 @@ export const DebtorManager: React.FC = () => {
           name: name.trim(),
           email: email.trim() || undefined,
           phone: phone.trim() || undefined,
-          avatar_url: `https://api.dicebear.com/7.x/lorelei/svg?seed=${encodeURIComponent(name.trim())}`
+          avatar_url: getAvatarUrl(undefined, name.trim())
         });
         toast.success(`✅ Updated details for ${name.trim()}`);
       } else {
@@ -159,9 +160,9 @@ export const DebtorManager: React.FC = () => {
             >
               <div className="flex items-center gap-3">
                 <img
-                  src={debitor.avatar_url || `https://api.dicebear.com/7.x/lorelei/svg?seed=${encodeURIComponent(debitor.name)}`}
+                  src={getAvatarUrl(debitor.avatar_url, debitor.name)}
                   alt={debitor.name}
-                  className="w-10 h-10 rounded-xl object-cover bg-muted shrink-0 border border-border"
+                  className="w-10 h-10 rounded-xl object-contain bg-muted shrink-0 border border-border"
                   referrerPolicy="no-referrer"
                 />
                 <div className="min-w-0 space-y-0.5">
