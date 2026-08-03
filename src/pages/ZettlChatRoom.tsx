@@ -35,14 +35,14 @@ export default function ZettlChatRoom() {
   
   const { 
     currentChatFriendId, setCurrentChatFriendId, 
-    payDebt, sendReminder 
+    payDebt, sendReminder, playSound, hapticFeedback
   } = useZettlContext();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const bottomScrollRef = useRef<HTMLDivElement>(null);
 
   // Core Hooks
-  const { messages: rawMessages, loading, refetch } = useChatMessages(friendId);
+  const { messages: rawMessages, loading, refetch, addOptimisticMessage } = useChatMessages(friendId);
   const { requestMoney } = useSendRequest();
   const { makePayment } = useSendPayment();
   const { sendText } = useSendText();
@@ -228,28 +228,70 @@ export default function ZettlChatRoom() {
     await refetch();
   };
 
-  const handleSendTextMessage = async (e: React.FormEvent) => {
+  const handleSendTextMessage = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inputText.trim() || !friendId) return;
+    if (!inputText.trim() || !friendId || !currentUser?.id) return;
 
-    const copy = inputText;
+    const textToSend = inputText.trim();
     setInputText('');
     setShowEmojiPicker(false);
     setReplyingTo(null);
 
-    await sendText(friendId, copy.trim());
-    await refetch();
+    playSound('whoosh');
+    hapticFeedback();
+
+    // Optimistically append new message to local chat state immediately
+    const tempId = `temp-${Date.now()}-${Math.random().toString(36).substring(2)}`;
+    const optimisticMsg: ChatMessage = {
+      id: tempId,
+      type: 'text',
+      direction: 'outgoing',
+      message: textToSend,
+      amount: 0,
+      status: 'paid',
+      created_at: new Date().toISOString(),
+      read: false,
+      delivery_status: 'sending',
+      friend_id: friendId,
+      friend_name: friendProfile?.name || 'Zettl Friend'
+    };
+    addOptimisticMessage(optimisticMsg);
+
+    // Silent non-blocking background database sync
+    sendText(friendId, textToSend).catch((err) => {
+      console.error('[ZettlChatRoom] Error sending text message:', err);
+    });
   };
 
   // Send Voice Note
   const handleSendVoiceNote = async () => {
-    if (!friendId) return;
+    if (!friendId || !currentUser?.id) return;
     const blob = await stopRecording();
     if (blob) {
-      const voiceUrl = URL.createObjectURL(blob);
-      await sendText(friendId, `🎤 Voice Note (${recordingTime}s)`);
+      const voiceText = `🎤 Voice Note (${recordingTime}s)`;
+      playSound('whoosh');
+      hapticFeedback();
+
+      const tempId = `temp-${Date.now()}-${Math.random().toString(36).substring(2)}`;
+      const optimisticMsg: ChatMessage = {
+        id: tempId,
+        type: 'text',
+        direction: 'outgoing',
+        message: voiceText,
+        amount: 0,
+        status: 'paid',
+        created_at: new Date().toISOString(),
+        read: false,
+        delivery_status: 'sending',
+        friend_id: friendId,
+        friend_name: friendProfile?.name || 'Zettl Friend'
+      };
+      addOptimisticMessage(optimisticMsg);
       toast.success('Voice message delivered!');
-      await refetch();
+
+      sendText(friendId, voiceText).catch((err) => {
+        console.error('[ZettlChatRoom] Error sending voice note:', err);
+      });
     }
   };
 
@@ -259,7 +301,7 @@ export default function ZettlChatRoom() {
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file || !friendId) return;
+    if (!file || !friendId || !currentUser?.id) return;
 
     try {
       toast.loading('Uploading media...', { id: 'file-upload' });
@@ -279,9 +321,27 @@ export default function ZettlChatRoom() {
         publicUrl = URL.createObjectURL(file);
       }
 
-      await sendText(friendId, publicUrl);
+      playSound('whoosh');
+      hapticFeedback();
+
+      const tempId = `temp-${Date.now()}-${Math.random().toString(36).substring(2)}`;
+      const optimisticMsg: ChatMessage = {
+        id: tempId,
+        type: 'text',
+        direction: 'outgoing',
+        message: publicUrl,
+        amount: 0,
+        status: 'paid',
+        created_at: new Date().toISOString(),
+        read: false,
+        delivery_status: 'sending',
+        friend_id: friendId,
+        friend_name: friendProfile?.name || 'Zettl Friend'
+      };
+      addOptimisticMessage(optimisticMsg);
       toast.success('Attachment delivered!', { id: 'file-upload' });
-      await refetch();
+
+      sendText(friendId, publicUrl).catch(() => {});
     } catch (err) {
       toast.error('Failed uploading attachment', { id: 'file-upload' });
     }
@@ -491,12 +551,7 @@ export default function ZettlChatRoom() {
       {/* 7. Messages Timeline Viewport (paddingBottom: 110px inside content) */}
       <main className="flex-1 w-full overflow-y-auto px-4 py-3 space-y-4 flex flex-col no-scrollbar relative z-10">
         <div className="flex-1 space-y-4 pb-[110px]">
-          {loading ? (
-            <div className="flex-1 flex flex-col justify-center items-center py-16 gap-3 opacity-50">
-              <div className="w-7 h-7 rounded-full border-2 border-[#FF6B6B] border-t-transparent animate-spin" />
-              <p className="text-xs text-zinc-500 dark:text-zinc-400 font-medium">Loading conversation...</p>
-            </div>
-          ) : groupedMessages.length === 0 ? (
+          {groupedMessages.length === 0 ? (
             <div className="flex-1 flex flex-col justify-center items-center text-center py-20 space-y-4">
               <div className="w-16 h-16 rounded-full bg-black/[0.02] dark:bg-white/[0.03] border border-black/[0.08] dark:border-white/[0.08] flex items-center justify-center text-zinc-400 dark:text-zinc-500">
                 <Smile size={28} />
@@ -689,8 +744,27 @@ export default function ZettlChatRoom() {
             isOpen={isAmountOpen}
             onClose={() => setIsAmountOpen(false)}
             onSubmit={async (data) => {
-              await addAmount(data);
-              await refetch();
+              setIsAmountOpen(false);
+              playSound('send');
+              hapticFeedback();
+              if (currentUser?.id) {
+                const tempId = `temp-${Date.now()}-${Math.random().toString(36).substring(2)}`;
+                addOptimisticMessage({
+                  id: tempId,
+                  type: 'request',
+                  direction: 'outgoing',
+                  message: data.description || `Expense: ₹${data.amount}`,
+                  amount: data.amount,
+                  purpose: data.description,
+                  status: 'pending',
+                  created_at: new Date().toISOString(),
+                  read: false,
+                  delivery_status: 'sending',
+                  friend_id: friendProfile.id,
+                  friend_name: friendProfile.name
+                });
+              }
+              addAmount(data).catch(() => {});
             }}
           />
 
@@ -701,8 +775,27 @@ export default function ZettlChatRoom() {
             isOpen={isSettleOpen}
             onClose={() => setIsSettleOpen(false)}
             onSubmit={async (method, amount, memo) => {
-              await settleUp(friendProfile.id, method, amount, memo);
-              await refetch();
+              setIsSettleOpen(false);
+              playSound('send');
+              hapticFeedback();
+              if (currentUser?.id) {
+                const tempId = `temp-${Date.now()}-${Math.random().toString(36).substring(2)}`;
+                addOptimisticMessage({
+                  id: tempId,
+                  type: 'payment',
+                  direction: 'outgoing',
+                  message: memo || `Settled ₹${amount} via ${method}`,
+                  amount,
+                  purpose: memo,
+                  status: 'paid',
+                  created_at: new Date().toISOString(),
+                  read: false,
+                  delivery_status: 'sending',
+                  friend_id: friendProfile.id,
+                  friend_name: friendProfile.name
+                });
+              }
+              settleUp(friendProfile.id, method, amount, memo).catch(() => {});
             }}
           />
 
@@ -719,8 +812,27 @@ export default function ZettlChatRoom() {
             isOpen={isRequestOpen}
             onClose={() => setIsRequestOpen(false)}
             onSubmit={async (data) => {
-              await requestMoney(data);
-              await refetch();
+              setIsRequestOpen(false);
+              playSound('send');
+              hapticFeedback();
+              if (currentUser?.id) {
+                const tempId = `temp-${Date.now()}-${Math.random().toString(36).substring(2)}`;
+                addOptimisticMessage({
+                  id: tempId,
+                  type: 'request',
+                  direction: 'outgoing',
+                  message: data.purpose || `Requested ₹${data.amount}`,
+                  amount: data.amount,
+                  purpose: data.purpose,
+                  status: 'pending',
+                  created_at: new Date().toISOString(),
+                  read: false,
+                  delivery_status: 'sending',
+                  friend_id: friendProfile.id,
+                  friend_name: friendProfile.name
+                });
+              }
+              requestMoney(data).catch(() => {});
             }}
           />
 
@@ -730,8 +842,27 @@ export default function ZettlChatRoom() {
             isOpen={isPaymentOpen}
             onClose={() => setIsPaymentOpen(false)}
             onSubmit={async (data) => {
-              await makePayment(data);
-              await refetch();
+              setIsPaymentOpen(false);
+              playSound('send');
+              hapticFeedback();
+              if (currentUser?.id) {
+                const tempId = `temp-${Date.now()}-${Math.random().toString(36).substring(2)}`;
+                addOptimisticMessage({
+                  id: tempId,
+                  type: 'payment',
+                  direction: 'outgoing',
+                  message: data.purpose || `Paid ₹${data.amount}`,
+                  amount: data.amount,
+                  purpose: data.purpose,
+                  status: 'paid',
+                  created_at: new Date().toISOString(),
+                  read: false,
+                  delivery_status: 'sending',
+                  friend_id: friendProfile.id,
+                  friend_name: friendProfile.name
+                });
+              }
+              makePayment(data).catch(() => {});
             }}
           />
         </>

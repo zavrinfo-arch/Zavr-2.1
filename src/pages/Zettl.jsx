@@ -1290,13 +1290,16 @@ export default function ZettlPage() {
                 last_message_time: new Date().toISOString(),
                 unread_count: 0,
                 net_balance: 0
-              }))).map((chatItem) => (
-                <ChatListItem
-                  key={chatItem.friend_id}
-                  item={chatItem}
-                  onClick={() => navigate(`/zettl/chat/${chatItem.friend_id}`)}
-                />
-              ))}
+              }))).map((chatItem) => {
+                const targetFId = chatItem.friend_id || chatItem.friendId || chatItem.id;
+                return (
+                  <ChatListItem
+                    key={targetFId}
+                    item={chatItem}
+                    onClick={() => navigate(`/zettl/chat/${targetFId}`)}
+                  />
+                );
+              })}
             </div>
           </div>
         )}

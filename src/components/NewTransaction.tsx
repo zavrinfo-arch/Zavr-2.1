@@ -114,7 +114,7 @@ export const NewTransaction: React.FC<NewTransactionProps> = ({ onSuccess }) => 
           purpose: purpose.trim() || 'General Loan',
           description: description.trim() || undefined,
           due_date: dueDate || null,
-          status: 'active'
+          status: 'pending'
         });
         toast.success(`💰 Recorded ₹${numericAmount} lent to contact!`);
       } else {
@@ -125,7 +125,7 @@ export const NewTransaction: React.FC<NewTransactionProps> = ({ onSuccess }) => 
           amount: numericAmount,
           description: description.trim() || purpose.trim() || 'General Borrowing',
           due_date: dueDate || null,
-          status: 'active'
+          status: 'pending'
         });
         toast.success(`💰 Recorded ₹${numericAmount} borrowed!`);
       }

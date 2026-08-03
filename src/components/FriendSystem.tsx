@@ -392,10 +392,11 @@ export default function FriendSystem() {
                   </div>
                 ) : (
                   activeConnections.map((friend) => {
+                    const targetFId = friend.friendId || (friend as any).friend_id || friend.id || (friend as any).friend?.id;
                     const statusInfo = getOnlineStatus(friend.friendUsername);
                     return (
                       <motion.div
-                        key={friend.id}
+                        key={friend.id || targetFId}
                         variants={itemVariants}
                         className="p-3.5 bg-background/30 border border-border hover:border-white/[0.08] hover:bg-white/[0.01] flex items-center justify-between rounded-2xl transition-all duration-200"
                       >
@@ -433,7 +434,7 @@ export default function FriendSystem() {
                           <motion.button
                             whileHover={{ scale: 1.05 }}
                             whileTap={{ scale: 0.95 }}
-                            onClick={() => navigate(`/zettl/chat/${friend.friendId}`)}
+                            onClick={() => navigate(`/zettl/chat/${targetFId}`)}
                             className="p-2 bg-foreground/5 hover:bg-purple-600/20 hover:text-purple-400 rounded-xl transition-all border border-transparent hover:border-purple-500/20"
                             title="Chat & Split"
                           >
@@ -443,7 +444,7 @@ export default function FriendSystem() {
                           <motion.button
                             whileHover={{ scale: 1.05 }}
                             whileTap={{ scale: 0.95 }}
-                            onClick={() => navigate(`/zettl/chat/${friend.friendId}`)}
+                            onClick={() => navigate(`/zettl/chat/${targetFId}`)}
                             className="p-2 bg-foreground/5 hover:bg-emerald-500/20 hover:text-emerald-400 rounded-xl transition-all border border-transparent hover:border-emerald-500/20"
                             title="Log split"
                           >

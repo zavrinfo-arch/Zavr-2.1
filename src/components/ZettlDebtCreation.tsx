@@ -48,7 +48,7 @@ export const ZettlDebtCreation: React.FC<ZettlDebtCreationProps> = ({
   const [dueDate, setDueDate] = useState<string>(
     new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
   );
-  const [status, setStatus] = useState<'active' | 'settled' | 'cancelled' | 'overdue'>('active');
+  const [status, setStatus] = useState<'pending' | 'settled' | 'cancelled' | 'overdue'>('pending');
   const [loading, setLoading] = useState<boolean>(false);
 
   useEffect(() => {

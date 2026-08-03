@@ -3,8 +3,10 @@ import { supabase } from '../lib/supabaseClient';
 import { friendService, clearFriendsCache } from '../services/friendService';
 import { debtService } from '../services/debtService';
 import { notificationService } from '../services/notificationService';
+import { zettlService } from '../services/zettl.service';
 import { useStore } from '../store/useStore';
 import { Friend, PersonalZettl, Notification } from '../types';
+import { ChatMessage } from '../types/zettl.types';
 import toast from 'react-hot-toast';
 import { shouldDisableHeavyFeatures } from '../utils/previewFix';
 
@@ -20,7 +22,7 @@ interface ZettlContextType {
   netBalance: number;
   totalOwedToMe: number;
   totalIOwe: number;
-  fetchData: () => Promise<void>;
+  fetchData: (isSilent?: boolean) => Promise<void>;
   sendFriendRequest: (friendId: string) => Promise<void>;
   acceptFriend: (requestId: string) => Promise<void>;
   rejectFriend: (requestId: string) => Promise<void>;
@@ -37,6 +39,10 @@ interface ZettlContextType {
   refreshChatList: () => Promise<void>;
   currentChatFriendId: string | null;
   setCurrentChatFriendId: (friendId: string | null) => void;
+  globalMessages: ChatMessage[];
+  messagesLoading: boolean;
+  addOptimisticMessage: (msg: ChatMessage) => void;
+  fetchChatMessages: (targetFriendId: string, isSilent?: boolean) => Promise<ChatMessage[]>;
   playSound: (type: 'send' | 'receive' | 'whoosh' | 'kaching') => void;
   hapticFeedback: () => void;
 }
@@ -62,6 +68,10 @@ export const ZettlProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // WhatsApp Zettl State
   const [unreadCount, setUnreadCount] = useState(0);
   const [currentChatFriendId, setCurrentChatFriendId] = useState<string | null>(null);
+
+  // Global Chat Messages State
+  const [globalMessages, setGlobalMessages] = useState<ChatMessage[]>([]);
+  const [messagesLoading, setMessagesLoading] = useState<boolean>(false);
 
   const playSound = (type: 'send' | 'receive' | 'whoosh' | 'kaching') => {
     try {
@@ -108,7 +118,7 @@ export const ZettlProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
 
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (isSilent = false) => {
     let activeUserId = currentUser?.id || useStore.getState().session?.user?.id;
     if (!activeUserId) {
       const { data: { session } } = await supabase.auth.getSession();
@@ -120,7 +130,9 @@ export const ZettlProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return;
     }
 
-    setLoading(true);
+    if (!isSilent) {
+      setLoading(true);
+    }
     try {
       // 1. Fetch friend list
       const loadedFriends = await friendService.getFriendList(activeUserId);
@@ -187,10 +199,99 @@ export const ZettlProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   }, [currentUser]);
 
+  const addOptimisticMessage = useCallback((msg: ChatMessage) => {
+    setGlobalMessages((prev) => {
+      if (prev.some((m) => m.id === msg.id)) return prev;
+      const combined = [msg, ...prev];
+      return combined.sort((a, b) => {
+        const timeA = a.created_at ? new Date(a.created_at).getTime() : Date.now();
+        const timeB = b.created_at ? new Date(b.created_at).getTime() : Date.now();
+        return timeB - timeA;
+      });
+    });
+  }, []);
+
+  const fetchChatMessages = useCallback(async (targetFriendId: string, isSilent = false) => {
+    const activeUserId =
+      currentUser?.id ||
+      useStore.getState().currentUser?.id ||
+      useStore.getState().session?.user?.id;
+    if (!activeUserId || !targetFriendId) return [];
+
+    if (!isSilent) {
+      setMessagesLoading(true);
+    }
+
+    try {
+      const data = await zettlService.getChatMessages(activeUserId, targetFriendId);
+
+      setGlobalMessages((prev) => {
+        const currentFriendMsgs = prev.filter((m) => m.friend_id === targetFriendId);
+        
+        // Sound and haptic on new incoming message
+        if (currentFriendMsgs.length > 0 && data.length > currentFriendMsgs.length) {
+          const newest = data[0];
+          if (newest && newest.direction === 'incoming') {
+            playSound('receive');
+            hapticFeedback();
+          }
+        }
+
+        // Preserve pending temp optimistic messages for targetFriendId
+        const tempMsgs = currentFriendMsgs.filter((m) => m.id.startsWith('temp-'));
+        const pendingTemp = tempMsgs.filter((tm) => {
+          const matched = data.some(
+            (dm) =>
+              dm.direction === tm.direction &&
+              (dm.message === tm.message || (tm.amount && dm.amount === tm.amount)) &&
+              Math.abs(new Date(dm.created_at).getTime() - new Date(tm.created_at).getTime()) < 20000
+          );
+          return !matched;
+        });
+
+        // Retain messages for other friends in globalMessages
+        const otherFriendsMsgs = prev.filter((m) => m.friend_id !== targetFriendId);
+
+        const combined = [...otherFriendsMsgs, ...data, ...pendingTemp];
+        return combined.sort((a, b) => {
+          const timeA = a.created_at ? new Date(a.created_at).getTime() : Date.now();
+          const timeB = b.created_at ? new Date(b.created_at).getTime() : Date.now();
+          return timeB - timeA;
+        });
+      });
+
+      // Auto mark read non-blocking
+      const unreadIds = data
+        .filter((m) => m.direction === 'incoming' && !m.read)
+        .map((m) => m.id);
+
+      if (unreadIds.length > 0) {
+        zettlService.markMessagesAsRead(unreadIds, activeUserId, targetFriendId).catch(() => {});
+      }
+
+      return data;
+    } catch (e) {
+      console.error('[ZETTL-CONTEXT] Error fetching chat messages:', e);
+      return [];
+    } finally {
+      setMessagesLoading(false);
+    }
+  }, [currentUser, playSound, hapticFeedback]);
+
   const fetchDataRef = React.useRef(fetchData);
   useEffect(() => {
     fetchDataRef.current = fetchData;
   }, [fetchData]);
+
+  const currentChatFriendIdRef = React.useRef(currentChatFriendId);
+  useEffect(() => {
+    currentChatFriendIdRef.current = currentChatFriendId;
+  }, [currentChatFriendId]);
+
+  const fetchChatMessagesRef = React.useRef(fetchChatMessages);
+  useEffect(() => {
+    fetchChatMessagesRef.current = fetchChatMessages;
+  }, [fetchChatMessages]);
 
   // Real-time listener for subbed tables
   useEffect(() => {
@@ -204,19 +305,27 @@ export const ZettlProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const friendsSubscription = supabase
       .channel('zettl-realtime-sync')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'friends' }, () => {
-        fetchDataRef.current();
+        fetchDataRef.current(true);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'friend_requests' }, () => {
-        fetchDataRef.current();
+        fetchDataRef.current(true);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'personal_zettls' }, () => {
-        fetchDataRef.current();
+        fetchDataRef.current(true);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications' }, () => {
-        fetchDataRef.current();
+        fetchDataRef.current(true);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'activities' }, () => {
-        fetchDataRef.current();
+        fetchDataRef.current(true);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'debts' }, () => {
+        console.log('⚡ [ZettlContext] Realtime debts/messages change detected');
+        fetchDataRef.current(true);
+        const activeFriendId = currentChatFriendIdRef.current;
+        if (activeFriendId) {
+          fetchChatMessagesRef.current(activeFriendId, true);
+        }
       })
       .subscribe();
 
@@ -388,9 +497,13 @@ export const ZettlProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         // WhatsApp Additions
         unreadCount,
         setUnreadCount,
-        refreshChatList: fetchData,
+        refreshChatList: () => fetchData(true),
         currentChatFriendId,
         setCurrentChatFriendId,
+        globalMessages,
+        messagesLoading,
+        addOptimisticMessage,
+        fetchChatMessages,
         playSound,
         hapticFeedback
       }}

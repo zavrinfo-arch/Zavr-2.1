@@ -250,14 +250,14 @@ class SupabaseRealtimeService {
         }
       );
 
-      channel.subscribe((status) => {
+      channel.subscribe((status, err) => {
         if (status === 'SUBSCRIBED') {
           console.log(`✅ Channel subscribed: ${config.channelName}`);
-        } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
-          console.warn(`⚠️ Channel ${config.channelName} state: ${status}`);
-          if (this.status === 'connected') {
-            this.handleConnectionFailure();
-          }
+        } else if (status === 'CLOSED') {
+          console.warn(`⚠️ Channel ${config.channelName} closed`);
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          console.warn(`⚠️ Channel ${config.channelName} state: ${status}`, err || '');
+          // Do not break global realtime connection or enter infinite retry loop
         }
       });
 

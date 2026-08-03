@@ -55,8 +55,8 @@ export interface Debt {
   settled: boolean;
   /** ISO timestamp string when debt was settled */
   settled_at?: string | null;
-  /** Status flag: 'active' | 'settled' | 'cancelled' | 'overdue' */
-  status: 'active' | 'settled' | 'cancelled' | 'overdue';
+  /** Status flag: 'pending' | 'active' | 'settled' | 'cancelled' | 'overdue' | 'paid' */
+  status: 'pending' | 'active' | 'settled' | 'cancelled' | 'overdue' | 'paid';
   /** ISO timestamp string when record was created */
   created_at: string;
   /** ISO timestamp string when record was last updated */
@@ -89,8 +89,8 @@ export interface Debit {
   settled: boolean;
   /** ISO timestamp string when debit was settled */
   settled_at?: string | null;
-  /** Status flag: 'active' | 'settled' | 'cancelled' | 'overdue' */
-  status: 'active' | 'settled' | 'cancelled' | 'overdue';
+  /** Status flag: 'pending' | 'active' | 'settled' | 'cancelled' | 'overdue' | 'paid' */
+  status: 'pending' | 'active' | 'settled' | 'cancelled' | 'overdue' | 'paid';
   /** ISO timestamp string when record was created */
   created_at: string;
   /** ISO timestamp string when record was last updated */
@@ -130,8 +130,8 @@ export interface CreateDebtData {
   description?: string;
   /** Target payment due date */
   due_date?: string | null;
-  /** Status override ('active' by default) */
-  status?: 'active' | 'settled' | 'cancelled' | 'overdue';
+  /** Status override ('pending' by default) */
+  status?: 'pending' | 'active' | 'settled' | 'cancelled' | 'overdue' | 'paid';
 }
 
 /**
@@ -148,8 +148,8 @@ export interface CreateDebitData {
   description?: string;
   /** Target payment due date */
   due_date?: string | null;
-  /** Status override ('active' by default) */
-  status?: 'active' | 'settled' | 'cancelled' | 'overdue';
+  /** Status override ('pending' by default) */
+  status?: 'pending' | 'active' | 'settled' | 'cancelled' | 'overdue' | 'paid';
 }
 
 /**
@@ -157,7 +157,7 @@ export interface CreateDebitData {
  */
 export interface DebtFilters {
   /** Status filter */
-  status?: 'active' | 'settled' | 'cancelled' | 'overdue';
+  status?: 'pending' | 'active' | 'settled' | 'cancelled' | 'overdue' | 'paid';
   /** Debitor ID filter */
   debitor_id?: string;
   /** Start creation or due date */
@@ -173,7 +173,7 @@ export interface DebtFilters {
  */
 export interface DebitFilters {
   /** Status filter */
-  status?: 'active' | 'settled' | 'cancelled' | 'overdue';
+  status?: 'pending' | 'active' | 'settled' | 'cancelled' | 'overdue' | 'paid';
   /** Debitor ID filter */
   debitor_id?: string;
   /** Start creation or due date */

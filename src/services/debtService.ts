@@ -152,7 +152,7 @@ export const debtService = {
         description: data.description || null,
         due_date: data.due_date || null,
         settled: false,
-        status: data.status || 'active',
+        status: (data.status === 'active' || !data.status) ? 'pending' : data.status,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       };
@@ -186,7 +186,11 @@ export const debtService = {
         .order('created_at', { ascending: false });
 
       if (filters?.status) {
-        query = query.eq('status', filters.status);
+        if (filters.status === 'active') {
+          query = query.or('status.eq.active,status.eq.pending').eq('settled', false);
+        } else {
+          query = query.eq('status', filters.status);
+        }
       }
       if (filters?.debitor_id) {
         query = query.eq('debitor_id', filters.debitor_id);
@@ -322,7 +326,7 @@ export const debtService = {
         description: data.description || 'General Debit',
         due_date: data.due_date || null,
         settled: false,
-        status: data.status || 'active',
+        status: (data.status === 'active' || !data.status) ? 'pending' : data.status,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       };
@@ -356,7 +360,11 @@ export const debtService = {
         .order('created_at', { ascending: false });
 
       if (filters?.status) {
-        query = query.eq('status', filters.status);
+        if (filters.status === 'active') {
+          query = query.or('status.eq.active,status.eq.pending').eq('settled', false);
+        } else {
+          query = query.eq('status', filters.status);
+        }
       }
       if (filters?.debitor_id) {
         query = query.eq('debitor_id', filters.debitor_id);

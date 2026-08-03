@@ -1611,16 +1611,18 @@ app.get('/api/friends/list', async (req, res) => {
 
     if (friendsError) throw friendsError;
 
-    // 2. Fetch pending requests from friend_requests table involving current user
+    // 2. Fetch pending and accepted requests from friend_requests table involving current user
     const { data: requestsList, error: requestsError } = await supabaseAdmin
       .from('friend_requests')
       .select('id, sender_id, receiver_id, status, created_at')
-      .or(`sender_id.eq.${user.id},receiver_id.eq.${user.id}`)
-      .eq('status', 'pending');
+      .or(`sender_id.eq.${user.id},receiver_id.eq.${user.id}`);
 
     if (requestsError) throw requestsError;
 
-    // 3. Map established friends purely from friends table
+    const pendingRequests = (requestsList || []).filter(r => r.status === 'pending');
+    const acceptedRequests = (requestsList || []).filter(r => r.status === 'accepted');
+
+    // 3. Map established friends from friends table AND accepted friend requests
     const establishedFriendMap = new Map<string, any>();
     (rawFriends || []).forEach(f => {
       const targetId = f.user_id === user.id ? f.friend_id : f.user_id;
@@ -1630,6 +1632,20 @@ app.get('/api/friends/list', async (req, res) => {
           user_id: user.id,
           friend_id: targetId,
           created_at: f.created_at,
+          status: 'accepted',
+          type: 'outgoing'
+        });
+      }
+    });
+
+    acceptedRequests.forEach(r => {
+      const targetId = r.sender_id === user.id ? r.receiver_id : r.sender_id;
+      if (targetId && targetId !== user.id && !establishedFriendMap.has(targetId)) {
+        establishedFriendMap.set(targetId, {
+          id: r.id,
+          user_id: user.id,
+          friend_id: targetId,
+          created_at: r.created_at,
           status: 'accepted',
           type: 'outgoing'
         });
@@ -1677,7 +1693,7 @@ app.get('/api/friends/list', async (req, res) => {
     });
 
     // Add pending requests with profiles
-    (requestsList || []).forEach(r => {
+    (pendingRequests || []).forEach(r => {
       const isSender = r.sender_id === user.id;
       const targetId = isSender ? r.receiver_id : r.sender_id;
 

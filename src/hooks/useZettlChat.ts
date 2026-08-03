@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useStore } from '../store/useStore';
 import { useZettlContext } from '../context/ZettlContext';
 import { zettlService } from '../services/zettl.service';
@@ -73,57 +73,197 @@ export function useChatList() {
 
 export function useChatMessages(friendId: string | undefined) {
   const { currentUser } = useStore();
-  const { playSound, hapticFeedback } = useZettlContext();
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [loading, setLoading] = useState(true);
+  const {
+    fetchChatMessages,
+    addOptimisticMessage: addGlobalOptimisticMessage,
+    setCurrentChatFriendId
+  } = useZettlContext();
 
-  const fetchMessages = useCallback(async () => {
-    if (!currentUser?.id || !friendId) return;
+  const [loading, setLoading] = useState<boolean>(false);
+
+  // Local activeMessages state array for instant client-side synchronization
+  const [activeMessages, setActiveMessages] = useState<ChatMessage[]>(() => {
+    if (!friendId) return [];
     try {
-      const data = await zettlService.getChatMessages(currentUser.id, friendId);
-      
-      // Determine if a new incoming message arrived to play Ka-ching sounds
-      setMessages(prev => {
-        if (prev.length > 0 && data.length > prev.length) {
-          const newest = data[data.length - 1];
-          if (newest.direction === 'incoming') {
-            playSound('receive');
-            hapticFeedback();
-          }
+      const cached = sessionStorage.getItem(`zettl_active_msgs_${friendId}`);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {}
+    return [];
+  });
+
+  // Optimistic message update: immediately pushes new message directly into local activeMessages state
+  const addOptimisticMessage = useCallback(
+    (msg: ChatMessage) => {
+      setActiveMessages((prev) => {
+        // Prevent duplicate messages
+        const filtered = prev.filter((m) => m.id !== msg.id);
+        const combined = [...filtered, msg];
+        // Sort chronologically ascending (oldest first, newest last at bottom of timeline)
+        const sorted = combined.sort((a, b) => {
+          const timeA = a.created_at ? new Date(a.created_at).getTime() : Date.now();
+          const timeB = b.created_at ? new Date(b.created_at).getTime() : Date.now();
+          return timeA - timeB;
+        });
+
+        if (friendId) {
+          try {
+            sessionStorage.setItem(`zettl_active_msgs_${friendId}`, JSON.stringify(sorted));
+          } catch (e) {}
         }
-        return data;
+        return sorted;
       });
 
-      // Auto mark read
-      const unreadIds = data
-        .filter(m => m.direction === 'incoming' && !m.read)
-        .map(m => m.id);
-      
-      if (unreadIds.length > 0) {
-        await zettlService.markMessagesAsRead(unreadIds);
-      }
-    } catch (e) {
-      console.error('[USE-CHAT-MESSAGES] Error pulling messages:', e);
-    } finally {
-      setLoading(false);
-    }
-  }, [currentUser?.id, friendId, playSound, hapticFeedback]);
+      // Pass silently to global context
+      try {
+        addGlobalOptimisticMessage(msg);
+      } catch (e) {}
+    },
+    [friendId, addGlobalOptimisticMessage]
+  );
 
+  // Sync state on friendId change & load database records + real-time listener
   useEffect(() => {
-    setLoading(true);
-    fetchMessages();
+    if (!friendId) {
+      setCurrentChatFriendId(null);
+      setActiveMessages([]);
+      return;
+    }
 
-    if (!currentUser?.id || !friendId) return;
-    const unsub = zettlService.subscribeToChat(currentUser.id, friendId, () => {
-      fetchMessages();
-    });
+    setCurrentChatFriendId(friendId);
+
+    let isMounted = true;
+
+    // Fast check: load from sessionStorage if available
+    try {
+      const cached = sessionStorage.getItem(`zettl_active_msgs_${friendId}`);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setActiveMessages(parsed);
+        }
+      }
+    } catch (e) {}
+
+    const syncFromDb = async () => {
+      const activeUserId =
+        currentUser?.id ||
+        useStore.getState().currentUser?.id ||
+        useStore.getState().session?.user?.id;
+
+      if (!activeUserId || !friendId) {
+        return;
+      }
+
+      try {
+        const data = await zettlService.getChatMessages(activeUserId, friendId);
+        if (!isMounted || !data) return;
+
+        setActiveMessages((prev) => {
+          // Preserve pending temporary optimistic messages starting with 'temp-'
+          const tempMsgs = prev.filter((m) => m.id.startsWith('temp-'));
+          const pendingTemp = tempMsgs.filter((tm) => {
+            const matched = data.some(
+              (dm) =>
+                dm.id === tm.id ||
+                (dm.direction === tm.direction &&
+                  (dm.message === tm.message || (tm.amount && dm.amount === tm.amount)) &&
+                  Math.abs(new Date(dm.created_at).getTime() - new Date(tm.created_at).getTime()) < 15000)
+            );
+            return !matched;
+          });
+
+          const map = new Map<string, ChatMessage>();
+          data.forEach((m) => map.set(m.id, m));
+          pendingTemp.forEach((m) => map.set(m.id, m));
+
+          const sorted = Array.from(map.values()).sort((a, b) => {
+            const timeA = a.created_at ? new Date(a.created_at).getTime() : Date.now();
+            const timeB = b.created_at ? new Date(b.created_at).getTime() : Date.now();
+            return timeA - timeB;
+          });
+
+          try {
+            sessionStorage.setItem(`zettl_active_msgs_${friendId}`, JSON.stringify(sorted));
+          } catch (e) {}
+          return sorted;
+        });
+      } catch (err) {
+        console.warn('[useChatMessages] DB sync error:', err);
+      }
+    };
+
+    // Trigger initial DB sync immediately in background
+    syncFromDb();
+
+    // Trigger global fetch silently in context
+    fetchChatMessages(friendId, true).catch(() => {});
+
+    // Real-time Supabase listener
+    let unsub = () => {};
+    const activeUserId =
+      currentUser?.id ||
+      useStore.getState().currentUser?.id ||
+      useStore.getState().session?.user?.id;
+
+    if (activeUserId && isMounted) {
+      unsub = zettlService.subscribeToChat(activeUserId, friendId, () => {
+        if (isMounted) {
+          syncFromDb();
+        }
+      });
+    }
 
     return () => {
+      isMounted = false;
       unsub();
     };
-  }, [currentUser?.id, friendId, fetchMessages]);
+  }, [friendId, currentUser?.id, fetchChatMessages, setCurrentChatFriendId]);
 
-  return { messages, loading, refetch: fetchMessages };
+  const refetch = useCallback(async () => {
+    if (!friendId) return [];
+    const activeUserId =
+      currentUser?.id ||
+      useStore.getState().currentUser?.id ||
+      useStore.getState().session?.user?.id;
+
+    if (activeUserId) {
+      try {
+        const data = await zettlService.getChatMessages(activeUserId, friendId);
+        if (data) {
+          const hasRealData = data.some(m => !m.id.startsWith('welcome-'));
+          const cleanedData = hasRealData ? data.filter(m => !m.id.startsWith('welcome-')) : data;
+
+          setActiveMessages((prev) => {
+            const map = new Map<string, ChatMessage>();
+            prev.forEach((m) => map.set(m.id, m));
+            cleanedData.forEach((m) => map.set(m.id, m));
+
+            const sorted = Array.from(map.values()).sort((a, b) => {
+              const timeA = a.created_at ? new Date(a.created_at).getTime() : Date.now();
+              const timeB = b.created_at ? new Date(b.created_at).getTime() : Date.now();
+              return timeA - timeB;
+            });
+            try {
+              sessionStorage.setItem(`zettl_active_msgs_${friendId}`, JSON.stringify(sorted));
+            } catch (e) {}
+            return sorted;
+          });
+          return data;
+        }
+      } catch (e) {}
+    }
+    return [];
+  }, [friendId, currentUser?.id]);
+
+  return {
+    messages: activeMessages,
+    loading,
+    refetch,
+    addOptimisticMessage
+  };
 }
 
 export function useSendRequest() {

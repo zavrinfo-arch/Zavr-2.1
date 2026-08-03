@@ -407,23 +407,35 @@ export const friendService = {
 
       if (frErr) console.error('[FRIEND-SERVICE] Supabase getFriendList friends error:', frErr);
 
-      // 2. Fetch pending friend requests ONLY
+      // 2. Fetch pending and accepted friend requests
       const { data: rawRequests, error: reqErr } = await supabase
         .from('friend_requests')
         .select('*')
-        .or(`sender_id.eq.${userId},receiver_id.eq.${userId}`)
-        .eq('status', 'pending');
+        .or(`sender_id.eq.${userId},receiver_id.eq.${userId}`);
 
       if (reqErr) console.error('[FRIEND-SERVICE] Supabase getFriendList requests error:', reqErr);
 
       const establishedFromTable = rawFriends || [];
-      const pending = rawRequests || [];
+      const pending = (rawRequests || []).filter((r: any) => r.status === 'pending');
+      const acceptedReqs = (rawRequests || []).filter((r: any) => r.status === 'accepted');
 
-      // Map established friends directly from 'friends' table
+      // Map established friends from 'friends' table AND accepted friend requests
       const establishedMap = new Map<string, any>();
       establishedFromTable.forEach((f: any) => {
         const targetId = f.user_id === userId ? f.friend_id : f.user_id;
         if (targetId && targetId !== userId) establishedMap.set(targetId, f);
+      });
+
+      acceptedReqs.forEach((r: any) => {
+        const targetId = r.sender_id === userId ? r.receiver_id : r.sender_id;
+        if (targetId && targetId !== userId && !establishedMap.has(targetId)) {
+          establishedMap.set(targetId, {
+            id: r.id,
+            user_id: userId,
+            friend_id: targetId,
+            created_at: r.created_at
+          });
+        }
       });
       const established = Array.from(establishedMap.values());
 

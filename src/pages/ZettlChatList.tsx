@@ -120,13 +120,16 @@ export default function ZettlChatList() {
           ) : (
             /* Chat list row wrapper */
             <div className="bg-white dark:bg-[#111118]/80 border border-black/[0.06] dark:border-white/[0.08] overflow-hidden divide-y divide-black/[0.06] dark:divide-white/[0.06] rounded-3xl shadow-sm dark:shadow-lg">
-              {filteredChats.map((chat) => (
-                <ChatListItem
-                  key={chat.friend_id}
-                  item={chat}
-                  onClick={() => navigate(`/zettl/chat/${chat.friend_id}`)}
-                />
-              ))}
+              {filteredChats.map((chat) => {
+                const targetFId = chat.friend_id || (chat as any).friendId || (chat as any).id;
+                return (
+                  <ChatListItem
+                    key={targetFId}
+                    item={chat}
+                    onClick={() => navigate(`/zettl/chat/${targetFId}`)}
+                  />
+                );
+              })}
             </div>
           )}
         </div>

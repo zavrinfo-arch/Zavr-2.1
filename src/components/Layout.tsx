@@ -16,10 +16,12 @@ import { cn } from '../lib/utils';
 import { formatDistanceToNow } from 'date-fns';
 
 import ProfileHeader from './ProfileHeader';
+import { useZettlContext } from '../context/ZettlContext';
 
 export function BottomNav({ onPlusClick }: { onPlusClick: () => void }) {
   const location = useLocation();
   const isChat = location.pathname.includes('/zettl/chat/');
+  const { unreadCount } = useZettlContext();
 
   const navItems = [
     { icon: Home, label: 'Home', path: '/home' },
@@ -56,16 +58,25 @@ export function BottomNav({ onPlusClick }: { onPlusClick: () => void }) {
               );
             }
 
+            const isZettl = item.path === '/zettl';
+
             return (
               <NavLink
                 key={item.path}
                 to={item.path}
                 className={({ isActive }) => cn(
-                  "flex flex-col items-center gap-1.5 transition-all duration-300",
+                  "flex flex-col items-center gap-1.5 transition-all duration-300 relative",
                   isActive ? "text-[#FF6B6B] scale-105" : "text-zinc-500 dark:text-[#94A3B8] opacity-50 hover:opacity-90 hover:text-zinc-900 dark:hover:text-white"
                 )}
               >
-                <item.icon className="w-5 h-5" />
+                <div className="relative">
+                  <item.icon className="w-5 h-5" />
+                  {isZettl && unreadCount > 0 && (
+                    <span className="absolute -top-1.5 -right-2 bg-[#FF6B6B] text-white text-[9px] font-extrabold w-4 h-4 rounded-full flex items-center justify-center border-2 border-white dark:border-[#111118] animate-pulse">
+                      {unreadCount > 9 ? '9+' : unreadCount}
+                    </span>
+                  )}
+                </div>
                 <span className="text-[8px] font-bold uppercase tracking-[0.2em]">{item.label}</span>
               </NavLink>
             );
